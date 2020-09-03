@@ -1,0 +1,38 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           yatima
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+homepage:       moonad/yatima
+author:         Gabriel Barreto, John C. Burnham, Victor Maia
+maintainer:     contact@sunshinecybernetics.com
+copyright:      2020 Sunshine Cybernetics
+license:        GPL-3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    LICENSE
+
+library
+  exposed-modules:
+      Language.Yatima.Term
+      Language.Yatima.Print
+      Language.Yatima.Parse
+      Language.Yatima.GHC.Eval
+  other-modules:
+      Paths_yatima
+  hs-source-dirs:
+      src
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , megaparsec
+    , mtl
+    , text
+  default-language: Haskell2010
