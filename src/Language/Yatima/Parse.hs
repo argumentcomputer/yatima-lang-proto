@@ -2,7 +2,7 @@
 Module      : Language.Yatima.Parse
 Description : Parsing expressions in the Yatima Language
 Copyright   : (c) Sunshine Cybernetics, 2020
-License     : GPL-3
+License     : AGPL-3
 Maintainer  : john@sunshinecybernetics.com
 Stability   : experimental
 -}
@@ -146,27 +146,28 @@ foldLam body bs = foldr (\n x -> Lam n x) body bs
 pLam :: Parser Term
 pLam = label "a lambda: \"λ (x) (y) => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  bs   <- pBinders <* space
+  bs   <- pBinder <* space
   symbol "=>"
   body <- bind bs (pExpr False)
   return $ foldLam body bs
 
+---- | Parse an untyped binding sequence @x y z@ within a lambda
 pBinder :: Parser [Name]
 pBinder = label "a single binder in lambda" $ do
-  symbol "("
+  --symbol "("
   names <- sepEndBy1 pName space
-  string ")"
+  --string ")"
   return names
 
--- | Parse a nonempty binding sequence @(0 A: Type) (1 x : A) (z : C)@
-pBinders :: Parser [Name]
-pBinders = label "a binding sequence in a lambda" $ do
-  (try $ next) <|> pBinder
-  where
-   next = do
-     b  <- pBinder <* space
-     bs <- bind b $ pBinders
-     return $ b ++ bs
+-- TODO: Use this when adding types to lambdas (if desired in future)
+--pBinders :: Parser [Name]
+--pBinders = label "a binding sequence in a lambda" $ do
+--  (try $ next) <|> pBinder
+--  where
+--   next = do
+--     b  <- pBinder <* space
+--     bs <- bind b $ pBinders
+--     return $ b ++ bs
 
 -- | Parse a local variable or a locally indexed alias of a global reference
 pVar :: Parser Term

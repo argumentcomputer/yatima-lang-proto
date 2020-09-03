@@ -74,12 +74,12 @@ whnf :: HOAS -> HOAS
 whnf t = case t of
   AppH f a       -> case whnf f of
     LamH _ b -> whnf (b a)
-    x        -> AppH  f a
+    x        -> AppH f a
   x              -> x
 
 -- | Normalize a HOAS term
 norm :: HOAS -> HOAS
-norm t = case t of
+norm t = case whnf t of
   LamH n b -> LamH n (\ x -> norm (b x))
   AppH f a -> AppH (norm f) (norm a)
   x        -> x

@@ -1,1 +1,1 @@
-λ (x y z) => λ (f) (g) => f (g x y) z
+λ x y z => λ f g => f (g x y) z
