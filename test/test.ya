@@ -1,1 +1,9 @@
-λ x y z => λ f g => f (g x y) z
+def foo = λ x y z => λ f g => f (g x y) z
+
+def id x = x
+
+def baz = id foo
+
+-- def test = test2
+
+def test2 = id

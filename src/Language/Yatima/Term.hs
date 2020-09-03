@@ -10,14 +10,14 @@ This module defines `Term`, the type of expressions in the Yatima language.
 
 -}
 module Language.Yatima.Term 
-  ( Name(..)
+  ( -- | IPFS content-identifiers
+    Name(..)
   , Term(..)
+  , Def(..)
   ) where
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
-
--- * Yatima expressions
 
 -- | An abstract name used in Yatima term for parsing and printing
 type Name = Text
@@ -30,5 +30,14 @@ data Term where
   Lam :: Name -> Term -> Term
   -- | An application of a function to an argument
   App :: Term -> Term -> Term
+  -- | An local reference to a term in the def cache
+  Ref :: Name -> Term
 
 deriving instance Show Term
+
+-- | A type annotated definition
+data Def = Def
+  { _name :: Name
+  , _term :: Term
+  , _type :: Term
+  } deriving Show

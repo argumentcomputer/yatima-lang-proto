@@ -2,20 +2,22 @@ name:           yatima
 version:        0.1.0.0
 homepage:       "moonad/yatima"
 author:         "Gabriel Barreto, John C. Burnham, Victor Maia"
-maintainer:     contact@sunshinecybernetics.com
+maintainer:     john@sunshinecybernetics.com
 copyright:      2020 Sunshine Cybernetics
-
 
 extra-source-files:
 - README.md
 - LICENSE
 
-description:         Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+description:
+  Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 
 library:
   source-dirs: src
   exposed-modules:
     - Language.Yatima.Term
+    - Language.Yatima.Defs
+    - Language.Yatima.CID
     - Language.Yatima.Print
     - Language.Yatima.Parse
     - Language.Yatima.GHC.Eval
@@ -26,6 +28,13 @@ library:
     - text
     - megaparsec
     - mtl
+    - serialise
+    - bytestring
+    - base16-bytestring
+    - multibase
+    - cryptonite
+    - multihash-cryptonite
+    - ipld-cid
 
   default-extensions:
     - OverloadedStrings

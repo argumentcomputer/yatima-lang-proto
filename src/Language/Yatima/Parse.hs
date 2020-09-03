@@ -18,9 +18,10 @@ module Language.Yatima.Parse
   , pTerm
   , pExpr
   , pFile
-  , prettyFile
+--  , prettyFile
   ) where
 
+import           Codec.Serialise
 import           Control.Monad.Except
 import           Control.Monad.Identity
 import           Control.Monad.RWS.Lazy     hiding (All)
@@ -40,34 +41,41 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 import           Language.Yatima.Term
 import           Language.Yatima.Print
-
+import           Language.Yatima.Defs
 
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
   { -- | The binding context for local variables
     _context :: [Name]
+  , _defs    :: Defs
   }
 
 -- | An empty parser environment, useful for testing
-defaultParseEnv = ParseEnv []
+defaultParseEnv = ParseEnv [] emptyDefs
 
 -- | Custom parser errrors with bespoke messaging
 data ParseErr
   = UndefinedReference Name
+  | TopLevelRedefinition Name
   | ReservedKeyword Name
   | LeadingDigit Name
   | LeadingApostrophe Name
-  deriving (Eq, Ord, Show)
+  | CorruptDefs DerefErr
+  deriving (Eq, Ord,Show)
 
 instance ShowErrorComponent ParseErr where
   showErrorComponent (UndefinedReference nam) =
     "Undefined reference: " ++ T.unpack nam
+  showErrorComponent (TopLevelRedefinition nam) =
+    "illegal redefinition of " ++ T.unpack nam
   showErrorComponent (ReservedKeyword nam) =
     "Reserved keyword: " ++ T.unpack nam
   showErrorComponent (LeadingDigit nam) = 
     "illegal leading digit in name: " ++ T.unpack nam
   showErrorComponent (LeadingApostrophe nam) =
     "illegal leading apostrophe in name: " ++ T.unpack nam
+  showErrorComponent (CorruptDefs e) =
+    "ERR: The defined environment is corrupt: " ++ show e
 
 -- | The type of the Yatima Parser
 type Parser = RWST ParseEnv () () (ParsecT ParseErr Text Identity)
@@ -146,16 +154,23 @@ foldLam body bs = foldr (\n x -> Lam n x) body bs
 pLam :: Parser Term
 pLam = label "a lambda: \"λ (x) (y) => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  bs   <- pBinder <* space
+  bs   <- pBinder1 <* space
   symbol "=>"
   body <- bind bs (pExpr False)
   return $ foldLam body bs
 
 ---- | Parse an untyped binding sequence @x y z@ within a lambda
+pBinder1 :: Parser [Name]
+pBinder1 = label "a single binder in lambda" $ do
+  --symbol "("
+  names <- sepEndBy1 pName space
+  --string ")"
+  return names
+
 pBinder :: Parser [Name]
 pBinder = label "a single binder in lambda" $ do
   --symbol "("
-  names <- sepEndBy1 pName space
+  names <- sepEndBy pName space
   --string ")"
   return names
 
@@ -176,7 +191,11 @@ pVar = label "a local or global reference: \"x\", \"add\"" $ do
   nam <- pName
   case find nam ctx of
     Just i  -> return $ Var nam i
-    Nothing -> customFailure $ UndefinedReference nam
+    Nothing -> do
+      Defs index cache <- asks _defs
+      case M.lookup nam index of
+        Nothing  -> customFailure $ UndefinedReference nam
+        Just _   -> return $ Ref nam
 
 -- | Parse a term
 pTerm :: Parser Term
@@ -196,16 +215,69 @@ pExpr parens = do
   when parens (void $ string ")")
   return $ foldl (\t a -> App t a) fun args
 
+pDecl :: Bool -> Parser (Name, Term)
+pDecl shadow = do
+  nam     <- pName <* space
+  index   <- asks (_index . _defs)
+  when (not shadow && M.member nam index)
+    (customFailure $ TopLevelRedefinition nam)
+  bs      <- pBinder <* space
+  --typBody <- symbol ":" >> bind (fst <$> bs) (pExpr False)
+  --typUpto <- getOffset
+  --let typ = foldAll (Loc from typUpto) typBody bs
+  symbol "="
+  expBody <- bind (nam:bs) $ pExpr False
+  let exp = foldLam expBody bs
+  return (nam, exp)
+
+-- | Parse a definition
+pDef :: Parser Def
+pDef = label "a definition" $ do
+  symbol "def"
+  (nam,exp) <- pDecl False
+  return $ Def nam exp exp -- placeholder for type-level
+
+sepMeta :: Name -> Term -> Parser (Anon,Meta)
+sepMeta name term = do
+  defs <- asks _defs
+  case runExcept (separateMeta name term defs) of
+    Left  e -> customFailure $ CorruptDefs e
+    Right x -> return x
+
+-- | Parse a sequence of definitions, e.g. in a file
+pDefs :: Parser Defs
+pDefs = (try $ space >> next) <|> end
+  where
+  end = space >> eof >> asks _defs
+  next = do
+    ds@(Defs index cache) <- asks _defs
+    Def name term typ_ <- pDef
+    (termAnon, termMeta) <- sepMeta name term
+    (typeAnon, typeMeta) <- sepMeta name term
+    let termAnonCID = makeCID termAnon :: CID
+    let typeAnonCID = makeCID typeAnon :: CID
+    let anonDef     = AnonDef termAnonCID typeAnonCID
+    let anonDefCID  = makeCID anonDef :: CID
+    let metaDef     = MetaDef anonDefCID termMeta typeMeta
+    let metaDefCID  = makeCID metaDef :: CID
+    let index'      = M.insert name        metaDefCID           $ index
+    let cache'      = M.insert metaDefCID  (serialise metaDef)  $
+                      M.insert anonDefCID  (serialise anonDef)  $
+                      M.insert typeAnonCID (serialise typeAnon) $
+                      M.insert termAnonCID (serialise termAnon) $
+                      cache
+    local (\e -> e { _defs = Defs index' cache' }) pDefs
+
 -- | Parse a file
-pFile :: FilePath -> IO Term
+pFile :: FilePath -> IO Defs
 pFile file = do
   txt <- TIO.readFile file
-  case parse' (pExpr False) defaultParseEnv file txt of
+  case parse' pDefs defaultParseEnv file txt of
     Left  e -> putStr (errorBundlePretty e) >> exitFailure
     Right m -> return m
 
--- | Parse and pretty-print a file
-prettyFile :: FilePath -> IO ()
-prettyFile file = do
-  term <- pFile file
-  putStrLn $ T.unpack $ prettyTerm term
+---- | Parse and pretty-print a file
+--prettyFile :: FilePath -> IO ()
+--prettyFile file = do
+--  term <- pFile file
+--  putStrLn $ T.unpack $ prettyTerm term
