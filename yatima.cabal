@@ -23,7 +23,7 @@ library
       Language.Yatima.Term
       Language.Yatima.Print
       Language.Yatima.Parse
-      Language.Yatima.GHC.Eval
+      Language.Yatima.HOAS
   other-modules:
       Paths_yatima
   hs-source-dirs:

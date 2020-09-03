@@ -18,7 +18,7 @@ library:
     - Language.Yatima.Term
     - Language.Yatima.Print
     - Language.Yatima.Parse
-    - Language.Yatima.GHC.Eval
+    - Language.Yatima.HOAS
 
   dependencies:
     - base >= 4.7 && < 5

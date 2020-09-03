@@ -1,12 +1,13 @@
 {-|
-Module      : Language.Yatima.GHC.Eval
-Description : Evaluates exprassions in the Yatima Language using GHC HOAS
+Module      : Language.Yatima.HOAS
+Description : Evaluate and typecheck exprassions in the Yatima Language using
+higher-order-abstract-syntax
 Copyright   : (c) Sunshine Cybernetics, 2020
 License     : GPL-3
 Maintainer  : john@sunshinecybernetics.com
 Stability   : experimental
 -}
-module Language.Yatima.GHC.Eval 
+module Language.Yatima.HOAS
   ( HOAS(..)
   , findCtx
   , toHOAS

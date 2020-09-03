@@ -5,6 +5,16 @@ Copyright   : (c) Sunshine Cybernetics, 2020
 License     : AGPL-3
 Maintainer  : john@sunshinecybernetics.com
 Stability   : experimental
+
+This library implements a `Megaparsec` parser for the Yatima language using the
+conventions specified in `Text.MegaParsec.Char.Lexer`. A helpful tutorial
+explaining Megaparsec can be found on [Mark Karpov's
+blog](https://markkarpov.com/tutorial/megaparsec.html)
+
+Because the `Parser` type defined here is wrapped in a `RWST` transformer, if
+you wish to extend or modify it, you will find the `parserTest` and `parse'`
+functions useful for testing and running the parsers defined here. 
+
 -}
 module Language.Yatima.Parse 
   ( ParseErr(..)
@@ -48,6 +58,12 @@ data ParseEnv = ParseEnv
     _context :: [Name]
   }
 
+-- | A stub for a future parser state
+type ParseSte = ()
+
+-- | A stub for a future parser log
+type ParseLog = ()
+
 -- | An empty parser environment, useful for testing
 defaultParseEnv = ParseEnv []
 
@@ -70,7 +86,12 @@ instance ShowErrorComponent ParseErr where
     "illegal leading apostrophe in name: " ++ T.unpack nam
 
 -- | The type of the Yatima Parser
-type Parser = RWST ParseEnv () () (ParsecT ParseErr Text Identity)
+-- We use the `RWST` Reader-Writer-State monad with `ParseSte` and
+-- `ParseLog` currently aliased to the `()` unit types to "cancel" the State and
+-- Writer components. This is to aid in future extension of the parser with
+-- mutable state and logging, since we then only have to make those changes in
+-- one place (as opposed to also changing all the unwrapping functions
+type Parser = RWST ParseEnv ParseLog ParseSte (ParsecT ParseErr Text Identity)
 
 -- | A top level parser with default env and state
 parseDefault :: Show a => Parser a -> Text
@@ -107,13 +128,18 @@ pName = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
     reservedWords :: [Text]
     reservedWords = [ "let"
                     , "if"
+                    , "for"
+                    , "var"
                     , "then"
                     , "else"
                     , "where"
                     , "case"
+                    , "forall"
+                    , "all"
                     , "lam"
                     , "lambda"
                     , "def"
+                    , "define"
                     ]
 
 -- | Consume whitespace, while skipping comments. Yatima line comments begin
@@ -187,7 +213,8 @@ pTerm = do
     , pVar
     ]
 
--- | Parse a sequence of terms as an expression
+-- | Parse a sequence of terms as an expression. The `Bool` switches whether or
+-- not the sequence must be wrapped in parentheses.
 pExpr :: Bool -> Parser Term
 pExpr parens = do
   when parens (void $ symbol "(")
