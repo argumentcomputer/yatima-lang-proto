@@ -13,11 +13,49 @@ blog](https://markkarpov.com/tutorial/megaparsec.html)
 
 Because the `Parser` type defined here is wrapped in a `RWST` transformer, if
 you wish to extend or modify it, you will find the `parserTest` and `parse'`
-functions useful for testing and running the parsers defined here. 
+functions useful for testing and running the parsers defined here:
 
 @
 > parserTest (pExpr False) "λ y => (λ x => x) y"
 Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
+@
+
+`parserTest` only prints the output though, if you want to get the resulting
+datatype you need to use `parse'`
+
+@
+> :t parse' pTerm defaultParseEnv ""
+parse' pTerm defaultParseEnv ""
+:: Text -> Either (ParseErrorBundle Text ParseErr) Term
+@
+
+Here's an example on correct input:
+
+@
+> parse' pTerm defaultParseEnv "" "λ x => x" 
+Right (Lam "x" (Var "x" 0))
+@
+
+And on input that errors:
+@
+> parse' pTerm defaultParseEnv "" "λ x => y" 
+Left (ParseErrorBundle 
+(UndefinedReference "y")]) :| [], bundlePosState = PosState {pstateInput =
+"\955 x => y", pstateOffset = 0, pstateSourcePos = SourcePos {sourceName =
+"", sourceLine = Pos 1, sourceColumn = Pos 1}, pstateTabWidth = Pos 8,
+pstateLinePrefix = ""}})
+@
+
+`ParseErrorBundle` is a big illegible blob with a lot of stuff in it, which is why 
+we have `parserTest` to prettily print the errror:
+
+@
+> parserTest pTerm  "λ x => y" 
+1:9:
+  |
+1 | λ x => y
+  |         ^
+Undefined reference: y
 @
 
 -}
@@ -90,13 +128,19 @@ instance ShowErrorComponent ParseErr where
   showErrorComponent (LeadingApostrophe nam) =
     "illegal leading apostrophe in name: " ++ T.unpack nam
 
--- | The type of the Yatima Parser
--- We use the `RWST` Reader-Writer-State monad transformer with `ParseState` and
--- `ParseLog` currently aliased to the `()` unit types to "cancel" the State and
--- Writer components. This is to aid in future extension of the parser with
--- mutable state and logging, since we then only have to make those changes in
--- one place (as opposed to also changing all the unwrapping functions
-type Parser = RWST ParseEnv ParseLog ParseSte (ParsecT ParseErr Text Identity)
+-- | The type of the Yatima Parser. You can think of this as black box that can
+-- turn into what is essentially `Text -> Either (ParseError ...) a` function
+-- via `parse'`.  The parser is wrapped in the Reader-Writer-State monad
+-- transformer `RWST` to give it the "ability" to have a local environment,
+-- mutable state and an append only-loge
+--
+-- We currently only use `ParseEnv`. `ParseState` and `ParseLog` aliased to the
+-- `()` unit types to "cancel" the State and Writer components. This is to aid
+-- in future extension of the parser with mutable state and logging, since we
+-- then only have to make those changes in one place (as opposed to also
+-- changing all the unwrapping functions
+type Parser a
+  = RWST ParseEnv ParseLog ParseState (ParsecT ParseErr Text Identity) a
 
 -- | A top level parser with default env and state
 parseDefault :: Show a => Parser a -> Text
