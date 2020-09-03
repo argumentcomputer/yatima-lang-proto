@@ -15,6 +15,11 @@ Because the `Parser` type defined here is wrapped in a `RWST` transformer, if
 you wish to extend or modify it, you will find the `parserTest` and `parse'`
 functions useful for testing and running the parsers defined here. 
 
+@
+> parserTest (pExpr False) "λ y => (λ x => x) y"
+Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
+@
+
 -}
 module Language.Yatima.Parse 
   ( ParseErr(..)
@@ -59,7 +64,7 @@ data ParseEnv = ParseEnv
   }
 
 -- | A stub for a future parser state
-type ParseSte = ()
+type ParseState = ()
 
 -- | A stub for a future parser log
 type ParseLog = ()
@@ -86,7 +91,7 @@ instance ShowErrorComponent ParseErr where
     "illegal leading apostrophe in name: " ++ T.unpack nam
 
 -- | The type of the Yatima Parser
--- We use the `RWST` Reader-Writer-State monad with `ParseSte` and
+-- We use the `RWST` Reader-Writer-State monad transformer with `ParseState` and
 -- `ParseLog` currently aliased to the `()` unit types to "cancel" the State and
 -- Writer components. This is to aid in future extension of the parser with
 -- mutable state and logging, since we then only have to make those changes in
