@@ -26,8 +26,8 @@ library:
     - base >= 4.7 && < 5
     - containers
     - text
-    - megaparsec
     - mtl
+    - megaparsec
     - serialise
     - bytestring
     - base16-bytestring

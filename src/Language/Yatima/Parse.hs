@@ -78,6 +78,11 @@ instance ShowErrorComponent ParseErr where
     "ERR: The defined environment is corrupt: " ++ show e
 
 -- | The type of the Yatima Parser
+-- Note: We use the `RWST` Reader-Writer-State monad with `()` unit types to
+-- "cancel" the State and Writer components. This is to aid in future extension
+-- of the parser with mutable state and logging, since we then only have to make
+-- those changes in one place (as opposed to also changing all the unwrapping
+-- functions
 type Parser = RWST ParseEnv () () (ParsecT ParseErr Text Identity)
 
 -- | A top level parser with default env and state
