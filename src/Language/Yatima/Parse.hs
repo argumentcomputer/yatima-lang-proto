@@ -83,6 +83,8 @@ import qualified Data.Text                  as T
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
 import           Data.Char                  (isDigit)
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
 import qualified Data.Text.IO               as TIO
 
 import           System.Exit
@@ -98,7 +100,7 @@ import           Language.Yatima.Print
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
   { -- | The binding context for local variables
-    _context :: [Name]
+    _context :: Set Name
   }
 
 -- | A stub for a future parser state
@@ -108,7 +110,7 @@ type ParseState = ()
 type ParseLog = ()
 
 -- | An empty parser environment, useful for testing
-defaultParseEnv = ParseEnv []
+defaultParseEnv = ParseEnv Set.empty
 
 -- | Custom parser errrors with bespoke messaging
 data ParseErr
@@ -203,23 +205,15 @@ symbol txt = L.symbol space txt
 
 -- | Add a list of names to the binding context
 bind :: [Name] -> Parser a -> Parser a
-bind bs p = local (\e -> e { _context = (reverse bs) ++ _context e }) p
-
--- | Find a name in the binding context and return its index
-find :: Name -> [Name] -> Maybe Int
-find n cs = go n cs 0
-  where
-    go n (c:cs) i
-      | n == c    = Just i
-      | otherwise = go n cs (i+1)
-    go _ [] _     = Nothing
+bind bs p =
+  local (\e -> e { _context = Set.union (_context e) (Set.fromList bs) }) p
 
 foldLam:: Term -> [Name] -> Term
 foldLam body bs = foldr (\n x -> Lam n x) body bs
 
--- | Parse a lambda: @λ (x) (y) (z) => body@
+-- | Parse a lambda: @λ x y z => body@
 pLam :: Parser Term
-pLam = label "a lambda: \"λ (x) (y) => y\"" $ do
+pLam = label "a lambda: \"λ x y => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
   bs   <- pBinder <* space
   symbol "=>"
@@ -249,9 +243,9 @@ pVar :: Parser Term
 pVar = label "a local or global reference: \"x\", \"add\"" $ do
   ctx <- asks _context
   nam <- pName
-  case find nam ctx of
-    Just i  -> return $ Var nam i
-    Nothing -> customFailure $ UndefinedReference nam
+  case nam `Set.member` ctx of
+    True  -> return $ Var nam
+    False -> customFailure $ UndefinedReference nam
 
 -- | Parse a term
 pTerm :: Parser Term

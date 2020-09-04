@@ -33,30 +33,30 @@ data HOAS where
   AppH :: HOAS -> HOAS -> HOAS
 
 -- | Find a term in a context
-findCtx :: Int -> [HOAS] -> Maybe HOAS
-findCtx i cs = go cs 0
+findCtx :: Name -> [(Name,HOAS)] -> Maybe HOAS
+findCtx n cs = go cs
   where
-    go (c:cs) j
-      | i == j   = Just c
-      | otherwise = go cs (j+1)
-    go [] _     = Nothing
+    go ((m,c):cs)
+      | n == m   = Just c
+      | otherwise = go cs
+    go []        = Nothing
 
 -- | Convert a lower-order `Term` to a GHC higher-order one
-toHOAS :: Term -> [HOAS] -> Int -> HOAS
+toHOAS :: Term -> [(Name,HOAS)] -> Int -> HOAS
 toHOAS t ctx dep = case t of
-  Var n i       -> case findCtx i ctx of
+  Var n         -> case findCtx n ctx of
     Just trm -> trm
-    Nothing  -> VarH n (dep - i - 1)
-  Lam n b       -> LamH n  (\x -> bind x b)
+    Nothing  -> VarH n 0
+  Lam n b       -> LamH n  (\x -> bind (n,x) b)
   App f a       -> AppH (go f) (go a)
   where
-    bind x t = toHOAS t (x:ctx) (dep + 1)
+    bind  n t   = toHOAS t (n:ctx)   (dep + 1)
     go t     = toHOAS t ctx dep
 
 -- | Convert a GHC higher-order representation to a lower-order one
 fromHOAS :: HOAS -> Int -> Term
 fromHOAS t dep = case t of
-  VarH n i   -> Var n (dep - i - 1)
+  VarH n i   -> Var n
   LamH n b   -> Lam n (unbind n b)
   AppH f a   -> App (go f) (go a)
   where

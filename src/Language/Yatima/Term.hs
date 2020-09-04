@@ -25,7 +25,7 @@ type Name = Text
 -- | A Yatima term with names and source locations
 data Term where
   -- | Local variable implemented via De Bruijn indices
-  Var :: Name -> Int -> Term
+  Var :: Name -> Term
   -- | A lambda
   Lam :: Name -> Term -> Term
   -- | An application of a function to an argument
