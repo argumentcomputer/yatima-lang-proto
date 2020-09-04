@@ -42,30 +42,30 @@ findCtx n cs = go cs
     go []        = Nothing
 
 -- | Convert a lower-order `Term` to a GHC higher-order one
-toHOAS :: Term -> [(Name,HOAS)] -> Int -> HOAS
-toHOAS t ctx dep = case t of
+toHOAS :: Term -> [(Name,HOAS)] -> HOAS
+toHOAS t ctx = case t of
   Var n         -> case findCtx n ctx of
     Just trm -> trm
     Nothing  -> VarH n 0
   Lam n b       -> LamH n  (\x -> bind (n,x) b)
   App f a       -> AppH (go f) (go a)
   where
-    bind  n t   = toHOAS t (n:ctx)   (dep + 1)
-    go t     = toHOAS t ctx dep
+    bind n t = toHOAS t (n:ctx)
+    go t     = toHOAS t ctx
 
 -- | Convert a GHC higher-order representation to a lower-order one
-fromHOAS :: HOAS -> Int -> Term
-fromHOAS t dep = case t of
-  VarH n i   -> Var n
+fromHOAS :: HOAS -> Term
+fromHOAS t = case t of
+  VarH n _   -> Var n
   LamH n b   -> Lam n (unbind n b)
   AppH f a   -> App (go f) (go a)
   where
-    go t       = fromHOAS t dep
-    unbind n b = fromHOAS (b (VarH n dep)) (dep + 1)
+    go t       = fromHOAS t
+    unbind n b = fromHOAS (b (VarH n 0))
 
 -- | Pretty-print a `HOAS`
 printHOAS :: HOAS -> Text
-printHOAS = prettyTerm . (\x -> fromHOAS x 0)
+printHOAS = prettyTerm . (\x -> fromHOAS x)
 
 instance Show HOAS where
   show t = T.unpack $ printHOAS t
@@ -89,7 +89,7 @@ norm t = case whnf t of
 evalFile :: FilePath -> IO HOAS
 evalFile file = do
   term <- pFile file
-  return $ norm $ toHOAS term [] 0
+  return $ norm $ toHOAS term []
 
 -- | Read, eval and print a `HOAS` from a file
 evalPrintFile :: FilePath -> IO ()
