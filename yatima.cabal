@@ -6,7 +6,7 @@ cabal-version: 1.12
 
 name:           yatima
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+description:    Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 homepage:       moonad/yatima
 author:         Gabriel Barreto, John C. Burnham, Victor Maia
 maintainer:     contact@sunshinecybernetics.com
@@ -21,6 +21,7 @@ extra-source-files:
 library
   exposed-modules:
       Language.Yatima.Term
+      Language.Yatima.Uses
       Language.Yatima.Print
       Language.Yatima.Parse
       Language.Yatima.HOAS
@@ -28,7 +29,7 @@ library
       Paths_yatima
   hs-source-dirs:
       src
-  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TupleSections
   build-depends:
       base >=4.7 && <5
     , containers

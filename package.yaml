@@ -10,12 +10,14 @@ extra-source-files:
 - README.md
 - LICENSE
 
-description:         Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+description:
+  Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 
 library:
   source-dirs: src
   exposed-modules:
     - Language.Yatima.Term
+    - Language.Yatima.Uses
     - Language.Yatima.Print
     - Language.Yatima.Parse
     - Language.Yatima.HOAS
@@ -32,4 +34,5 @@ library:
     - GADTSyntax
     - StandaloneDeriving
     - MultiWayIf
+    - TupleSections
 

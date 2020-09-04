@@ -1,1 +1,19 @@
-λ x y z => λ f g => f (g x y) z
+let type : Type
+  = Type;
+
+let foo  : Type
+  = ∀ (0 A B C: Type) (x: A) (y: B) (z: C) -> C;
+
+let bar (0 A B C: Type) (x: A) (y: B) (z: C) : C
+  = z;
+
+let idA : ∀ (0 A: Type) (x: A) -> A
+  = λ (0 A: Type) (x: A) => x;
+
+let redex : Type = (idA Type type);
+
+let 0 erasedLet : Type = Type;
+let & affineLet : Type = Type;
+let 1 linearLet : Type = Type;
+
+Type
