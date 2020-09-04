@@ -24,7 +24,7 @@ prettyTerm t = go t
 
     go :: Term -> Text
     go t = case t of
-      Var n i -> n
+      Var n   -> n
       Lam n b -> T.concat ["λ ", lams n b]
       App f a -> apps f a
 

@@ -222,21 +222,33 @@ data DerefErr
   = NoDeserial DeserialiseFailure
   | NotInIndex Name
   | NotInCache CID
+  | FreeVariable Name [Name]
   deriving (Eq,Show)
 
 deriving instance Ord DeserialiseFailure
 deriving instance Ord DerefErr
 
--- | Anonymize a term
-anonymize :: Term -> Defs -> Except DerefErr Anon
-anonymize t ds = go t
+-- | Find a name in the binding context and return its index
+find :: Name -> [Name] -> Maybe Int
+find n cs = go n cs 0
   where
-    go :: Term -> Except DerefErr Anon
-    go t = case t of
-      Var n idx   -> return $ VarA idx
+    go n (c:cs) i
+      | n == c    = Just i
+      | otherwise = go n cs (i+1)
+    go _ [] _     = Nothing
+
+-- | Anonymize a term
+anonymize :: Name -> Term -> Defs -> Except DerefErr Anon
+anonymize n t ds = go t [n]
+  where
+    go :: Term -> [Name] -> Except DerefErr Anon
+    go t ctx = case t of
+      Var n       -> case find n ctx of
+        Just i -> return $ VarA i
+        _      -> throwError $ FreeVariable n ctx
       Ref n       -> RefA <$> anonymizeRef n ds
-      Lam n b     -> LamA <$> go b
-      App f a     -> AppA <$> go f <*> go a
+      Lam n b     -> LamA <$> go b (n:ctx)
+      App f a     -> AppA <$> go f ctx <*> go a ctx
 
 anonymizeRef :: Name -> Defs -> Except DerefErr CID
 anonymizeRef n ds = do
@@ -252,8 +264,8 @@ cacheLookup :: CID -> Defs -> Except DerefErr BSL.ByteString
 cacheLookup c d = maybe (throwError $ NotInCache c) pure ((_cache d) M.!? c)
 
 separateMeta :: Name -> Term -> Defs -> Except DerefErr (Anon, Meta)
-separateMeta n t ds = do 
-  case runState (runExceptT (go t)) (Meta (IM.singleton 0 n) IM.empty, 1) of
+separateMeta n t ds = do
+  case runState (runExceptT (go t [n])) (Meta (IM.singleton 0 n) IM.empty, 1) of
     (Left  err,_)   -> throwError err
     (Right a,(m,_)) -> return (a,m)
 
@@ -267,14 +279,16 @@ separateMeta n t ds = do
     bump :: ExceptT DerefErr (State (Meta,Int)) ()
     bump = modify (\(m,i) -> (m, i+1))
 
-    go :: Term -> ExceptT DerefErr (State (Meta,Int)) Anon
-    go t = case t of
-      Var n idx -> return $ VarA idx
+    go :: Term -> [Name] -> ExceptT DerefErr (State (Meta,Int)) Anon
+    go t ctx = case t of
+      Var n       -> case find n ctx of
+        Just i -> return $ VarA i
+        _      -> throwError $ FreeVariable n ctx
       Ref n     -> do
         c <- liftEither . runExcept $ anonymizeRef n ds
         bind n >> cids c >> return (RefA c)
-      Lam n b -> bind n >> bump >> LamA <$> go b
-      App f a -> bump >> AppA <$> go f <*> go a
+      Lam n b -> bind n >> bump >> LamA <$> go b (n:ctx)
+      App f a -> bump >> AppA <$> go f ctx <*> go a ctx
 
 -- | Find a name in the binding context and return its index
 lookupName :: Int -> [Name] -> Maybe Name
@@ -301,7 +315,7 @@ mergeMeta anon meta = do
     go t ctx = case t of
       VarA idx -> case lookupName idx ctx of
         Nothing -> get >>= (\i -> throwError $ FreeVariableAt i ctx idx)
-        Just n  -> return $ Var n idx
+        Just n  -> return $ Var n
       RefA cid -> do
         i <- get
         n <- maybe (throwError $ MissingNameAt i) pure (_nams meta IM.!? i)
