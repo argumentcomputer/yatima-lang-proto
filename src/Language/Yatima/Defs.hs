@@ -10,8 +10,12 @@ module Language.Yatima.Defs
   , DerefErr(..)
   , anonymize
   , separateMeta
-  , MergeMetaErr(..)
   , mergeMeta
+  , find
+  , anonymizeRef
+  , deref
+  , indexLookup
+  , cacheLookup
   ) where
 
 import           Data.IntMap                (IntMap)
@@ -222,7 +226,10 @@ data DerefErr
   = NoDeserial DeserialiseFailure
   | NotInIndex Name
   | NotInCache CID
+  | CIDMismatch Name CID CID
   | FreeVariable Name [Name]
+  | MergeFreeVariableAt Int [Name] Int
+  | MergeMissingNameAt Int
   deriving (Eq,Show)
 
 deriving instance Ord DeserialiseFailure
@@ -263,6 +270,27 @@ indexLookup n d = maybe (throwError $ NotInIndex n) pure ((_index d) M.!? n)
 cacheLookup :: CID -> Defs -> Except DerefErr BSL.ByteString
 cacheLookup c d = maybe (throwError $ NotInCache c) pure ((_cache d) M.!? c)
 
+deref :: Name -> CID -> Defs -> Except DerefErr Term
+deref n cid ds = do
+  mdCID   <- indexLookup n ds
+  when (cid /= mdCID) (throwError $ CIDMismatch n cid mdCID)
+  mdBytes   <- cacheLookup mdCID ds
+  metaDef   <- either (throwError . NoDeserial) return (deserialiseOrFail mdBytes)
+  rBytes    <- cacheLookup (_anonDef metaDef) ds
+  anonDef   <- either (throwError . NoDeserial) return (deserialiseOrFail rBytes)
+  termBytes <- cacheLookup (_termAnon anonDef) ds
+  anon      <- either (throwError . NoDeserial) return (deserialiseOrFail termBytes)
+  mergeMeta anon (_termMeta metaDef)
+
+
+--derefCID :: CID -> Defs -> Except DerefErr Def
+--derefCID cid ds = do
+--  def <- cacheLookup cid 
+--  (Def c a m ta tm) <- deserialise <$> cacheLookup cid ds :: Maybe Def
+--  a'  <- deserialise <$> cacheLookup a ds  :: Maybe Anon
+--  ta' <- deserialise <$> cacheLookup ta ds :: Maybe Anon
+--  return $ DefDeref c a' m ta' tm
+
 separateMeta :: Name -> Term -> Defs -> Except DerefErr (Anon, Meta)
 separateMeta n t ds = do
   case runState (runExceptT (go t [n])) (Meta (IM.singleton 0 n) IM.empty, 1) of
@@ -298,31 +326,27 @@ lookupName i (x:xs)
   | i == 0    = Just x
   | otherwise = lookupName (i - 1) xs
 
-data MergeMetaErr
-  = MissingNameAt Int
-  | FreeVariableAt Int [Name] Int
-
-mergeMeta :: Anon -> Meta -> Except MergeMetaErr Term
+mergeMeta :: Anon -> Meta -> Except DerefErr Term
 mergeMeta anon meta = do
-  defName <- maybe (throwError $ MissingNameAt 0) pure (_nams meta IM.!? 0)
-  liftEither (evalState (runExceptT (go anon [defName])) 0)
+  defName <- maybe (throwError $ MergeMissingNameAt 0) pure (_nams meta IM.!? 0)
+  liftEither (evalState (runExceptT (go anon [defName])) 1)
 
   where
-    bump :: ExceptT MergeMetaErr (State Int) ()
+    bump :: ExceptT DerefErr (State Int) ()
     bump = modify (+1)
 
-    go :: Anon -> [Name] -> ExceptT MergeMetaErr (State Int) Term
+    go :: Anon -> [Name] -> ExceptT DerefErr (State Int) Term
     go t ctx = case t of
       VarA idx -> case lookupName idx ctx of
-        Nothing -> get >>= (\i -> throwError $ FreeVariableAt i ctx idx)
+        Nothing -> get >>= (\i -> throwError $ MergeFreeVariableAt i ctx idx)
         Just n  -> return $ Var n
       RefA cid -> do
         i <- get
-        n <- maybe (throwError $ MissingNameAt i) pure (_nams meta IM.!? i)
+        n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
         return $ Ref n
       LamA b  -> do
         i <- get
-        n <- maybe (throwError $ MissingNameAt i) pure (_nams meta IM.!? i)
+        n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
         bump
         Lam n <$> go b (n:ctx)
       AppA f a -> bump >> App <$> go f ctx <*> go a ctx

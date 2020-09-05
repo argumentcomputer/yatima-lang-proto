@@ -7,7 +7,7 @@ packages:
 # These entries can reference officially published versions as well as
 # forks / in-progress versions pinned to a git hash. For example:
 extra-deps:
-#  - unsafeperformst-0.9.2@sha256:de35debea25dd6a500532a57efe82c625e94dd93b8da323a2b93ddb288c7673b,734
+  - unsafeperformst-0.9.2@sha256:de35debea25dd6a500532a57efe82c625e94dd93b8da323a2b93ddb288c7673b,734
 #  - blake3-0.2@sha256:d1146b9a51ccfbb0532780778b6d016a614e3d44c05d8c1923dde9a8be869045,2448
   - ipld-cid-0.1.0.0@sha256:cd7869d111925d250d4cdd5bb86e10e31fb8fa6a3061e454e34c87724e8e7a9a,1731
   - binary-varint-0.1.0.0@sha256:4637979e3e029d5fcfc41133e9fd3b905d5d0b04d7135503911305c13093c743,1040

@@ -6,10 +6,10 @@ cabal-version: 1.12
 
 name:           yatima
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+description:    Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 homepage:       moonad/yatima
 author:         Gabriel Barreto, John C. Burnham, Victor Maia
-maintainer:     contact@sunshinecybernetics.com
+maintainer:     john@sunshinecybernetics.com
 copyright:      2020 Sunshine Cybernetics
 license:        GPL-3
 license-file:   LICENSE
@@ -44,4 +44,5 @@ library
     , multihash-cryptonite
     , serialise
     , text
+    , unsafeperformst
   default-language: Haskell2010

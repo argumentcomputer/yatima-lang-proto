@@ -35,6 +35,7 @@ library:
     - cryptonite
     - multihash-cryptonite
     - ipld-cid
+    - unsafeperformst
 
   default-extensions:
     - OverloadedStrings
