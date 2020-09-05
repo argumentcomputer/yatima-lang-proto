@@ -149,7 +149,6 @@ whnf t ds = case t of
   where
     go x = whnf x ds
 
-
 hash :: HOAS -> CID
 hash term = makeCID $ anonymizeHOAS term
 

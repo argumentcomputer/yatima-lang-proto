@@ -1,1 +1,2 @@
-def red = (λ x => x) (λ x => x)
+def redx = (λ x => x) (λ x => x)
+def redy = (λ y => y) (λ y => y)

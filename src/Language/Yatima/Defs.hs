@@ -57,7 +57,7 @@ data MetaDef = MetaDef
   { _anonDef   :: CID
   , _termMeta  :: Meta
   , _typeMeta  :: Meta
-  }
+  } deriving Show
 
 -- | An anonymized `Term`
 data Anon where

@@ -21,6 +21,7 @@ library:
     - Language.Yatima.Print
     - Language.Yatima.Parse
     - Language.Yatima.HOAS
+    - Language.Yatima.IPFS
 
   dependencies:
     - base >= 4.7 && < 5
@@ -36,6 +37,13 @@ library:
     - multihash-cryptonite
     - ipld-cid
     - unsafeperformst
+    - aeson
+    - servant
+    - servant-client
+    - http-client
+    - cborg
+    - ipfs-api
+
 
   default-extensions:
     - OverloadedStrings
