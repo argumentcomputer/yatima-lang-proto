@@ -18,6 +18,7 @@ library:
     - Language.Yatima.Term
     - Language.Yatima.Defs
     - Language.Yatima.CID
+    - Language.Yatima.Uses
     - Language.Yatima.Print
     - Language.Yatima.Parse
     - Language.Yatima.HOAS
@@ -50,4 +51,5 @@ library:
     - GADTSyntax
     - StandaloneDeriving
     - MultiWayIf
+    - TupleSections
 

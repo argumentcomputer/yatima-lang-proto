@@ -9,12 +9,12 @@ Stability   : experimental
 -}
 module Language.Yatima.HOAS
   ( HOAS(..)
-  --, findCtx
-  --, toHOAS
-  --, fromHOAS
-  --, printHOAS
-  --, whnf
-  --, norm
+--  , findCtx
+--  , toHOAS
+--  , fromHOAS
+--  , printHOAS
+--  , whnf
+--  , norm
 --  , evalFile
 --  , evalPrintFile
   ) where
@@ -40,27 +40,41 @@ import           Language.Yatima.Defs
 data LOAS where
   VarL :: Name -> Int  -> LOAS
   RefL :: Name -> CID  -> LOAS
-  LamL :: Name -> LOAS -> LOAS
+  LamL :: Name -> Maybe (Uses, LOAS) -> LOAS -> LOAS
   AppL :: LOAS -> LOAS -> LOAS
+  LetL :: Name -> Uses -> LOAS -> LOAS -> LOAS -> LOAS
+  AllL :: Name -> Name -> Uses -> LOAS -> LOAS -> LOAS
+  TypL :: LOAS
 
 toLOAS :: Term -> [Name] -> Defs -> Except DerefErr LOAS
-toLOAS t ctx ds = go t ctx
+toLOAS t ctx ds = case t of
+  Var n       -> case find n ctx of
+    Just i -> return $ VarL n i
+    _      -> throwError $ FreeVariable n ctx
+  Ref n       -> RefL n <$> anonymizeRef n ds
+  Lam n ut b  -> case ut of
+    Just (u,t) -> go t >>= \t -> LamL n (Just (u,t)) <$> bind n b
+    Nothing    -> LamL n Nothing <$> bind n b
+  App f a       -> AppL <$> go f <*> go a
+  Let n u t x b -> LetL n u <$> go t <*> bind n x <*> bind n b
+  Typ           -> return TypL
+  All s n u t b -> AllL s n u <$> go t <*> bind2 s n b
   where
-    go t ctx = case t of
-      Var n       -> case find n ctx of
-        Just i -> return $ VarL n i
-        _      -> throwError $ FreeVariable n ctx
-      Ref n       -> RefL n <$> anonymizeRef n ds
-      Lam n b     -> LamL n <$> go b (n:ctx)
-      App f a     -> AppL <$> go f ctx <*> go a ctx
+    go t        = toLOAS t ctx ds
+    bind    n t = toLOAS t (n:ctx) ds
+    bind2 s n t = toLOAS t (n:s:ctx) ds
 
 -- | Convert a GHC higher-order representation to a lower-order one
 fromLOAS :: LOAS -> Term
 fromLOAS t = case t of
-  VarL n _   -> Var n
-  RefL n _   -> Ref n
-  LamL n b   -> Lam n (go b)
-  AppL f a   -> App (go f) (go a)
+  VarL n _               -> Var n
+  RefL n _               -> Ref n
+  LamL n (Just (u,t)) b  -> Lam n (Just (u,go t)) (go b)
+  LamL n Nothing      b  -> Lam n Nothing (go b)
+  AppL f a               -> App (go f) (go a)
+  LetL n u t x b         -> Let n u (go t) (go x) (go b)
+  AllL s n u t b         -> All s n u (go t) (go b)
+  TypL                   -> Typ
   where
     go = fromLOAS
 
@@ -68,8 +82,11 @@ fromLOAS t = case t of
 data HOAS where
   VarH :: Name -> Int -> HOAS
   RefH :: Name -> CID -> HOAS
-  LamH :: Name -> (HOAS -> HOAS) -> HOAS
+  LamH :: Name -> Maybe (Uses,HOAS) -> (HOAS -> HOAS) -> HOAS
   AppH :: HOAS -> HOAS -> HOAS
+  LetH :: Name -> Uses -> HOAS -> HOAS -> (HOAS -> HOAS) -> HOAS
+  AllH :: Name -> Name -> Uses -> HOAS -> (HOAS -> HOAS -> HOAS) -> HOAS
+  TypH :: HOAS
   FixH :: Name -> (HOAS -> HOAS) -> HOAS
 
 -- | Find a term in a context
@@ -82,46 +99,66 @@ findCtx i cs = go cs 0
     go [] _      = Nothing
 
 -- | Convert a lower-order `Term` to a GHC higher-order one
-toHOAS :: LOAS -> [HOAS] -> HOAS
-toHOAS t ctx = case t of
+toHOAS :: LOAS -> [HOAS] -> Int -> HOAS
+toHOAS t ctx dep = case t of
   VarL n i       -> case findCtx i ctx of
     Just trm -> trm
-    Nothing  -> VarH n 0
-  LamL n b       -> LamH n (\x -> bind x b)
+    Nothing  -> VarH n (dep - i - 1)
+  RefL n c       -> RefH n c
+  LamL n ut b    -> case ut of
+    Just (u,t) -> LamH n (Just (u, go t)) (\x -> bind x b)
+    _          -> LamH n Nothing (\x -> bind x b)
   AppL f a       -> AppH (go f) (go a)
+  LetL n u t d b -> LetH n u (go t) (FixH n (\x -> bind x d)) (\x -> bind x b)
+  AllL s n u t b -> AllH s n u (go t) (\s x -> bind2 s x b)
+  TypL           -> TypH
   where
-    bind n t = toHOAS t (n:ctx)
-    go t     = toHOAS t ctx
+    go t        = toHOAS t ctx       dep
+    bind n t    = toHOAS t (n:ctx)   (dep + 1)
+    bind2 s n t = toHOAS t (n:s:ctx) (dep + 2)
 
 -- | Convert a GHC higher-order representation to a lower-order one
-fromHOAS :: HOAS -> LOAS
-fromHOAS t = case t of
-  VarH n i   -> VarL n i
-  LamH n b   -> LamL n (unbind n b)
-  AppH f a   -> AppL (go f) (go a)
-  FixH n b   -> go (b (FixH n b))
+fromHOAS :: HOAS -> Int -> LOAS
+fromHOAS t dep = case t of
+  VarH n i       -> VarL n i
+  LamH n ut b    -> case ut of
+    Just (u,t) -> LamL n (Just (u,go t)) (unbind n b)
+    _          -> LamL n Nothing (unbind n b)
+  AppH f a       -> AppL (go f) (go a)
+  RefH n c       -> RefL n c
+  LetH n u t x b -> LetL n u (go t) (go x) (unbind n b)
+  AllH s n u t b -> AllL s n u (go t) (unbind2 s n b)
+  TypH           -> TypL
+  FixH n b       -> unbind n b
   where
-    go t       = fromHOAS t
-    unbind n b = fromHOAS (b (VarH n 0))
+    go t          = fromHOAS t dep
+    unbind n b    = fromHOAS (b (VarH n dep)) (dep + 1)
+    unbind2 s n b = fromHOAS (b (VarH s dep) (VarH n (dep+1))) (dep + 2)
 
 termFromHOAS :: HOAS -> Term
-termFromHOAS = fromLOAS . fromHOAS
+termFromHOAS t = fromLOAS $ fromHOAS t 0
 
-anonymizeHOAS:: HOAS -> Anon
-anonymizeHOAS h = case h of
-  VarH _ i   -> VarA i
-  RefH _ c   -> RefA c
-  LamH n b   -> LamA (unbind n b)
-  AppH f a   -> AppA (go f) (go a)
-  FixH n b   -> go (b (FixH n b))
+anonymizeHOAS:: HOAS -> Int -> Anon
+anonymizeHOAS h dep = case h of
+  VarH n i       -> VarA i
+  LamH n ut b    -> case ut of
+    Just (u,t) -> LamA (Just (u,go t)) (unbind n b)
+    _          -> LamA Nothing (unbind n b)
+  AppH f a       -> AppA (go f) (go a)
+  RefH n c       -> RefA c
+  LetH n u t x b -> LetA u (go t) (go x) (unbind n b)
+  AllH s n u t b -> AllA u (go t) (unbind2 s n b)
+  TypH           -> TypA
+  FixH n b       -> unbind n b
   where
-    go t       = anonymizeHOAS t
-    unbind n b = anonymizeHOAS (b (VarH n 0))
+    go t          = anonymizeHOAS t dep
+    unbind n b    = anonymizeHOAS (b (VarH n dep)) (dep + 1)
+    unbind2 s n b = anonymizeHOAS (b (VarH s dep) (VarH n (dep+1))) (dep + 2)
 
 defToHOAS :: Name -> Term -> Defs -> Except DerefErr HOAS
 defToHOAS name term ds = do
   loas <- toLOAS term [name] ds
-  return $ FixH name (\s -> toHOAS loas [s])
+  return $ FixH name (\s -> toHOAS loas [s] 1)
 
 -- | Pretty-print a `HOAS`
 printHOAS :: HOAS -> Text
@@ -142,15 +179,16 @@ whnf t ds = case t of
   RefH n c       -> case runExcept (derefHOAS n c ds) of
     Right t  -> go t
     Left e   -> error $ "BAD: Undefined Reference during reduction: " ++ show e
-  LamH n b    -> LamH n b
   AppH f a  -> case go f of
-    LamH _ b -> go (b a)
-    x        -> AppH f a
+    LamH _ _ b -> go (b a)
+    x          -> AppH f a
+  LetH n u t d b -> go (b d)
+  x              -> x
   where
     go x = whnf x ds
 
-hash :: HOAS -> CID
-hash term = makeCID $ anonymizeHOAS term
+hash :: HOAS -> Int -> CID
+hash term dep = makeCID $ anonymizeHOAS term dep
 
 -- | Normalize a HOAS term
 norm :: HOAS -> Defs -> HOAS
@@ -164,17 +202,25 @@ norm term defs = runST (top $ term)
     go :: HOAS -> (STRef s (Set CID)) -> ST s HOAS
     go term seen = do
       let step = whnf term defs
-      let termHash = hash term
-      let stepHash = hash step
+      let termHash = hash term 0
+      let stepHash = hash step 0
       seenSet <- readSTRef seen
       if | termHash `Set.member` seenSet -> return step
          | stepHash `Set.member` seenSet -> return step
          | otherwise -> do
              modifySTRef' seen ((Set.insert termHash) . (Set.insert stepHash))
-             case step of
-               LamH n b -> return $ LamH n (\x -> unsafePerformST (go (b x) seen))
-               AppH f a -> AppH <$> (go f seen) <*> (go a seen)
-               _        -> return step
+             next step seen
+
+    next :: HOAS -> (STRef s (Set CID)) -> ST s HOAS
+    next step seen = case step of
+      LamH n (Just (u,t)) b   -> do
+        t' <- Just . (u,) <$> go t seen
+        return $ LamH n t' (\x -> unsafePerformST $ go (b x) seen)
+      AllH s n u t b   -> do
+        t' <- go t seen
+        return $ AllH s n u t' (\s x -> unsafePerformST $ go (b s x) seen)
+      AppH f a -> AppH <$> (go f seen) <*> (go a seen)
+      _        -> return step
 
 catchDerefErr :: Except DerefErr a -> IO a
 catchDerefErr x = do
@@ -197,8 +243,8 @@ normDef name file = do
   def   <- catchDerefErr (derefHOAS name cid defs)
   return $ whnf def defs
 
--- | Read, eval and print a `HOAS` from a file
---evalPrintFile :: FilePath -> IO ()
---evalPrintFile file = do
---  term <- evalFile file
---  putStrLn $ T.unpack $ printHOAS term
+---- | Read, eval and print a `HOAS` from a file
+----evalPrintFile :: FilePath -> IO ()
+----evalPrintFile file = do
+----  term <- evalFile file
+----  putStrLn $ T.unpack $ printHOAS term

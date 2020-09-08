@@ -23,6 +23,7 @@ library
       Language.Yatima.Term
       Language.Yatima.Defs
       Language.Yatima.CID
+      Language.Yatima.Uses
       Language.Yatima.Print
       Language.Yatima.Parse
       Language.Yatima.HOAS
@@ -31,7 +32,7 @@ library
       Paths_yatima
   hs-source-dirs:
       src
-  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TupleSections
   build-depends:
       aeson
     , base >=4.7 && <5

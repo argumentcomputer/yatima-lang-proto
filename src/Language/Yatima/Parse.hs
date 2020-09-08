@@ -58,7 +58,7 @@ we have `parserTest` to prettily print the errror:
 Undefined reference: y
 @
 
--}
+|-}
 module Language.Yatima.Parse 
   ( ParseErr(..)
   , Parser
@@ -71,7 +71,7 @@ module Language.Yatima.Parse
   , pTerm
   , pExpr
   , pFile
---  , prettyFile
+  , prettyFile
   ) where
 
 import           Codec.Serialise
@@ -177,29 +177,30 @@ pName = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
   n  <- alphaNumChar <|> oneOf nameSymbol
   ns <- many (alphaNumChar <|> oneOf nameSymbol)
   let nam = T.pack (n : ns)
-  if | isDigit n                -> customFailure $ LeadingDigit nam
-     | n == '\''                -> customFailure $ LeadingApostrophe nam
-     | nam `elem` reservedWords -> customFailure $ ReservedKeyword nam
+  if | isDigit n                 -> customFailure $ LeadingDigit nam
+     | n == '\''                 -> customFailure $ LeadingApostrophe nam
+     | nam `Set.member` keywords -> customFailure $ ReservedKeyword nam
      | otherwise -> return nam
   where
     nameSymbol = "_'" :: [Char]
 
-    reservedWords :: [Text]
-    reservedWords = [ "let"
-                    , "if"
-                    , "for"
-                    , "var"
-                    , "then"
-                    , "else"
-                    , "where"
-                    , "case"
-                    , "forall"
-                    , "all"
-                    , "lam"
-                    , "lambda"
-                    , "def"
-                    , "define"
-                    ]
+    keywords :: Set Text
+    keywords = Set.fromList $
+      [ "let"
+      , "if"
+      , "for"
+      , "var"
+      , "then"
+      , "else"
+      , "where"
+      , "case"
+      , "forall"
+      , "all"
+      , "lam"
+      , "lambda"
+      , "def"
+      , "define"
+      ]
 
 -- | Consume whitespace, while skipping comments. Yatima line comments begin
 -- with @//@, and block comments are bracketed by @*/@ and @*/@ symbols.
@@ -216,42 +217,110 @@ bind :: [Name] -> Parser a -> Parser a
 bind bs p =
   local (\e -> e { _context = Set.union (_context e) (Set.fromList bs) }) p
 
-foldLam:: Term -> [Name] -> Term
-foldLam body bs = foldr (\n x -> Lam n x) body bs
+-- | Parse a quantitative usage semirig annotation. The absence of annotation is
+-- considered to be the `Many` multiplicity.
+pUses ::  Parser Uses
+pUses = pUsesAnnotation <|> return Many
+
+pUsesAnnotation :: Parser Uses
+pUsesAnnotation = choice
+  [ symbol "0"       >> return None
+  , symbol "&"       >> return Affi
+  , symbol "1"       >> return Once
+  ]
+
+-- | Parse the type of types: `Type`
+pTyp :: Parser Term
+pTyp = do
+  string "Type"
+  return $ Typ
+
+pBinder :: Bool -> Bool -> Parser [(Name, Maybe (Uses, Term))]
+pBinder annOptional namOptional = choice
+  [ ann
+  , if namOptional then unNam else empty
+  , if annOptional then unAnn else empty
+  ]
+  where
+    unNam = (\x -> [("", Just (Many, x))]) <$> pTerm
+    unAnn = (\x -> [(x , Nothing       )]) <$> pName
+    ann = do
+      symbol "("
+      uses  <- pUses
+      names <- sepEndBy1 pName space
+      typ_  <- symbol ":" >> pExpr False
+      string ")"
+      return $ (,Just (uses,typ_)) <$> names
+
+foldLam:: Term -> [(Name, Maybe (Uses, Term))] -> Term
+foldLam body bs = foldr (\(n,ut) x -> Lam n ut x) body bs
 
 -- | Parse a lambda: @λ x y z => body@
 pLam :: Parser Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  bs   <- pBinder1 <* space
+  bs   <- binders <* space
   symbol "=>"
-  body <- bind bs (pExpr False)
+  body <- bind (fst <$> bs) (pExpr False)
   return $ foldLam body bs
+  where
+    binder  = pBinder True False
+    binders = do
+     b  <- binder <* space
+     bs <- bind (fst <$> b) $ ((try binders) <|> return [])
+     return $ b ++ bs
 
----- | Parse an untyped binding sequence @x y z@ within a lambda
-pBinder1 :: Parser [Name]
-pBinder1 = label "a single binder in lambda" $ do
-  --symbol "("
-  names <- sepEndBy1 pName space
-  --string ")"
-  return names
+foldAll :: Term -> [(Name, Name, Maybe (Uses, Term))] -> Term
+foldAll body bs = foldr (\(s,n,Just (u,t)) x -> All s n u t x) body bs
 
-pBinder :: Parser [Name]
-pBinder = label "a single binder in lambda" $ do
-  --symbol "("
-  names <- sepEndBy pName space
-  --string ")"
-  return names
+bindAll :: [(Name,Name,Maybe (Uses,Term))] -> Parser a -> Parser a
+bindAll bs = bind (foldr (\(s,n,_) ns -> s:n:ns) [] bs)
 
--- TODO: Use this when adding types to lambdas (if desired in future)
---pBinders :: Parser [Name]
---pBinders = label "a binding sequence in a lambda" $ do
---  (try $ next) <|> pBinder
---  where
---   next = do
---     b  <- pBinder <* space
---     bs <- bind b $ pBinders
---     return $ b ++ bs
+pAll :: Parser Term
+pAll = do
+  self <- (try $ symbol "@" >> pName <* space) <|> return ""
+  symbol "∀" <|> symbol "all" <|> symbol "forall"
+  bs   <- binders self <* space
+  symbol "->"
+  body <- bindAll bs (pExpr False)
+  return $ foldAll body bs
+  where
+    binder  = pBinder False True
+
+    binders self = do
+     ((n,ut):ns)  <- binder <* space
+     let b  = ((self,n,ut) : ((\(n,ut) -> ("",n,ut)) <$> ns))
+     bs <- bindAll b $ ((try $ binders "") <|> return [])
+     return $ b ++ bs
+
+pDecl :: Bool -> Parser (Name, Term, Term)
+pDecl shadow = do
+  nam     <- pName <* space
+  index   <- asks (_index . _defs)
+  when (not shadow && M.member nam index)
+    (customFailure $ TopLevelRedefinition nam)
+  bs      <- (try binders <|> return []) <* space
+  let ns  = nam:(fst <$> bs)
+  typBody <- symbol ":" >> bind ns (pExpr False)
+  let typ = foldAll typBody ((\(n,ut) -> ("",n,ut)) <$> bs)
+  expBody <- symbol "=" >> bind ns (pExpr False)
+  let exp = foldLam expBody bs
+  return (nam, exp, typ)
+  where
+    binder  = pBinder False False
+    binders = do
+     b  <- binder <* space
+     bs <- bind (fst <$> b) $ ((try binders) <|> return [])
+     return $ b ++ bs
+
+-- | Parse a local, possibly recursive, definition
+pLet :: Parser Term
+pLet = do
+  symbol "let"
+  use  <- pUses
+  (nam,typ,exp) <- pDecl True <* symbol ";"
+  bdy <- bind [nam] $ pExpr False
+  return $ Let nam use typ exp bdy
 
 -- | Parse a local variable or a locally indexed alias of a global reference
 pVar :: Parser Term
@@ -267,8 +336,12 @@ pVar = label "a local or global reference: \"x\", \"add\"" $ do
 -- | Parse a term
 pTerm :: Parser Term
 pTerm = do
+  from <- getOffset
   choice
-    [ pLam
+    [ pTyp
+    , pLam
+    , pAll
+    , pLet
     , pExpr True
     , pVar
     ]
@@ -279,31 +352,18 @@ pExpr :: Bool -> Parser Term
 pExpr parens = do
   when parens (void $ symbol "(")
   fun  <- pTerm <* space
+  -- need to add `observing` to get the error from the `try $ pTerm`, and/or
+  -- need to manually unwrap the sepEndBy
   args <- sepEndBy (try $ pTerm) space
   when parens (void $ string ")")
   return $ foldl (\t a -> App t a) fun args
-
-pDecl :: Bool -> Parser (Name, Term)
-pDecl shadow = do
-  nam     <- pName <* space
-  index   <- asks (_index . _defs)
-  when (not shadow && M.member nam index)
-    (customFailure $ TopLevelRedefinition nam)
-  bs      <- pBinder <* space
-  --typBody <- symbol ":" >> bind (fst <$> bs) (pExpr False)
-  --typUpto <- getOffset
-  --let typ = foldAll (Loc from typUpto) typBody bs
-  symbol "="
-  expBody <- bind (nam:bs) $ pExpr False
-  let exp = foldLam expBody bs
-  return (nam, exp)
 
 -- | Parse a definition
 pDef :: Parser Def
 pDef = label "a definition" $ do
   symbol "def"
-  (nam,exp) <- pDecl False
-  return $ Def nam exp exp -- placeholder for type-level
+  (nam,exp,typ) <- pDecl False
+  return $ Def nam exp typ
 
 sepMeta :: Name -> Term -> Parser (Anon,Meta)
 sepMeta name term = do
@@ -321,7 +381,7 @@ pDefs = (try $ space >> next) <|> end
     ds@(Defs index cache) <- asks _defs
     Def name term typ_ <- pDef
     (termAnon, termMeta) <- sepMeta name term
-    (typeAnon, typeMeta) <- sepMeta name term
+    (typeAnon, typeMeta) <- sepMeta name typ_
     let termAnonCID = makeCID termAnon :: CID
     let typeAnonCID = makeCID typeAnon :: CID
     let anonDef     = AnonDef termAnonCID typeAnonCID
@@ -344,8 +404,10 @@ pFile file = do
     Left  e -> putStr (errorBundlePretty e) >> exitFailure
     Right m -> return m
 
----- | Parse and pretty-print a file
---prettyFile :: FilePath -> IO ()
---prettyFile file = do
---  term <- pFile file
---  putStrLn $ T.unpack $ prettyTerm term
+-- | Parse and pretty-print a file
+prettyFile :: FilePath -> IO ()
+prettyFile file = do
+  defs <- pFile file
+  case prettyDefs defs of
+    Left e  -> putStrLn $ show e
+    Right t -> putStrLn $ T.unpack t

@@ -1,2 +1,2 @@
-def redx = (λ x => x) (λ x => x)
-def redy = (λ y => y) (λ y => y)
+def redx : Type = (λ x => x) (λ x => x)
+def redy : Type = (λ y => y) (λ y => y)
