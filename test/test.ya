@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-def foo = λ x y z => λ f g => f (g x y) z
-
-def id x = x
-
-def baz = id foo
-
--- def test = test2
-
-def test2 = id
-=======
 let type : Type
   = Type;
 
@@ -28,4 +17,3 @@ let & affineLet : Type = Type;
 let 1 linearLet : Type = Type;
 
 Type
->>>>>>> db1e389a71263840d1bb59ceb254413ac80d2284
