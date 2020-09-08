@@ -53,3 +53,23 @@ library
     , text
     , unsafeperformst
   default-language: Haskell2010
+
+executable yide
+  main-is: Main.hs
+  other-modules:
+      HaskelineT
+      Yide
+      Paths_yatima
+  hs-source-dirs:
+      yide
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , haskeline
+    , megaparsec
+    , mtl
+    , process
+    , text
+    , yatima
+  default-language: Haskell2010

@@ -10,11 +10,15 @@ Stability   : experimental
 module Language.Yatima.HOAS
   ( HOAS(..)
   --, findCtx
-  --, toHOAS
-  --, fromHOAS
-  --, printHOAS
-  --, whnf
-  --, norm
+  , toHOAS
+  , fromHOAS
+  , LOAS(..)
+  , toLOAS
+  , fromLOAS
+  , printHOAS
+  , whnf
+  , norm
+  , catchDerefErr
 --  , evalFile
 --  , evalPrintFile
   ) where
@@ -42,6 +46,8 @@ data LOAS where
   RefL :: Name -> CID  -> LOAS
   LamL :: Name -> LOAS -> LOAS
   AppL :: LOAS -> LOAS -> LOAS
+
+deriving instance Show LOAS
 
 toLOAS :: Term -> [Name] -> Defs -> Except DerefErr LOAS
 toLOAS t ctx ds = go t ctx
@@ -87,6 +93,7 @@ toHOAS t ctx = case t of
   VarL n i       -> case findCtx i ctx of
     Just trm -> trm
     Nothing  -> VarH n 0
+  RefL n c       -> RefH n c
   LamL n b       -> LamH n (\x -> bind x b)
   AppL f a       -> AppH (go f) (go a)
   where
@@ -98,6 +105,7 @@ fromHOAS :: HOAS -> LOAS
 fromHOAS t = case t of
   VarH n i   -> VarL n i
   LamH n b   -> LamL n (unbind n b)
+  RefH n h   -> RefL n h
   AppH f a   -> AppL (go f) (go a)
   FixH n b   -> go (b (FixH n b))
   where
@@ -138,14 +146,15 @@ derefHOAS name cid ds = do
 -- | Reduce a HOAS to weak-head-normal-form
 whnf :: HOAS -> Defs -> HOAS
 whnf t ds = case t of
-  FixH n b       -> go (b (FixH n b))
-  RefH n c       -> case runExcept (derefHOAS n c ds) of
-    Right t  -> go t
-    Left e   -> error $ "BAD: Undefined Reference during reduction: " ++ show e
-  LamH n b    -> LamH n b
-  AppH f a  -> case go f of
+  FixH n b     -> go (b (FixH n b))
+  RefH n c     -> case runExcept (derefHOAS n c ds) of
+    Right t    -> go t
+    Left e     -> error $ "BAD: Undefined Reference during reduction: " ++ show e
+  LamH n b     -> LamH n b
+  AppH f a     -> case go f of
     LamH _ b -> go (b a)
     x        -> AppH f a
+  x            -> x
   where
     go x = whnf x ds
 

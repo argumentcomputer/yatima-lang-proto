@@ -34,6 +34,7 @@ data Term where
   Ref :: Name -> Term
 
 deriving instance Show Term
+deriving instance Eq Term
 
 -- | A type annotated definition
 data Def = Def

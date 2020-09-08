@@ -16,6 +16,7 @@ module Language.Yatima.Defs
   , deref
   , indexLookup
   , cacheLookup
+  , insertDef
   ) where
 
 import           Data.IntMap                (IntMap)
@@ -273,9 +274,10 @@ cacheLookup c d = maybe (throwError $ NotInCache c) pure ((_cache d) M.!? c)
 deref :: Name -> CID -> Defs -> Except DerefErr Term
 deref n cid ds = do
   mdCID   <- indexLookup n ds
-  when (cid /= mdCID) (throwError $ CIDMismatch n cid mdCID)
   mdBytes   <- cacheLookup mdCID ds
   metaDef   <- either (throwError . NoDeserial) return (deserialiseOrFail mdBytes)
+  let anonCID = _anonDef metaDef
+  when (cid /= anonCID) (throwError $ CIDMismatch n cid anonCID)
   rBytes    <- cacheLookup (_anonDef metaDef) ds
   anonDef   <- either (throwError . NoDeserial) return (deserialiseOrFail rBytes)
   termBytes <- cacheLookup (_termAnon anonDef) ds
@@ -350,3 +352,21 @@ mergeMeta anon meta = do
         bump
         Lam n <$> go b (n:ctx)
       AppA f a -> bump >> App <$> go f ctx <*> go a ctx
+
+insertDef :: Def -> Defs -> Except DerefErr Defs
+insertDef (Def name term typ_) defs@(Defs index cache) = do
+  (termAnon, termMeta) <- separateMeta name term defs
+  (typeAnon, typeMeta) <- separateMeta name term defs
+  let termAnonCID = makeCID termAnon :: CID
+  let typeAnonCID = makeCID typeAnon :: CID
+  let anonDef     = AnonDef termAnonCID typeAnonCID
+  let anonDefCID  = makeCID anonDef :: CID
+  let metaDef     = MetaDef anonDefCID termMeta typeMeta
+  let metaDefCID  = makeCID metaDef :: CID
+  let index'      = M.insert name        metaDefCID           $ index
+  let cache'      = M.insert metaDefCID  (serialise metaDef)  $
+                    M.insert anonDefCID  (serialise anonDef)  $
+                    M.insert typeAnonCID (serialise typeAnon) $
+                    M.insert termAnonCID (serialise termAnon) $
+                    cache
+  return (Defs index' cache')
