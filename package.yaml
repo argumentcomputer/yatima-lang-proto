@@ -1,0 +1,35 @@
+name:           yatima
+version:        0.1.0.0
+homepage:       "moonad/yatima"
+author:         "Gabriel Barreto, John C. Burnham, Victor Maia"
+maintainer:     contact@sunshinecybernetics.com
+copyright:      2020 Sunshine Cybernetics
+
+
+extra-source-files:
+- README.md
+- LICENSE
+
+description:         Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - Language.Yatima.Term
+    - Language.Yatima.Print
+    - Language.Yatima.Parse
+    - Language.Yatima.HOAS
+
+  dependencies:
+    - base >= 4.7 && < 5
+    - containers
+    - text
+    - megaparsec
+    - mtl
+
+  default-extensions:
+    - OverloadedStrings
+    - GADTSyntax
+    - StandaloneDeriving
+    - MultiWayIf
+
