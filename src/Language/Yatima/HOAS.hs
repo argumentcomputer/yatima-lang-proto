@@ -19,22 +19,24 @@ module Language.Yatima.HOAS
 --  , evalPrintFile
   ) where
 
-import           Control.Monad.ST
-import           Control.Monad.Identity
-import           Control.Monad.ST.UnsafePerform
 import           Control.Monad.Except
+import           Control.Monad.Identity
+import           Control.Monad.ST
+import           Control.Monad.ST.UnsafePerform
 
-import           Data.Set                       (Set)
-import qualified Data.Set                       as Set
+import           Data.Sequence (Seq, ViewR ((:>), EmptyR), viewr, (|>))
+import qualified Data.Sequence as Seq
+import           Data.Set      (Set)
+import qualified Data.Set      as Set
 import           Data.STRef
 
-import           Data.Text             (Text)
-import qualified Data.Text             as T
+import           Data.Text                      (Text)
+import qualified Data.Text                      as T
 
+import           Language.Yatima.Defs
 import           Language.Yatima.Parse
 import           Language.Yatima.Print
 import           Language.Yatima.Term
-import           Language.Yatima.Defs
 
 -- | Lower-Order Abstract Syntax
 data LOAS where
@@ -172,6 +174,8 @@ derefHOAS name cid ds = do
   term <- deref name cid ds
   defToHOAS name term ds
 
+-- * Evaluation
+
 -- | Reduce a HOAS to weak-head-normal-form
 whnf :: HOAS -> Defs -> HOAS
 whnf t ds = case t of
@@ -241,10 +245,164 @@ normDef name file = do
   defs  <- pFile file
   cid   <- catchDerefErr (indexLookup name defs)
   def   <- catchDerefErr (derefHOAS name cid defs)
-  return $ whnf def defs
+  return $ norm def defs
 
 ---- | Read, eval and print a `HOAS` from a file
 ----evalPrintFile :: FilePath -> IO ()
 ----evalPrintFile file = do
 ----  term <- evalFile file
 ----  putStrLn $ T.unpack $ printHOAS term
+
+-- * Type-checking
+
+equal :: HOAS -> HOAS -> Defs -> Int -> Bool
+equal a b defs dep = runST $ top a b dep
+  where
+    top :: HOAS -> HOAS -> Int -> ST s Bool
+    top a b dep = do
+      seen <- newSTRef (Set.empty)
+      go a b dep seen
+
+    go :: HOAS -> HOAS -> Int -> STRef s (Set (CID,CID)) -> ST s Bool
+    go a b dep seen = do
+      let a1 = whnf a defs
+      let b1 = whnf b defs
+      let ah = makeCID $ anonymizeHOAS a1 0
+      let bh = makeCID $ anonymizeHOAS b1 0
+      s' <- readSTRef seen
+      if | (ah == bh)              -> return True
+         | (ah,bh) `Set.member` s' -> return True
+         | (bh,ah) `Set.member` s' -> return True
+         | otherwise -> do
+             modifySTRef' seen ((Set.insert (ah,bh)) . (Set.insert (bh,ah)))
+             next a1 b1 dep seen
+
+    next :: HOAS -> HOAS -> Int -> STRef s (Set (CID,CID)) -> ST s Bool
+    next a b dep seen = case (a,b) of
+     (AllH as an au at ab, AllH bs bn bu bt bb) -> do
+       let a1_body = ab (VarH as dep) (VarH an (dep + 1))
+       let b1_body = bb (VarH bs dep) (VarH bn (dep + 1))
+       let rig_eq  = au == bu
+       bind_eq <- go at bt dep seen
+       body_eq <- go a1_body b1_body (dep+2) seen
+       return $ rig_eq && bind_eq && body_eq
+     (LamH an (Just (au,at)) ab, LamH bn (Just (bu,bt)) bb) -> do
+       let a1_body = ab (VarH an dep)
+       let b1_body = bb (VarH bn dep)
+       let rig_eq  = au == bu
+       bind_eq <- go at bt dep seen
+       body_eq <- go a1_body b1_body (dep+1) seen
+       return $ rig_eq && bind_eq && body_eq
+     (LamH an Nothing ab, LamH bn Nothing bb) -> do
+       let a1_body = ab (VarH an dep)
+       let b1_body = bb (VarH bn dep)
+       body_eq <- go a1_body b1_body (dep+1) seen
+       return $ body_eq
+     (AppH af aa, AppH bf ba) -> do
+       func_eq <- go af bf dep seen
+       argm_eq <- go aa ba dep seen
+       return $ func_eq && argm_eq
+     (LetH _ au at ax ab, LetH _ bu bt bx bb) -> do
+       let a1_body = ab ax
+       let b1_body = bb bx
+       let rig_eq  = au == bu
+       bind_eq <- go at bt dep seen
+       expr_eq <- go ax bx dep seen
+       body_eq <- go a1_body b1_body (dep+1) seen
+       return $ rig_eq && bind_eq && expr_eq && body_eq
+     (FixH _ ab, FixH _ bb) -> go (ab a) (bb b) (dep+1) seen
+     _ -> return False
+
+type Ctx = Seq (Uses,HOAS)
+
+multiplyCtx :: Uses -> Ctx -> Ctx
+multiplyCtx rho ctx = fmap mul ctx
+  where mul (pi, typ) = (rho *# pi, typ)
+
+-- Assumes both context are compatible (different only by quantities)
+addCtx :: Ctx -> Ctx -> Ctx
+addCtx ctx ctx' = Seq.zipWith add ctx ctx'
+  where add (pi, typ) (pi', _) = (pi +# pi', typ)
+
+data CheckErr
+  = QuantityMismatch Ctx Uses Uses
+  | TypeMismatch Ctx HOAS HOAS
+  | EmptyContext Ctx
+  | DerefError Ctx Name CID DerefErr
+  | LambdaNonFunctionType  Ctx HOAS HOAS
+  | NonFunctionApplication Ctx HOAS HOAS
+  | CustomErr Ctx Text
+  deriving Show
+
+check :: Ctx -> Uses -> HOAS -> HOAS -> Defs -> Except CheckErr Ctx
+check ctx ρ trm typ defs = case trm of
+  LamH name ut termBody -> case whnf typ defs of
+    AllH _ _ π bind typeBody -> do
+      maybe (pure ()) (\(φ,bind') -> do
+        unless (π == φ) (throwError (QuantityMismatch ctx π φ))
+        unless (equal bind bind' defs (length ctx))
+          (throwError (TypeMismatch ctx bind bind'))
+        pure ()) ut
+      let var = VarH name (length ctx)
+      let ctx' = (ctx |> (None,bind))
+      ctx' <- check ctx' Once (termBody var) (typeBody trm var) defs
+      case viewr ctx' of
+        EmptyR -> throwError $ EmptyContext ctx
+        ctx :> (π', _) -> do
+          unless (π' ≤# π) (throwError (QuantityMismatch ctx π' π))
+          return $ multiplyCtx ρ ctx
+    x -> throwError $ LambdaNonFunctionType ctx trm x
+  LetH name π exprType expr body -> do
+    check ctx π expr exprType defs
+    let var = VarH name (length ctx)
+    let ctx' = ctx |> (None, exprType)
+    ctx' <- check ctx' Once (body var) typ defs
+    case viewr ctx' of
+      EmptyR -> throwError $ EmptyContext ctx
+      ctx :> (π', _) -> do
+        unless (π' ≤# π) (throwError (QuantityMismatch ctx π' π))
+        return $ multiplyCtx ρ (addCtx ctx ctx')
+  FixH n b -> check ctx ρ (b trm) typ defs
+  _ -> do
+    (ctx, infr) <- infer ctx ρ trm defs
+    if equal typ infr defs (length ctx)
+      then return ctx
+      else throwError (TypeMismatch ctx typ infr)
+
+infer :: Ctx -> Uses -> HOAS -> Defs -> Except CheckErr (Ctx, HOAS)
+infer ctx ρ term defs = case term of
+  VarH n idx -> do
+    let (_, typ) = Seq.index ctx idx
+    let ctx' = Seq.update idx (ρ, typ) ctx
+    return (ctx', typ)
+  RefH n c -> do
+    let mapE = mapExcept (either (\e -> throwError $ DerefError ctx n c e) pure)
+    def <- mapE (deref n c defs)
+    trm <- mapE (defToHOAS n def defs)
+    return (ctx,trm)
+  AppH func argm -> do
+    (ctx, funcType) <- infer ctx ρ func defs
+    case whnf funcType defs of
+      AllH _ _ π bind body -> do
+        ctx' <- check ctx (ρ *# π) argm bind defs
+        return (addCtx ctx ctx', body func argm)
+      x -> throwError $ NonFunctionApplication ctx func x
+  AllH self name pi bind body -> do
+    let self_var = VarH self $ length ctx
+    let name_var = VarH name $ length ctx + 1
+    let ctx'     = ctx |> (None, bind)
+    check ctx  None bind (TypH) defs
+    check ctx' None (body self_var name_var) (TypH) defs
+    return (ctx, TypH)
+  LetH name π exprType expr body -> do
+    check ctx π expr exprType defs
+    let exprVar = VarH name (length ctx)
+    let ctx' = ctx |> (None, exprType)
+    (ctx', typ) <- infer ctx' Once (body exprVar) defs
+    case viewr ctx' of
+      EmptyR                -> throwError (EmptyContext ctx)
+      ctx' :> (π', _) -> do
+        unless (π' ≤# π) (throwError (QuantityMismatch ctx π' π))
+        return (multiplyCtx ρ (addCtx ctx ctx'), typ)
+  TypH -> return (ctx, TypH)
+  _ -> throwError $ CustomErr ctx "can't infer type"

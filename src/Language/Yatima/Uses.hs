@@ -30,3 +30,5 @@ Many ≤# x    = False
 
 (>#) :: Uses -> Uses -> Bool
 (>#) x y = not (x ≤# y)
+
+
