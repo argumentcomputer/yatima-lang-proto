@@ -110,7 +110,7 @@ process line = do
       Eval t -> do
         ds <- gets _yideDefs
         t  <- liftIO $ catchDerefErr (toLOAS t [""] ds)
-        liftIO $ putStrLn $ T.unpack $ printHOAS $ norm (toHOAS t []) ds
+        liftIO $ putStrLn $ T.unpack $ printHOAS $ norm (toHOAS t [] 0) ds
         return ()
       Defn d -> do
         ds <- gets _yideDefs
