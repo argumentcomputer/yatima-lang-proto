@@ -61,6 +61,7 @@ Undefined reference: y
 |-}
 module Language.Yatima.Parse 
   ( ParseErr(..)
+  , ParseEnv(..)
   , Parser
   , parseDefault
   , parserTest
@@ -72,6 +73,10 @@ module Language.Yatima.Parse
   , pExpr
   , pFile
   , prettyFile
+  , pDef
+  , symbol
+  , space
+  , defaultParseEnv
   ) where
 
 import           Codec.Serialise
@@ -365,10 +370,10 @@ pDef = label "a definition" $ do
   (nam,exp,typ) <- pDecl False
   return $ Def nam exp typ
 
-sepMeta :: Name -> Term -> Parser (Anon,Meta)
-sepMeta name term = do
+pInsertDef :: Def -> Parser Defs
+pInsertDef def = do
   defs <- asks _defs
-  case runExcept (separateMeta name term defs) of
+  case runExcept (insertDef def defs) of
     Left  e -> customFailure $ CorruptDefs e
     Right x -> return x
 
@@ -378,23 +383,9 @@ pDefs = (try $ space >> next) <|> end
   where
   end = space >> eof >> asks _defs
   next = do
-    ds@(Defs index cache) <- asks _defs
-    Def name term typ_ <- pDef
-    (termAnon, termMeta) <- sepMeta name term
-    (typeAnon, typeMeta) <- sepMeta name typ_
-    let termAnonCID = makeCID termAnon :: CID
-    let typeAnonCID = makeCID typeAnon :: CID
-    let anonDef     = AnonDef termAnonCID typeAnonCID
-    let anonDefCID  = makeCID anonDef :: CID
-    let metaDef     = MetaDef anonDefCID termMeta typeMeta
-    let metaDefCID  = makeCID metaDef :: CID
-    let index'      = M.insert name        metaDefCID           $ index
-    let cache'      = M.insert metaDefCID  (serialise metaDef)  $
-                      M.insert anonDefCID  (serialise anonDef)  $
-                      M.insert typeAnonCID (serialise typeAnon) $
-                      M.insert termAnonCID (serialise termAnon) $
-                      cache
-    local (\e -> e { _defs = Defs index' cache' }) pDefs
+    def  <- pDef
+    defs <- pInsertDef def
+    local (\e -> e { _defs = defs }) pDefs
 
 -- | Parse a file
 pFile :: FilePath -> IO Defs

@@ -1,0 +1,14 @@
+def Nat : Type =
+  @self
+  ∀ (0 P : ∀ Nat -> Type)
+    (& zero : P (λ z s => z))
+    (& succ : ∀ (pred: Nat) -> (P (λ z s => s pred)))
+    -> P self
+
+def zero : Nat
+  = λ P z s => z
+
+def succ (n : Nat) : Nat
+  = λ P z s => s n
+
+def one : Nat = succ zero

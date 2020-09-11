@@ -45,6 +45,7 @@ data Term where
   Typ :: Term
 
 deriving instance Show Term
+deriving instance Eq Term
 
 -- | A type annotated definition
 data Def = Def

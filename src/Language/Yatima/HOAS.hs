@@ -9,12 +9,16 @@ Stability   : experimental
 -}
 module Language.Yatima.HOAS
   ( HOAS(..)
---  , findCtx
---  , toHOAS
---  , fromHOAS
---  , printHOAS
---  , whnf
---  , norm
+  --, findCtx
+  , toHOAS
+  , fromHOAS
+  , LOAS(..)
+  , toLOAS
+  , fromLOAS
+  , printHOAS
+  , whnf
+  , norm
+  , catchDerefErr
 --  , evalFile
 --  , evalPrintFile
   ) where
@@ -47,6 +51,8 @@ data LOAS where
   LetL :: Name -> Uses -> LOAS -> LOAS -> LOAS -> LOAS
   AllL :: Name -> Name -> Uses -> LOAS -> LOAS -> LOAS
   TypL :: LOAS
+
+deriving instance Show LOAS
 
 toLOAS :: Term -> [Name] -> Defs -> Except DerefErr LOAS
 toLOAS t ctx ds = case t of
@@ -103,13 +109,9 @@ findCtx i cs = go cs 0
 -- | Convert a lower-order `Term` to a GHC higher-order one
 toHOAS :: LOAS -> [HOAS] -> Int -> HOAS
 toHOAS t ctx dep = case t of
-  VarL n i       -> case findCtx i ctx of
-    Just trm -> trm
-    Nothing  -> VarH n (dep - i - 1)
+  VarL n i       -> maybe (VarH n (dep - i - 1)) id (findCtx i ctx)
   RefL n c       -> RefH n c
-  LamL n ut b    -> case ut of
-    Just (u,t) -> LamH n (Just (u, go t)) (\x -> bind x b)
-    _          -> LamH n Nothing (\x -> bind x b)
+  LamL n ut b    -> LamH n (fmap go <$> ut) (\x -> bind x b)
   AppL f a       -> AppH (go f) (go a)
   LetL n u t d b -> LetH n u (go t) (FixH n (\x -> bind x d)) (\x -> bind x b)
   AllL s n u t b -> AllH s n u (go t) (\s x -> bind2 s x b)
@@ -123,9 +125,7 @@ toHOAS t ctx dep = case t of
 fromHOAS :: HOAS -> Int -> LOAS
 fromHOAS t dep = case t of
   VarH n i       -> VarL n i
-  LamH n ut b    -> case ut of
-    Just (u,t) -> LamL n (Just (u,go t)) (unbind n b)
-    _          -> LamL n Nothing (unbind n b)
+  LamH n ut b    -> LamL n (fmap go <$> ut) (unbind n b)
   AppH f a       -> AppL (go f) (go a)
   RefH n c       -> RefL n c
   LetH n u t x b -> LetL n u (go t) (go x) (unbind n b)
@@ -143,9 +143,7 @@ termFromHOAS t = fromLOAS $ fromHOAS t 0
 anonymizeHOAS:: HOAS -> Int -> Anon
 anonymizeHOAS h dep = case h of
   VarH n i       -> VarA i
-  LamH n ut b    -> case ut of
-    Just (u,t) -> LamA (Just (u,go t)) (unbind n b)
-    _          -> LamA Nothing (unbind n b)
+  LamH n ut b    -> LamA (fmap go <$> ut) (unbind n b)
   AppH f a       -> AppA (go f) (go a)
   RefH n c       -> RefA c
   LetH n u t x b -> LetA u (go t) (go x) (unbind n b)
@@ -183,7 +181,7 @@ whnf t ds = case t of
   RefH n c       -> case runExcept (derefHOAS n c ds) of
     Right t  -> go t
     Left e   -> error $ "BAD: Undefined Reference during reduction: " ++ show e
-  AppH f a  -> case go f of
+  AppH f a       -> case go f of
     LamH _ _ b -> go (b a)
     x          -> AppH f a
   LetH n u t d b -> go (b d)

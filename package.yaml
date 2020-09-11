@@ -53,3 +53,36 @@ library:
     - MultiWayIf
     - TupleSections
 
+executables:
+  yide:
+    main: Main.hs
+    source-dirs: yide
+    dependencies:
+      - base >= 4.7 && < 5
+      - containers
+      - text
+      - yatima
+      - mtl
+      - megaparsec
+      - haskeline
+      - process
+      # - serialise
+      # - bytestring
+      # - base16-bytestring
+      # - multibase
+      # - cryptonite
+      # - multihash-cryptonite
+      # - ipld-cid
+      # - unsafeperformst
+      # - aeson
+      # - servant
+      # - servant-client
+      # - http-client
+      # - cborg
+      # - ipfs-api
+    default-extensions:
+      - OverloadedStrings
+      - GADTSyntax
+      - StandaloneDeriving
+      - MultiWayIf
+
