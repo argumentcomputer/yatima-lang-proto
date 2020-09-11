@@ -161,10 +161,11 @@ anonymizeHOAS h dep = case h of
     unbind    n b = anonymizeHOAS (b (VarH n dep))                  (dep + 1)
     unbind2 s n b = anonymizeHOAS (b (VarH s dep) (VarH n (dep+1))) (dep + 2)
 
-defToHOAS :: Name -> Term -> Defs -> Except DerefErr HOAS
-defToHOAS name term ds = do
-  loas <- toLOAS term [name] ds
-  return $ FixH name (\s -> toHOAS loas [s] 1)
+defToHOAS :: Name -> Def -> Defs -> Except DerefErr (HOAS,HOAS)
+defToHOAS name def ds = do
+  term <- toLOAS (_term def) [name] ds
+  typ_ <- toLOAS (_type def) [] ds
+  return (FixH name (\s -> toHOAS term [s] 1), toHOAS typ_ [] 0)
 
 -- | Pretty-print a `HOAS`
 printHOAS :: HOAS -> Text
@@ -175,8 +176,9 @@ instance Show HOAS where
 
 derefHOAS :: Name -> CID -> Defs -> Except DerefErr HOAS
 derefHOAS name cid ds = do
-  term <- deref name cid ds
-  defToHOAS name term ds
+  def  <- deref name cid ds
+  loas <- toLOAS (_term def) [name] ds
+  return $ FixH name (\s -> toHOAS loas [s] 1)
 
 -- * Evaluation
 
@@ -386,9 +388,8 @@ infer ctx ρ term defs = case term of
     return (ctx', typ)
   RefH n c -> do
     let mapE = mapExcept (either (\e -> throwError $ DerefError ctx n c e) pure)
-    metaDefCID <- mapE (indexLookup n defs)
-    (Def _ _ typ) <- mapE (derefDef n metaDefCID defs)
-    typ <- mapE (defToHOAS n typ defs)
+    def        <- mapE (deref n c defs)
+    (_,typ)    <- mapE (defToHOAS n def defs)
     return (ctx,typ)
   AppH func argm -> do
     (ctx', funcType) <- infer ctx ρ func defs
@@ -421,9 +422,8 @@ checkRef :: Name -> CID -> Defs -> Except CheckErr ()
 checkRef name cid defs = do
   let ctx = Seq.empty
   let mapE = mapExcept (either (\e -> throwError $ DerefError ctx name cid e) pure)
-  def <- mapE $ derefDef name cid defs
-  trm <- mapE $ defToHOAS name (_term def) defs
-  typ <- mapE $ defToHOAS name (_type def) defs
+  def  <- mapE $ derefMetaDefCID name cid defs
+  (trm,typ) <- mapE $ defToHOAS name def defs
   check ctx Once trm typ defs
   return ()
 

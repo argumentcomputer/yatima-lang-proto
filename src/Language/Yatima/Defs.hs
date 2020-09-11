@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 module Language.Yatima.Defs
   ( -- | IPFS content-identifiers
     module Language.Yatima.CID
@@ -13,8 +15,10 @@ module Language.Yatima.Defs
   , mergeMeta
   , find
   , anonymizeRef
+  , deserial
   , deref
-  , derefDef
+  , derefMetaDef
+  , derefMetaDefCID
   , indexLookup
   , cacheLookup
   , insertDef
@@ -288,7 +292,7 @@ data DerefErr
   | NotInIndex Name
   | NotInCache CID
   | CIDMismatch Name CID CID
-  | NameMismatch Name Name Name
+  | NameMismatch Name Name
   | FreeVariable Name [Name]
   | MergeFreeVariableAt Int [Name] Int
   | MergeMissingNameAt Int
@@ -327,11 +331,15 @@ anonymize n t ds = go t [n]
       Typ                   -> return TypA
       All s n u t b         -> AllA u <$> go t ctx <*> go b (n:s:ctx)
 
+deserial :: Serialise a => CID -> Defs -> Except DerefErr a
+deserial cid ds = do
+  bytes <- cacheLookup cid ds
+  either (throwError . NoDeserial) return (deserialiseOrFail bytes)
+
 anonymizeRef :: Name -> Defs -> Except DerefErr CID
 anonymizeRef n ds = do
-  mdCID   <- indexLookup n ds
-  mdBytes <- cacheLookup mdCID ds
-  metaDef <- either (throwError . NoDeserial) return (deserialiseOrFail mdBytes)
+  cid     <- indexLookup n ds
+  metaDef <- deserial @MetaDef cid ds
   return (_anonDef metaDef)
 
 indexLookup :: Name -> Defs -> Except DerefErr CID
@@ -340,40 +348,39 @@ indexLookup n d = maybe (throwError $ NotInIndex n) pure ((_index d) M.!? n)
 cacheLookup :: CID -> Defs -> Except DerefErr BSL.ByteString
 cacheLookup c d = maybe (throwError $ NotInCache c) pure ((_cache d) M.!? c)
 
-derefDef :: Name -> CID -> Defs -> Except DerefErr Def
-derefDef n cid ds = do
-  mdCID   <- indexLookup n ds
-  when (cid /= mdCID) (throwError $ CIDMismatch n cid mdCID)
-  bytes    <- cacheLookup mdCID ds
-  metaDef  <- either (throwError . NoDeserial) return (deserialiseOrFail bytes)
+deref :: Name -> CID -> Defs -> Except DerefErr Def
+deref name cid ds = do
+  mdCID   <- indexLookup name ds
+  metaDef <- deserial @MetaDef mdCID ds
+  let anonCID = _anonDef metaDef
+  when (cid /= anonCID) (throwError $ CIDMismatch name cid anonCID)
+  def <- derefMetaDef metaDef ds
+  when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
+  return def
+
+derefMetaDef :: MetaDef -> Defs -> Except DerefErr Def
+derefMetaDef metaDef ds = do
   let termNames = _nams . _termMeta $ metaDef
   termName <- maybe (throwError $ MergeMissingNameAt 0) pure (termNames IM.!? 0)
   let typeNames = _nams . _typeMeta $ metaDef
   typeName <- maybe (throwError $ MergeMissingNameAt 0) pure (typeNames IM.!? 0)
-  when (not $ n == termName && termName == typeName)
-          (throwError $ NameMismatch n termName typeName)
-  bytes    <- cacheLookup (_anonDef metaDef) ds
-  anonDef  <- either (throwError . NoDeserial) return (deserialiseOrFail bytes)
-  bytes    <- cacheLookup (_termAnon anonDef) ds
-  termAnon <- either (throwError . NoDeserial) return (deserialiseOrFail bytes)
+  when (not $ termName == typeName) (throwError $ NameMismatch termName typeName)
+  anonDef  <- deserial @AnonDef (_anonDef metaDef) ds
+  termAnon <- deserial @Anon (_termAnon anonDef) ds
   term     <- mergeMeta termAnon (_termMeta metaDef)
-  bytes    <- cacheLookup (_typeAnon anonDef) ds
-  typeAnon <- either (throwError . NoDeserial) return (deserialiseOrFail bytes)
+  typeAnon <- deserial @Anon (_typeAnon anonDef) ds
   typ_     <- mergeMeta typeAnon (_typeMeta metaDef)
-  return $ Def n term typ_
+  return $ Def termName term typ_
 
-deref :: Name -> CID -> Defs -> Except DerefErr Term
-deref n cid ds = do
-  mdCID   <- indexLookup n ds
-  mdBytes   <- cacheLookup mdCID ds
-  metaDef   <- either (throwError . NoDeserial) return (deserialiseOrFail mdBytes)
-  let anonCID = _anonDef metaDef
-  when (cid /= anonCID) (throwError $ CIDMismatch n cid anonCID)
-  rBytes    <- cacheLookup (_anonDef metaDef) ds
-  anonDef   <- either (throwError . NoDeserial) return (deserialiseOrFail rBytes)
-  termBytes <- cacheLookup (_termAnon anonDef) ds
-  anon      <- either (throwError . NoDeserial) return (deserialiseOrFail termBytes)
-  mergeMeta anon (_termMeta metaDef)
+derefMetaDefCID :: Name -> CID -> Defs -> Except DerefErr Def
+derefMetaDefCID name cid ds = do
+  mdCID   <- indexLookup name ds
+  metaDef <- deserial @MetaDef mdCID ds
+  when (cid /= mdCID) (throwError $ CIDMismatch name cid mdCID)
+  def <- derefMetaDef metaDef ds
+  when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
+  return $ def
+
 
 separateMeta :: Name -> Term -> Defs -> Except DerefErr (Anon, Meta)
 separateMeta n t ds = do

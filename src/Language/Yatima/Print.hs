@@ -86,7 +86,7 @@ prettyDefs ds = M.foldrWithKey go (Right "") (_index ds)
   where
     go :: Name -> CID -> Either DerefErr Text -> Either DerefErr Text
     go n c (Left e)    = Left e
-    go n c (Right txt) = case runExcept (derefDef n c ds) of
+    go n c (Right txt) = case runExcept (derefMetaDefCID n c ds) of
       Left e   -> Left e
       Right d  -> return $ T.concat
         [ txt,"\n"
