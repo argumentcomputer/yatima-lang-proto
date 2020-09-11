@@ -341,7 +341,7 @@ addCtx ctx ctx' = Seq.zipWith add ctx ctx'
 data CheckErr
   = QuantityMismatch Ctx (Uses,Name,HOAS) (Uses,Name,HOAS)
   | TypeMismatch Ctx     (Uses,Name,HOAS) (Uses,Name,HOAS)
-  | EmptyContext Ctx
+  | EmptyContext
   | DerefError Ctx Name CID DerefErr
   | LambdaNonFunctionType  Ctx HOAS HOAS HOAS
   | NonFunctionApplication Ctx HOAS HOAS HOAS
@@ -383,7 +383,7 @@ instance Show CheckErr where
       , T.unpack $ prettyCtx ctx
       , "\n"
       ]
-    EmptyContext ctx   -> "Empty Context"
+    EmptyContext -> "Empty Context"
     DerefError ctx name cid derefErr -> concat
       ["Dereference error: \n"
       , "Name: ", show name, "\n"
@@ -402,90 +402,90 @@ instance Show CheckErr where
       ]
 
 check :: Ctx -> Uses -> HOAS -> HOAS -> Defs -> Except CheckErr Ctx
-check ctx ρ trm typ defs = case trm of
+check pre ρ trm typ defs = case trm of
   LamH name ut termBody -> case whnf typ defs of
     AllH s n π bind typeBody -> do
       maybe (pure ()) (\(φ,bind') -> do
         unless (π == φ)
-          (throwError (QuantityMismatch ctx (φ,name,bind') (π,n,bind)))
-        unless (equal bind bind' defs (length ctx))
-          (throwError (TypeMismatch ctx (φ,name,bind') (π,n,bind)))
+          (throwError (QuantityMismatch pre (φ,name,bind') (π,n,bind)))
+        unless (equal bind bind' defs (length pre))
+          (throwError (TypeMismatch pre (φ,name,bind') (π,n,bind)))
         pure ()) ut
-      let var = VarH name (length ctx)
-      let ctx' = (ctx |> (None,name,bind))
-      ctx' <- check ctx' Once (termBody var) (typeBody trm var) defs
+      let var = VarH name (length pre)
+      let pre' = (pre |> (None,name,bind))
+      ctx' <- check pre' Once (termBody var) (typeBody trm var) defs
       case viewr ctx' of
-        EmptyR -> throwError $ EmptyContext ctx
+        EmptyR -> throwError $ EmptyContext
         ctx :> (π',n',b') -> do
           unless (π' ≤# π)
-            (throwError (QuantityMismatch ctx (π',n',b') (π,n,bind)))
+            (throwError (QuantityMismatch pre' (π',n',b') (π,n,bind)))
           return $ multiplyCtx ρ ctx
-    x -> throwError $ LambdaNonFunctionType ctx trm typ x
+    x -> throwError $ LambdaNonFunctionType pre trm typ x
   LetH name π exprType expr body -> do
-    check ctx π expr exprType defs
-    let var = VarH name (length ctx)
-    let ctx' = ctx |> (None,name,exprType)
-    ctx' <- check ctx' Once (body var) typ defs
+    ctx <- check pre π expr exprType defs
+    let var = VarH name (length pre)
+    let pre' = pre |> (None,name,exprType)
+    ctx' <- check pre' Once (body var) typ defs
     case viewr ctx' of
-      EmptyR -> throwError $ EmptyContext ctx
+      EmptyR -> throwError $ EmptyContext
       ctx :> (π',n',b') -> do
         unless (π' ≤# π)
-          (throwError (QuantityMismatch ctx (π',n',b') (π,name,exprType)))
+          (throwError (QuantityMismatch pre' (π',n',b') (π,name,exprType)))
         return $ multiplyCtx ρ (addCtx ctx ctx')
   FixH name body -> do
-    let var = VarH name (length ctx)
-    let ctx' = (ctx |> (None,name,typ))
-    ctx' <- check ctx' ρ (body var) typ defs
+    let var = VarH name (length pre)
+    let pre' = (pre |> (None,name,typ))
+    ctx' <- check pre' ρ (body var) typ defs
     case viewr ctx' of
-      EmptyR -> throwError $ EmptyContext ctx
+      EmptyR -> throwError $ EmptyContext
       ctx :> (π,_,_) -> do
         if π == None
           then return ctx
           else return $ multiplyCtx Many ctx
   _ -> do
-    (ctx, infr) <- infer ctx ρ trm defs
-    if equal typ infr defs (length ctx)
+    (ctx, infr) <- infer pre ρ trm defs
+    if equal typ infr defs (length pre)
       then return ctx
-      else throwError (TypeMismatch ctx (ρ,"",typ) (Many,"",infr))
+      else throwError (TypeMismatch pre (ρ,"",typ) (Many,"",infr))
 
 infer :: Ctx -> Uses -> HOAS -> Defs -> Except CheckErr (Ctx, HOAS)
-infer ctx ρ term defs = case term of
+infer pre ρ term defs = case term of
   VarH n idx -> do
-    let (_,_,typ) = Seq.index ctx idx
-    let ctx' = Seq.update idx (ρ,n,typ) ctx
-    return (ctx', typ)
+    let (_,_,typ) = Seq.index pre idx
+    let ctx = Seq.update idx (ρ,n,typ) pre
+    return (ctx, typ)
   RefH n c -> do
-    let mapE = mapExcept (either (\e -> throwError $ DerefError ctx n c e) pure)
+    let mapE = mapExcept (either (\e -> throwError $ DerefError pre n c e) pure)
     def        <- mapE (deref n c defs)
     (_,typ)    <- mapE (defToHOAS n def defs)
-    return (ctx,typ)
+    return (pre,typ)
   AppH func argm -> do
-    (ctx', funcType) <- infer ctx ρ func defs
+    (ctx, funcType) <- infer pre ρ func defs
     case whnf funcType defs of
       AllH _ _ π bind body -> do
-        ctx'' <- check ctx (ρ *# π) argm bind defs
-        return (addCtx ctx' ctx'', body func argm)
-      x -> throwError $ NonFunctionApplication ctx func funcType x
-  AllH self name pi bind body -> do
-    let self_var = VarH self $ length ctx
-    let name_var = VarH name $ length ctx + 1
-    let ctx'     = ctx |> (None,self,term) |> (None,name,bind)
-    check ctx  None bind (TypH) defs
-    check ctx' None (body self_var name_var) (TypH) defs
-    return (ctx, TypH)
+        ctx' <- check pre (ρ *# π) argm bind defs
+        return (addCtx ctx ctx', body func argm)
+      x -> throwError $ NonFunctionApplication pre func funcType x
+  AllH self name π bind body -> do
+    let self_var = VarH self $ length pre
+    let name_var = VarH name $ length pre + 1
+    let pre'     = pre |> (None,self,term) |> (None,name,bind)
+    check pre  None bind (TypH) defs
+    check pre' None (body self_var name_var) (TypH) defs
+    return (pre, TypH)
   LetH name π exprType expr body -> do
-    check ctx π expr exprType defs
-    let exprVar = VarH name (length ctx)
-    let ctx' = ctx |> (None, name,exprType)
-    (ctx', typ) <- infer ctx' Once (body exprVar) defs
+    ctx <- check pre π expr exprType defs
+    let exprVar = VarH name (length pre)
+    let pre' = pre |> (None, name,exprType)
+    (ctx', typ) <- infer pre' Once (body exprVar) defs
     case viewr ctx' of
-      EmptyR                -> throwError (EmptyContext ctx)
+      EmptyR                -> throwError EmptyContext
       ctx' :> (π',n',b') -> do
         unless (π' ≤# π)
-          (throwError (QuantityMismatch ctx (π',n',b') (π,name,exprType)))
+          (throwError (QuantityMismatch pre' (π',n',b') (π,name,exprType)))
         return (multiplyCtx ρ (addCtx ctx ctx'), typ)
-  TypH -> return (ctx, TypH)
-  _ -> throwError $ CustomErr ctx "can't infer type"
+  TypH -> return (pre, TypH)
+  _ -> throwError $ CustomErr pre "can't infer type"
 
 checkRef :: Name -> CID -> Defs -> Except CheckErr ()
 checkRef name cid defs = do
