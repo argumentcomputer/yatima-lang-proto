@@ -55,34 +55,36 @@ data LOAS where
 deriving instance Show LOAS
 
 toLOAS :: Term -> [Name] -> Defs -> Except DerefErr LOAS
-toLOAS t ctx ds = case t of
-  Var n       -> case find n ctx of
-    Just i -> return $ VarL n i
-    _      -> throwError $ FreeVariable n ctx
-  Ref n       -> RefL n <$> anonymizeRef n ds
-  Lam n ut b  -> case ut of
-    Just (u,t) -> go t >>= \t -> LamL n (Just (u,t)) <$> bind n b
-    Nothing    -> LamL n Nothing <$> bind n b
-  App f a       -> AppL <$> go f <*> go a
-  Let n u t x b -> LetL n u <$> go t <*> bind n x <*> bind n b
-  Typ           -> return TypL
-  All s n u t b -> AllL s n u <$> go t <*> bind2 s n b
+toLOAS trm ctx defs = case trm of
+  Var nam                 ->
+    case find nam ctx of
+      Just idx -> return $ VarL nam idx
+      _        -> throwError $ FreeVariable nam ctx
+  Ref nam                 -> RefL nam <$> anonymizeRef nam defs
+  Lam nam ann bod         ->
+    case ann of
+      Just (use,typ) -> LamL nam <$> (Just . (use,) <$> go typ) <*> bind nam bod
+      Nothing        -> LamL nam Nothing <$> bind nam bod
+  App fun arg             -> AppL <$> go fun <*> go arg
+  Let nam use typ exp bod ->
+    LetL nam use <$> go typ <*> bind nam exp <*> bind nam bod
+  Typ                     -> return TypL
+  All slf nam use typ bod -> AllL slf nam use <$> go typ <*> bind2 slf nam bod
   where
-    go t        = toLOAS t ctx ds
-    bind    n t = toLOAS t (n:ctx) ds
-    bind2 s n t = toLOAS t (n:s:ctx) ds
+    go t        = toLOAS t ctx defs
+    bind    n t = toLOAS t (n:ctx) defs
+    bind2 s n t = toLOAS t (n:s:ctx) defs
 
 -- | Convert a GHC higher-order representation to a lower-order one
 fromLOAS :: LOAS -> Term
 fromLOAS t = case t of
-  VarL n _               -> Var n
-  RefL n _               -> Ref n
-  LamL n (Just (u,t)) b  -> Lam n (Just (u,go t)) (go b)
-  LamL n Nothing      b  -> Lam n Nothing (go b)
-  AppL f a               -> App (go f) (go a)
-  LetL n u t x b         -> Let n u (go t) (go x) (go b)
-  AllL s n u t b         -> All s n u (go t) (go b)
-  TypL                   -> Typ
+  VarL nam _               -> Var nam
+  RefL nam _               -> Ref nam
+  LamL nam ann bod         -> Lam nam (fmap go <$> ann) (go bod)
+  AppL fun arg             -> App (go fun) (go arg)
+  LetL nam use typ exp bod -> Let nam use (go typ) (go exp) (go bod)
+  AllL slf nam use typ bod -> All slf nam use (go typ) (go bod)
+  TypL                     -> Typ
   where
     go = fromLOAS
 
@@ -99,42 +101,43 @@ data HOAS where
 
 -- | Find a term in a context
 findCtx :: Int -> [HOAS] -> Maybe HOAS
-findCtx i cs = go cs 0
+findCtx idx ctx = go ctx 0
   where
-    go (c:cs) j
-      | i == j   = Just c
-      | otherwise = go cs (j+1)
+    go (c:cs) i
+      | idx == i   = Just c
+      | otherwise = go cs (i+1)
     go [] _      = Nothing
 
 -- | Convert a lower-order `Term` to a GHC higher-order one
 toHOAS :: LOAS -> [HOAS] -> Int -> HOAS
 toHOAS t ctx dep = case t of
-  VarL n i       -> maybe (VarH n (dep - i - 1)) id (findCtx i ctx)
-  RefL n c       -> RefH n c
-  LamL n ut b    -> LamH n (fmap go <$> ut) (\x -> bind x b)
-  AppL f a       -> AppH (go f) (go a)
-  LetL n u t d b -> LetH n u (go t) (FixH n (\x -> bind x d)) (\x -> bind x b)
-  AllL s n u t b -> AllH s n u (go t) (\s x -> bind2 s x b)
-  TypL           -> TypH
+  VarL nam idx             -> maybe (VarH nam (dep-idx-1)) id (findCtx idx ctx)
+  RefL nam cid             -> RefH nam cid
+  LamL nam ann bod         -> LamH nam (fmap go <$> ann) (bind bod)
+  AppL fun arg             -> AppH (go fun) (go arg)
+  LetL nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind bod)
+  AllL slf nam use typ bod -> AllH slf nam use (go typ) (bind2 bod)
+  TypL                     -> TypH
   where
-    go t        = toHOAS t ctx       dep
-    bind n t    = toHOAS t (n:ctx)   (dep + 1)
-    bind2 s n t = toHOAS t (n:s:ctx) (dep + 2)
+    go    t =          toHOAS t ctx       dep
+    bind  t = (\x   -> toHOAS t (x:ctx)   (dep + 1))
+    bind2 t = (\s x -> toHOAS t (x:s:ctx) (dep + 2))
+    rec n t = FixH n (bind t)
 
 -- | Convert a GHC higher-order representation to a lower-order one
 fromHOAS :: HOAS -> Int -> LOAS
 fromHOAS t dep = case t of
-  VarH n i       -> VarL n i
-  LamH n ut b    -> LamL n (fmap go <$> ut) (unbind n b)
-  AppH f a       -> AppL (go f) (go a)
-  RefH n c       -> RefL n c
-  LetH n u t x b -> LetL n u (go t) (go x) (unbind n b)
-  AllH s n u t b -> AllL s n u (go t) (unbind2 s n b)
-  TypH           -> TypL
-  FixH n b       -> unbind n b
+  VarH nam idx             -> VarL nam idx
+  LamH nam ann bod         -> LamL nam (fmap go <$> ann) (unbind nam bod)
+  AppH fun arg             -> AppL (go fun) (go arg)
+  RefH nam cid             -> RefL nam cid
+  LetH nam use typ exp bod -> LetL nam use (go typ) (go exp) (unbind nam bod)
+  AllH slf nam use typ bod -> AllL slf nam use (go typ) (unbind2 slf nam bod)
+  TypH                     -> TypL
+  FixH nam bod             -> unbind nam bod
   where
-    go t          = fromHOAS t dep
-    unbind n b    = fromHOAS (b (VarH n dep)) (dep + 1)
+    go          t = fromHOAS t                                 dep
+    unbind    n b = fromHOAS (b (VarH n dep))                  (dep + 1)
     unbind2 s n b = fromHOAS (b (VarH s dep) (VarH n (dep+1))) (dep + 2)
 
 termFromHOAS :: HOAS -> Term
@@ -142,17 +145,17 @@ termFromHOAS t = fromLOAS $ fromHOAS t 0
 
 anonymizeHOAS:: HOAS -> Int -> Anon
 anonymizeHOAS h dep = case h of
-  VarH n i       -> VarA i
-  LamH n ut b    -> LamA (fmap go <$> ut) (unbind n b)
-  AppH f a       -> AppA (go f) (go a)
-  RefH n c       -> RefA c
-  LetH n u t x b -> LetA u (go t) (go x) (unbind n b)
-  AllH s n u t b -> AllA u (go t) (unbind2 s n b)
-  TypH           -> TypA
-  FixH n b       -> unbind n b
+  VarH nam idx             -> VarA idx
+  LamH nam ann bod         -> LamA (fmap go <$> ann) (unbind nam bod)
+  AppH fun arg             -> AppA (go fun) (go arg)
+  RefH nam cid             -> RefA cid
+  LetH nam use typ exp bod -> LetA use (go typ) (go exp) (unbind nam bod)
+  AllH slf nam use typ bod -> AllA use (go typ) (unbind2 slf nam bod)
+  TypH                     -> TypA
+  FixH nam bod             -> unbind nam bod
   where
-    go t          = anonymizeHOAS t dep
-    unbind n b    = anonymizeHOAS (b (VarH n dep)) (dep + 1)
+    go          t = anonymizeHOAS t                                 dep
+    unbind    n b = anonymizeHOAS (b (VarH n dep))                  (dep + 1)
     unbind2 s n b = anonymizeHOAS (b (VarH s dep) (VarH n (dep+1))) (dep + 2)
 
 defToHOAS :: Name -> Term -> Defs -> Except DerefErr HOAS
@@ -176,18 +179,19 @@ derefHOAS name cid ds = do
 
 -- | Reduce a HOAS to weak-head-normal-form
 whnf :: HOAS -> Defs -> HOAS
-whnf t ds = case t of
-  FixH n b       -> go (b (FixH n b))
-  RefH n c       -> case runExcept (derefHOAS n c ds) of
-    Right t  -> go t
-    Left e   -> error $ "BAD: Undefined Reference during reduction: " ++ show e
-  AppH f a       -> case go f of
-    LamH _ _ b -> go (b a)
-    x          -> AppH f a
-  LetH n u t d b -> go (b d)
-  x              -> x
+whnf trm defs = case trm of
+  FixH nam bod       -> go (bod trm)
+  RefH nam cid       ->
+    case runExcept (derefHOAS nam cid defs) of
+      Right trm  -> go trm
+      Left  err  -> error $ "BAD: Runtime DerefErr: " ++ show err
+  AppH fun arg       -> case go fun of
+    LamH _ _ bod -> go (bod arg)
+    x            -> AppH fun arg
+  LetH _ _ _ exp bod -> go (bod exp)
+  x                  -> x
   where
-    go x = whnf x ds
+    go x = whnf x defs
 
 hash :: HOAS -> Int -> CID
 hash term dep = makeCID $ anonymizeHOAS term dep
@@ -215,14 +219,19 @@ norm term defs = runST (top $ term)
 
     next :: HOAS -> (STRef s (Set CID)) -> ST s HOAS
     next step seen = case step of
-      LamH n (Just (u,t)) b   -> do
-        t' <- Just . (u,) <$> go t seen
-        return $ LamH n t' (\x -> unsafePerformST $ go (b x) seen)
-      AllH s n u t b   -> do
-        t' <- go t seen
-        return $ AllH s n u t' (\s x -> unsafePerformST $ go (b s x) seen)
-      AppH f a -> AppH <$> (go f seen) <*> (go a seen)
-      _        -> return step
+      LamH nam ann bod         -> do
+        typ' <- case ann of
+          Just (use,typ) -> Just . (use,) <$> go typ seen
+          _              -> return Nothing
+        return $ LamH nam typ' (\x -> unsafe $ go (bod x) seen)
+      AllH slf nam use typ bod -> do
+        typ' <- go typ seen
+        return $ AllH slf nam use typ' (\s x -> unsafe $ go (bod s x) seen)
+      AppH fun arg             -> AppH <$> (go fun seen) <*> (go arg seen)
+      _                        -> return step
+      where
+        unsafe = unsafePerformST
+
 
 catchDerefErr :: Except DerefErr a -> IO a
 catchDerefErr x = do
@@ -263,51 +272,41 @@ equal a b defs dep = runST $ top a b dep
 
     go :: HOAS -> HOAS -> Int -> STRef s (Set (CID,CID)) -> ST s Bool
     go a b dep seen = do
-      let a1 = whnf a defs
-      let b1 = whnf b defs
-      let ah = makeCID $ anonymizeHOAS a1 0
-      let bh = makeCID $ anonymizeHOAS b1 0
+      let a' = whnf a defs
+      let b' = whnf b defs
+      let aCID = makeCID $ anonymizeHOAS a' 0
+      let bCID = makeCID $ anonymizeHOAS b' 0
       s' <- readSTRef seen
-      if | (ah == bh)              -> return True
-         | (ah,bh) `Set.member` s' -> return True
-         | (bh,ah) `Set.member` s' -> return True
+      if | (aCID == bCID)              -> return True
+         | (aCID,bCID) `Set.member` s' -> return True
+         | (bCID,aCID) `Set.member` s' -> return True
          | otherwise -> do
-             modifySTRef' seen ((Set.insert (ah,bh)) . (Set.insert (bh,ah)))
-             next a1 b1 dep seen
+             modifySTRef' seen (Set.insert (aCID,bCID))
+             modifySTRef' seen (Set.insert (bCID,aCID))
+             next a' b' dep seen
 
     next :: HOAS -> HOAS -> Int -> STRef s (Set (CID,CID)) -> ST s Bool
     next a b dep seen = case (a,b) of
-     (AllH as an au at ab, AllH bs bn bu bt bb) -> do
-       let a1_body = ab (VarH as dep) (VarH an (dep + 1))
-       let b1_body = bb (VarH bs dep) (VarH bn (dep + 1))
-       let rig_eq  = au == bu
-       bind_eq <- go at bt dep seen
-       body_eq <- go a1_body b1_body (dep+2) seen
-       return $ rig_eq && bind_eq && body_eq
-     (LamH an (Just (au,at)) ab, LamH bn (Just (bu,bt)) bb) -> do
-       let a1_body = ab (VarH an dep)
-       let b1_body = bb (VarH bn dep)
-       let rig_eq  = au == bu
-       bind_eq <- go at bt dep seen
-       body_eq <- go a1_body b1_body (dep+1) seen
-       return $ rig_eq && bind_eq && body_eq
-     (LamH an Nothing ab, LamH bn Nothing bb) -> do
-       let a1_body = ab (VarH an dep)
-       let b1_body = bb (VarH bn dep)
-       body_eq <- go a1_body b1_body (dep+1) seen
-       return $ body_eq
-     (AppH af aa, AppH bf ba) -> do
-       func_eq <- go af bf dep seen
-       argm_eq <- go aa ba dep seen
-       return $ func_eq && argm_eq
-     (LetH _ au at ax ab, LetH _ bu bt bx bb) -> do
-       let a1_body = ab ax
-       let b1_body = bb bx
-       let rig_eq  = au == bu
-       bind_eq <- go at bt dep seen
-       expr_eq <- go ax bx dep seen
-       body_eq <- go a1_body b1_body (dep+1) seen
-       return $ rig_eq && bind_eq && expr_eq && body_eq
+     (AllH aSlf aNam aUse aTyp aBod, AllH bSlf bNam bUse bTyp bBod) -> do
+       let aBod' = aBod (VarH aSlf dep) (VarH aNam (dep + 1))
+       let bBod' = bBod (VarH bSlf dep) (VarH bNam (dep + 1))
+       let useEq = aUse == bUse
+       typEq <- go aTyp bTyp dep seen
+       bodEq <- go aBod' bBod' (dep+2) seen
+       return $ useEq && typEq && bodEq
+     (LamH aNam _ aBod, LamH bNam _ bBod) -> do
+       let aBod' = aBod (VarH aNam dep)
+       let bBod' = bBod (VarH bNam dep)
+       go aBod' bBod' (dep+1) seen
+     (AppH aFun aArg, AppH bFun bArg) -> do
+       funEq <- go aFun bFun dep seen
+       argEq <- go aArg bArg dep seen
+       return $ funEq && argEq
+     (LetH _ _ _ aExp aBod, LetH _ _ _ bExp bBod) -> do
+       let aBod' = aBod aExp
+       let bBod' = bBod bExp
+       bodEq <- go aBod' bBod' (dep+1) seen
+       return $ bodEq
      (FixH _ ab, FixH _ bb) -> go (ab a) (bb b) (dep+1) seen
      _ -> return False
 

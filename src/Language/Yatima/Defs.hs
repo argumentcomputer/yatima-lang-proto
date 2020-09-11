@@ -393,9 +393,11 @@ separateMeta n t ds = do
 
     go :: Term -> [Name] -> ExceptT DerefErr (State (Meta,Int)) Anon
     go t ctx = case t of
-      Var n       -> case find n ctx of
-        Just i -> return $ VarA i
-        _      -> throwError $ FreeVariable n ctx
+      Var n       -> do
+        bump
+        case find n ctx of
+          Just i -> return $ VarA i
+          _      -> throwError $ FreeVariable n ctx
       Ref n     -> do
         c <- liftEither . runExcept $ anonymizeRef n ds
         bind n >> bump >> cids c >> return (RefA c)
@@ -408,7 +410,7 @@ separateMeta n t ds = do
       Let n u t x b         -> do
         bind n >> bump
         LetA u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
-      Typ                   -> return TypA
+      Typ                   -> bump >> return TypA
       All s n u t b         -> do
         bind s >> bump
         bind n >> bump
@@ -435,6 +437,7 @@ mergeMeta anon meta = do
     go t ctx = case t of
       VarA idx -> do
         i <- get
+        bump
         case lookupName idx ctx of
           Nothing -> throwError $ MergeFreeVariableAt i ctx idx
           Just n  -> return $ Var n
@@ -461,7 +464,7 @@ mergeMeta anon meta = do
         n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
         bump
         Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
-      TypA         -> return Typ
+      TypA         -> bump >> return Typ
       AllA u t b   -> do
         i <- get
         s <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
