@@ -185,11 +185,11 @@ derefHOAS name cid ds = do
 -- | Reduce a HOAS to weak-head-normal-form
 whnf :: HOAS -> Defs -> HOAS
 whnf trm defs = case trm of
-  FixH nam bod       -> go (bod trm)
   RefH nam cid       ->
     case runExcept (derefHOAS nam cid defs) of
       Right trm  -> go trm
       Left  err  -> error $ "BAD: Runtime DerefErr: " ++ show err
+  FixH nam bod       -> go (bod trm)
   AppH fun arg       -> case go fun of
     LamH _ _ bod -> go (bod arg)
     x            -> AppH fun arg
@@ -233,6 +233,7 @@ norm term defs = runST (top $ term)
         typ' <- go typ seen
         return $ AllH slf nam use typ' (\s x -> unsafe $ go (bod s x) seen)
       AppH fun arg             -> AppH <$> (go fun seen) <*> (go arg seen)
+      FixH n b                 -> go (b step) seen
       _                        -> return step
       where
         unsafe = unsafePerformST
@@ -259,11 +260,6 @@ normDef name file = do
   def   <- catchDerefErr (derefHOAS name cid defs)
   return $ norm def defs
 
----- | Read, eval and print a `HOAS` from a file
-----evalPrintFile :: FilePath -> IO ()
-----evalPrintFile file = do
-----  term <- evalFile file
-----  putStrLn $ T.unpack $ printHOAS term
 
 -- * Type-checking
 
@@ -315,62 +311,134 @@ equal a b defs dep = runST $ top a b dep
      (FixH _ ab, FixH _ bb) -> go (ab a) (bb b) (dep+1) seen
      _ -> return False
 
-type Ctx = Seq (Uses,HOAS)
+type Ctx = Seq (Uses,Name,HOAS)
+
+prettyCtx :: Ctx -> Text
+prettyCtx ctx = foldr go "" ctx 
+  where
+    go :: (Uses,Name,HOAS) -> Text -> Text
+    go x txt = T.concat [txt, "\n", " - ", prettyCtxElem x]
+
+prettyUses :: Uses -> Text
+prettyUses None = "0"
+prettyUses Affi = "&"
+prettyUses Once = "1"
+prettyUses Many = "ω"
+
+prettyCtxElem :: (Uses, Name, HOAS) -> Text
+prettyCtxElem (u,"",t) = T.concat [prettyUses u, " _: ", printHOAS t]
+prettyCtxElem (u,n,t)  = T.concat [prettyUses u , " ", n, ": ", printHOAS t]
 
 multiplyCtx :: Uses -> Ctx -> Ctx
 multiplyCtx rho ctx = fmap mul ctx
-  where mul (pi, typ) = (rho *# pi, typ)
+  where mul (pi, nam, typ) = (rho *# pi,nam,typ)
 
 -- Assumes both context are compatible (different only by quantities)
 addCtx :: Ctx -> Ctx -> Ctx
 addCtx ctx ctx' = Seq.zipWith add ctx ctx'
-  where add (pi, typ) (pi', _) = (pi +# pi', typ)
+  where add (pi, nam, typ) (pi',_,_) = (pi +# pi', nam,typ)
 
 data CheckErr
-  = QuantityMismatch Ctx Uses Uses
-  | TypeMismatch Ctx HOAS HOAS
+  = QuantityMismatch Ctx (Uses,Name,HOAS) (Uses,Name,HOAS)
+  | TypeMismatch Ctx     (Uses,Name,HOAS) (Uses,Name,HOAS)
   | EmptyContext Ctx
   | DerefError Ctx Name CID DerefErr
-  | LambdaNonFunctionType  Ctx HOAS HOAS
-  | NonFunctionApplication Ctx HOAS HOAS
+  | LambdaNonFunctionType  Ctx HOAS HOAS HOAS
+  | NonFunctionApplication Ctx HOAS HOAS HOAS
   | CustomErr Ctx Text
-  deriving Show
+
+instance Show CheckErr where
+  show e = case e of
+    QuantityMismatch ctx a b -> concat
+      ["Quantity Mismatch: \n"
+      , "- Expected type:  ", T.unpack $ prettyCtxElem a, "\n"
+      , "- Instead, found: ", T.unpack $ prettyCtxElem b, "\n"
+      , "With context:"
+      , T.unpack $ prettyCtx ctx
+      , "\n"
+      ]
+    TypeMismatch ctx a b -> concat
+      ["Type Mismatch: \n"
+      , "- Expected type:  ", T.unpack $ prettyCtxElem a, "\n"
+      , "- Instead, found: ", T.unpack $ prettyCtxElem b, "\n"
+      , "With context:"
+      , T.unpack $ prettyCtx ctx
+      , "\n"
+      ]
+    LambdaNonFunctionType ctx trm typ typ' -> concat
+      ["The type of a lambda must be a forall: \n"
+      , "  Checked term: ", T.unpack $ printHOAS trm,"\n"
+      , "  Against type: ", T.unpack $ printHOAS typ, "\n"
+      , "  Reduced type: ",  T.unpack $ printHOAS typ',"\n"
+      , "With context:"
+      , T.unpack $ prettyCtx ctx
+      , "\n"
+      ]
+    NonFunctionApplication ctx trm typ typ' -> concat
+      ["Tried to apply something that wasn't a lambda: \n"
+      , "  Checked term: ", T.unpack $ printHOAS trm,"\n"
+      , "  Against type: ", T.unpack $ printHOAS typ, "\n"
+      , "  Reduced type: ",  T.unpack $ printHOAS typ',"\n"
+      , "With context:"
+      , T.unpack $ prettyCtx ctx
+      , "\n"
+      ]
+    EmptyContext ctx   -> "Empty Context"
+    DerefError ctx name cid derefErr -> concat
+      ["Dereference error: \n"
+      , "Name: ", show name, "\n"
+      , "CID:  ", show cid, "\n"
+      , "Error:", show derefErr
+      , "With context:"
+      , T.unpack $ prettyCtx ctx
+      , "\n"
+      ]
+    CustomErr ctx txt -> concat
+      ["Custom Error:\n"
+      , T.unpack txt,"\n"
+      , "With context:"
+      , T.unpack $ prettyCtx ctx
+      , "\n"
+      ]
 
 check :: Ctx -> Uses -> HOAS -> HOAS -> Defs -> Except CheckErr Ctx
 check ctx ρ trm typ defs = case trm of
   LamH name ut termBody -> case whnf typ defs of
-    AllH _ _ π bind typeBody -> do
+    AllH s n π bind typeBody -> do
       maybe (pure ()) (\(φ,bind') -> do
-        unless (π == φ) (throwError (QuantityMismatch ctx π φ))
+        unless (π == φ)
+          (throwError (QuantityMismatch ctx (φ,name,bind') (π,n,bind)))
         unless (equal bind bind' defs (length ctx))
-          (throwError (TypeMismatch ctx bind bind'))
+          (throwError (TypeMismatch ctx (φ,name,bind') (π,n,bind)))
         pure ()) ut
       let var = VarH name (length ctx)
-      let ctx' = (ctx |> (None,bind))
+      let ctx' = (ctx |> (None,name,bind))
       ctx' <- check ctx' Once (termBody var) (typeBody trm var) defs
       case viewr ctx' of
         EmptyR -> throwError $ EmptyContext ctx
-        ctx :> (π', _) -> do
-          unless (π' ≤# π) (throwError (QuantityMismatch ctx π' π))
+        ctx :> (π',n',b') -> do
+          unless (π' ≤# π)
+            (throwError (QuantityMismatch ctx (π',n',b') (π,n,bind)))
           return $ multiplyCtx ρ ctx
-    x -> throwError $ LambdaNonFunctionType ctx trm x
+    x -> throwError $ LambdaNonFunctionType ctx trm typ x
   LetH name π exprType expr body -> do
     check ctx π expr exprType defs
     let var = VarH name (length ctx)
-    let ctx' = ctx |> (None, exprType)
+    let ctx' = ctx |> (None,name,exprType)
     ctx' <- check ctx' Once (body var) typ defs
     case viewr ctx' of
       EmptyR -> throwError $ EmptyContext ctx
-      ctx :> (π', _) -> do
-        unless (π' ≤# π) (throwError (QuantityMismatch ctx π' π))
+      ctx :> (π',n',b') -> do
+        unless (π' ≤# π)
+          (throwError (QuantityMismatch ctx (π',n',b') (π,name,exprType)))
         return $ multiplyCtx ρ (addCtx ctx ctx')
   FixH name body -> do
     let var = VarH name (length ctx)
-    let ctx' = (ctx |> (None,typ))
+    let ctx' = (ctx |> (None,name,typ))
     ctx' <- check ctx' ρ (body var) typ defs
     case viewr ctx' of
       EmptyR -> throwError $ EmptyContext ctx
-      ctx :> (π, _) -> do
+      ctx :> (π,_,_) -> do
         if π == None
           then return ctx
           else return $ multiplyCtx Many ctx
@@ -378,13 +446,13 @@ check ctx ρ trm typ defs = case trm of
     (ctx, infr) <- infer ctx ρ trm defs
     if equal typ infr defs (length ctx)
       then return ctx
-      else throwError (TypeMismatch ctx typ infr)
+      else throwError (TypeMismatch ctx (ρ,"",typ) (Many,"",infr))
 
 infer :: Ctx -> Uses -> HOAS -> Defs -> Except CheckErr (Ctx, HOAS)
 infer ctx ρ term defs = case term of
   VarH n idx -> do
-    let (_, typ) = Seq.index ctx idx
-    let ctx' = Seq.update idx (ρ, typ) ctx
+    let (_,_,typ) = Seq.index ctx idx
+    let ctx' = Seq.update idx (ρ,n,typ) ctx
     return (ctx', typ)
   RefH n c -> do
     let mapE = mapExcept (either (\e -> throwError $ DerefError ctx n c e) pure)
@@ -397,23 +465,24 @@ infer ctx ρ term defs = case term of
       AllH _ _ π bind body -> do
         ctx'' <- check ctx (ρ *# π) argm bind defs
         return (addCtx ctx' ctx'', body func argm)
-      x -> throwError $ NonFunctionApplication ctx func x
+      x -> throwError $ NonFunctionApplication ctx func funcType x
   AllH self name pi bind body -> do
     let self_var = VarH self $ length ctx
     let name_var = VarH name $ length ctx + 1
-    let ctx'     = ctx |> (None, term) |> (None, bind)
+    let ctx'     = ctx |> (None,self,term) |> (None,name,bind)
     check ctx  None bind (TypH) defs
     check ctx' None (body self_var name_var) (TypH) defs
     return (ctx, TypH)
   LetH name π exprType expr body -> do
     check ctx π expr exprType defs
     let exprVar = VarH name (length ctx)
-    let ctx' = ctx |> (None, exprType)
+    let ctx' = ctx |> (None, name,exprType)
     (ctx', typ) <- infer ctx' Once (body exprVar) defs
     case viewr ctx' of
       EmptyR                -> throwError (EmptyContext ctx)
-      ctx' :> (π', _) -> do
-        unless (π' ≤# π) (throwError (QuantityMismatch ctx π' π))
+      ctx' :> (π',n',b') -> do
+        unless (π' ≤# π)
+          (throwError (QuantityMismatch ctx (π',n',b') (π,name,exprType)))
         return (multiplyCtx ρ (addCtx ctx ctx'), typ)
   TypH -> return (ctx, TypH)
   _ -> throwError $ CustomErr ctx "can't infer type"
@@ -433,6 +502,8 @@ checkFile file = do
   let func :: (Name, CID) -> IO ()
       func (name, cid) = do
         case runExcept $ checkRef name cid defs of
-          Left  e -> putStrLn $ T.unpack $ T.concat [name, " ✗", " (", T.pack $ show e, ")"]
-          Right _ -> putStrLn $ T.unpack $ T.concat [name, " ✓"]
+          Left  e -> putStrLn $ T.unpack $ T.concat 
+            ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n", T.pack $ show e]
+          Right _ -> putStrLn $ T.unpack $ T.concat
+            ["\ESC[32m\STX✓\ESC[m\STX ",name]
   forM_ (M.toList $ _index defs) func

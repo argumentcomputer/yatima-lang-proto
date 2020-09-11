@@ -323,7 +323,7 @@ pLet :: Parser Term
 pLet = do
   symbol "let"
   use  <- pUses
-  (nam,typ,exp) <- pDecl True <* symbol ";"
+  (nam,exp,typ) <- pDecl True <* symbol ";"
   bdy <- bind [nam] $ pExpr False
   return $ Let nam use typ exp bdy
 
