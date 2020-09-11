@@ -1,9 +1,14 @@
 def Nat : Type =
   @self
-  ∀ (0 P : ∀ Nat -> Type)
-    (& zero : P (λ z s => z))
-    (& succ : ∀ (pred: Nat) -> (P (λ z s => s pred)))
+  ∀ (0 P : ∀ (_:Nat) -> Type)
+    (& zero : P (λ P z s => z))
+    (& succ : ∀ (pred: Nat) -> (P (λ P z s => s pred)))
     -> P self
+
+def Empty : Type =
+  @self
+  ∀ (P : ∀ Empty -> Type) ->
+    P self
 
 def zero : Nat
   = λ P z s => z
@@ -12,3 +17,25 @@ def succ (n : Nat) : Nat
   = λ P z s => s n
 
 def one : Nat = succ zero
+
+def id (A: Type) (x: A) : A = x
+def id1 (A: Type) (1 x: A) : A = x
+def idAff (A: Type) (& x: A) : A = x
+
+def fst (A: Type) (x : A) (y: A) : A
+  = x
+
+--def id_bad (A: Type) (0 x: A) : A = x
+
+
+def aff_bad' : Type
+  = let f : ∀ (_:Type) -> Type = λ (x : Type) => x;
+    Type
+
+def test (A: Type) (& x: A) (1 y: A) : A
+  = let f (& x : A) (1 y : A) : A = y;
+    f x y
+
+def bad (A: Type) (0 x: A) (1 y: A) : A
+  = let f : ∀ (0 x : A) (1 y : A) -> A = λ x y => y;
+    f x y
