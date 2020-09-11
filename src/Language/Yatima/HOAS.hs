@@ -10,6 +10,7 @@ Stability   : experimental
 module Language.Yatima.HOAS
   ( HOAS(..)
   --, findCtx
+  , checkFile
   , toHOAS
   , fromHOAS
   , LOAS(..)
@@ -28,6 +29,8 @@ import           Control.Monad.Identity
 import           Control.Monad.ST
 import           Control.Monad.ST.UnsafePerform
 
+import           Data.Map                   (Map)
+import qualified Data.Map                   as M
 import           Data.Sequence (Seq, ViewR ((:>), EmptyR), viewr, (|>))
 import qualified Data.Sequence as Seq
 import           Data.Set      (Set)
@@ -360,7 +363,16 @@ check ctx ρ trm typ defs = case trm of
       ctx :> (π', _) -> do
         unless (π' ≤# π) (throwError (QuantityMismatch ctx π' π))
         return $ multiplyCtx ρ (addCtx ctx ctx')
-  FixH n b -> check ctx ρ (b trm) typ defs
+  FixH name body -> do
+    let var = VarH name (length ctx)
+    let ctx' = (ctx |> (None,typ))
+    ctx' <- check ctx' ρ (body var) typ defs
+    case viewr ctx' of
+      EmptyR -> throwError $ EmptyContext ctx
+      ctx :> (π, _) -> do
+        if π == None
+          then return ctx
+          else return $ multiplyCtx Many ctx
   _ -> do
     (ctx, infr) <- infer ctx ρ trm defs
     if equal typ infr defs (length ctx)
@@ -375,20 +387,21 @@ infer ctx ρ term defs = case term of
     return (ctx', typ)
   RefH n c -> do
     let mapE = mapExcept (either (\e -> throwError $ DerefError ctx n c e) pure)
-    def <- mapE (deref n c defs)
-    trm <- mapE (defToHOAS n def defs)
-    return (ctx,trm)
+    metaDefCID <- mapE (indexLookup n defs)
+    (Def _ _ typ) <- mapE (derefDef n metaDefCID defs)
+    typ <- mapE (defToHOAS n typ defs)
+    return (ctx,typ)
   AppH func argm -> do
-    (ctx, funcType) <- infer ctx ρ func defs
+    (ctx', funcType) <- infer ctx ρ func defs
     case whnf funcType defs of
       AllH _ _ π bind body -> do
-        ctx' <- check ctx (ρ *# π) argm bind defs
-        return (addCtx ctx ctx', body func argm)
+        ctx'' <- check ctx (ρ *# π) argm bind defs
+        return (addCtx ctx' ctx'', body func argm)
       x -> throwError $ NonFunctionApplication ctx func x
   AllH self name pi bind body -> do
     let self_var = VarH self $ length ctx
     let name_var = VarH name $ length ctx + 1
-    let ctx'     = ctx |> (None, bind)
+    let ctx'     = ctx |> (None, term) |> (None, bind)
     check ctx  None bind (TypH) defs
     check ctx' None (body self_var name_var) (TypH) defs
     return (ctx, TypH)
@@ -404,3 +417,23 @@ infer ctx ρ term defs = case term of
         return (multiplyCtx ρ (addCtx ctx ctx'), typ)
   TypH -> return (ctx, TypH)
   _ -> throwError $ CustomErr ctx "can't infer type"
+
+checkRef :: Name -> CID -> Defs -> Except CheckErr ()
+checkRef name cid defs = do
+  let ctx = Seq.empty
+  let mapE = mapExcept (either (\e -> throwError $ DerefError ctx name cid e) pure)
+  def <- mapE $ derefDef name cid defs
+  trm <- mapE $ defToHOAS name (_term def) defs
+  typ <- mapE $ defToHOAS name (_type def) defs
+  check ctx Once trm typ defs
+  return ()
+
+checkFile :: FilePath -> IO ()
+checkFile file = do
+  defs <- pFile file
+  let func :: (Name, CID) -> IO ()
+      func (name, cid) = do
+        case runExcept $ checkRef name cid defs of
+          Left  e -> putStrLn $ T.unpack $ T.concat [name, " ✗", " (", T.pack $ show e, ")"]
+          Right _ -> putStrLn $ T.unpack $ T.concat [name, " ✓"]
+  forM_ (M.toList $ _index defs) func
