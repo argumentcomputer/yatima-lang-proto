@@ -250,6 +250,17 @@ normDef name file = do
   def   <- catchDerefErr (derefHOAS name cid defs)
   return $ norm def defs
 
+substFreeVar :: HOAS -> Int -> HOAS -> HOAS
+substFreeVar a i v = case a of
+    VarH n j              -> if i == j then v else a
+    LamH n (Just (u,t)) b -> LamH n (Just (u,substFreeVar t i v)) (\x -> substFreeVar (b x) i v)
+    LamH n Nothing b      -> LamH n Nothing (\x -> substFreeVar (b x) i v)
+    AppH f a              -> AppH (substFreeVar f i v) (substFreeVar a i v)
+    LetH n u t x b        -> LetH n u (substFreeVar t i v) (substFreeVar x i v) (\x -> substFreeVar (b x) i v)
+    AllH s n u t b        -> AllH s n u (substFreeVar t i v) (\s x -> substFreeVar (b s x) i v)
+    FixH n b              -> FixH n (\x -> substFreeVar (b x) i v)
+    _                     -> a
+
 ---- | Read, eval and print a `HOAS` from a file
 ----evalPrintFile :: FilePath -> IO ()
 ----evalPrintFile file = do
@@ -407,6 +418,16 @@ infer pre ρ term defs = case term of
     check pre  None bind (TypH) defs
     check pre' None (body self_var name_var) (TypH) defs
     return (pre, TypH)
+  LamH name (Just(π, bind)) termBody -> do
+    let var = VarH name (length pre)
+    let pre' = (pre |> (None,bind))
+    (ctx', typ) <- infer pre' Once (termBody var) defs
+    case viewr ctx' of
+      EmptyR -> throwError $ EmptyContext
+      ctx :> (π', _) -> do
+        unless (π' ≤# π) (throwError (QuantityMismatch pre' π' π))
+        let typeBody _ x = substFreeVar typ (length pre) x
+        return (multiplyCtx ρ ctx, AllH "" name π bind typeBody)
   LetH name π exprType expr body -> do
     ctx <- check pre π expr exprType defs
     let exprVar = VarH name (length pre)
