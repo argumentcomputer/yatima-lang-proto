@@ -173,14 +173,12 @@ defToHOAS name def ds = do
 
 -- | Pretty-print a `HOAS`
 printHOAS :: HOAS -> Text
---printHOAS = prettyTerm . termFromHOAS
-printHOAS = T.pack . show
+printHOAS = prettyTerm . termFromHOAS
 
 
 instance Show HOAS where
   --show t = show (anonymizeHOAS t 0)
-  show t = show (fromHOAS t 0)
-  --show t = T.unpack $ printHOAS t
+ show t = T.unpack $ printHOAS t
 
 derefHOAS :: Name -> CID -> Defs -> Except DerefErr HOAS
 derefHOAS name cid ds = do
@@ -511,7 +509,8 @@ infer pre ρ term defs = case term of
   LetH name π exprType expr body -> do
     exprCtx <- check pre π expr exprType defs
     let var = VarH name (length pre)
-    (bodyCtx, typ) <- infer (pre |> (None, name,exprType)) Once (body var) defs
+    let pre' = (pre |> (None, name,exprType))
+    (bodyCtx, typ) <- infer pre' Once (body var) defs
     case viewr bodyCtx of
       EmptyR                -> throwError EmptyContext
       bodyCtx' :> (π',n',b') -> do
@@ -524,14 +523,14 @@ infer pre ρ term defs = case term of
     return (ctx, typ)
   _ -> throwError $ CustomErr pre "can't infer type"
 
-checkRef :: Name -> CID -> Defs -> Except CheckErr ()
+checkRef :: Name -> CID -> Defs -> Except CheckErr HOAS
 checkRef name cid defs = do
   let ctx = Seq.empty
   let mapE = mapExcept (either (\e -> throwError $ DerefError ctx name cid e) pure)
   def  <- mapE $ derefMetaDefCID name cid defs
   (trm,typ) <- mapE $ defToHOAS name def defs
   check ctx Once trm typ defs
-  return ()
+  return typ
 
 checkFile :: FilePath -> IO ()
 checkFile file = do
@@ -541,6 +540,6 @@ checkFile file = do
         case runExcept $ checkRef name cid defs of
           Left  e -> putStrLn $ T.unpack $ T.concat 
             ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n", T.pack $ show e]
-          Right _ -> putStrLn $ T.unpack $ T.concat
-            ["\ESC[32m\STX✓\ESC[m\STX ",name]
+          Right t -> putStrLn $ T.unpack $ T.concat
+            ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHOAS t]
   forM_ (M.toList $ _index defs) func

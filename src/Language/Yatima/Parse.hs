@@ -283,7 +283,7 @@ bindAll bs = bind (foldr (\(s,n,_) ns -> s:n:ns) [] bs)
 
 pAll :: Parser Term
 pAll = do
-  self <- (try $ symbol "@" >> pName <* space) <|> return ""
+  self <- (symbol "@" >> pName <* space) <|> return ""
   symbol "∀" <|> symbol "all" <|> symbol "forall"
   bs   <- binders self <* space
   symbol "->"
@@ -346,8 +346,8 @@ pTerm = do
     [ pTyp
     , pLam
     , pAll
-    , pLet
     , pExpr True
+    , pLet
     , pVar
     ]
 
@@ -357,11 +357,18 @@ pExpr :: Bool -> Parser Term
 pExpr parens = do
   when parens (void $ symbol "(")
   fun  <- pTerm <* space
-  -- need to add `observing` to get the error from the `try $ pTerm`, and/or
-  -- need to manually unwrap the sepEndBy
-  args <- sepEndBy (try $ pTerm) space
+  args <- args
+  space
   when parens (void $ string ")")
   return $ foldl (\t a -> App t a) fun args
+  where 
+    args = next <|> (return [])
+    next :: Parser [Term]
+    next = do
+      notFollowedBy (void (symbol "def") <|> eof)
+      t  <- pTerm <* space
+      ts <- args
+      return (t:ts)
 
 -- | Parse a definition
 pDef :: Parser Def
