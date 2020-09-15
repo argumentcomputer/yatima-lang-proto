@@ -31,7 +31,7 @@ import           Control.Monad.ST.UnsafePerform
 
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
-import           Data.Sequence (Seq, ViewR ((:>), EmptyR), viewr, (|>))
+import           Data.Sequence (Seq, ViewL(..), ViewR(..), viewr, viewl, (|>), (<|))
 import qualified Data.Sequence as Seq
 import           Data.Set      (Set)
 import qualified Data.Set      as Set
@@ -101,6 +101,7 @@ data HOAS where
   AllH :: Name -> Name -> Uses -> HOAS -> (HOAS -> HOAS -> HOAS) -> HOAS
   TypH :: HOAS
   FixH :: Name -> (HOAS -> HOAS) -> HOAS
+  AnnH :: Int  -> HOAS -> HOAS -> HOAS
 
 -- | Find a term in a context
 findCtx :: Int -> [HOAS] -> Maybe HOAS
@@ -147,7 +148,7 @@ termFromHOAS :: HOAS -> Term
 termFromHOAS t = fromLOAS $ fromHOAS t 0
 
 anonymizeHOAS:: HOAS -> Int -> Anon
-anonymizeHOAS h dep = case h of
+anonymizeHOAS hoas dep = case hoas of
   VarH nam idx             -> VarA idx
   LamH nam ann bod         -> LamA (fmap go <$> ann) (unbind nam bod)
   AppH fun arg             -> AppA (go fun) (go arg)
@@ -156,6 +157,7 @@ anonymizeHOAS h dep = case h of
   AllH slf nam use typ bod -> AllA use (go typ) (unbind2 slf nam bod)
   TypH                     -> TypA
   FixH nam bod             -> unbind nam bod
+  AnnH _   trm _           -> go trm
   where
     go          t = anonymizeHOAS t                                 dep
     unbind    n b = anonymizeHOAS (b (VarH n dep))                  (dep + 1)
@@ -167,7 +169,6 @@ defToHOAS name def ds = do
   typ_ <- toLOAS (_type def) [name] ds
   let term' = FixH name (\s -> toHOAS term [s] 1)
   let typ_' = FixH name (\s -> toHOAS typ_ [s] 1)
---  let typ_' = FixH name (\s -> toHOAS typ_ [s] 1)
   return (term',typ_')
 
 -- | Pretty-print a `HOAS`
@@ -200,6 +201,7 @@ whnf trm defs = case trm of
   AppH fun arg       -> case go fun of
     LamH _ _ bod -> go (bod arg)
     x            -> AppH fun arg
+  AnnH _ a _   -> go a
   LetH _ _ _ exp bod -> go (bod exp)
   x                  -> x
   where
@@ -267,6 +269,23 @@ normDef name file = do
   def   <- catchDerefErr (derefHOAS name cid defs)
   return $ norm def defs
 
+substFreeVar :: HOAS -> Int -> HOAS -> HOAS
+substFreeVar a i v = case a of
+    VarH n j              -> if i == j then v else a
+    LamH n (Just (u,t)) b -> LamH n (Just (u,substFreeVar t i v)) (\x -> substFreeVar (b x) i v)
+    LamH n Nothing b      -> LamH n Nothing (\x -> substFreeVar (b x) i v)
+    AppH f a              -> AppH (substFreeVar f i v) (substFreeVar a i v)
+    LetH n u t x b        -> LetH n u (substFreeVar t i v) (substFreeVar x i v) (\x -> substFreeVar (b x) i v)
+    AllH s n u t b        -> AllH s n u (substFreeVar t i v) (\s x -> substFreeVar (b s x) i v)
+    FixH n b              -> FixH n (\x -> substFreeVar (b x) i v)
+    AnnH j b t            -> AnnH j (substFreeVar b i v) (substFreeVar t i v)
+    _                     -> a
+
+---- | Read, eval and print a `HOAS` from a file
+----evalPrintFile :: FilePath -> IO ()
+----evalPrintFile file = do
+----  term <- evalFile file
+----  putStrLn $ T.unpack $ printHOAS term
 
 -- * Type-checking
 
@@ -310,12 +329,6 @@ equal a b defs dep = runST $ top a b dep
        funEq <- go aFun bFun dep seen
        argEq <- go aArg bArg dep seen
        return $ funEq && argEq
-     (LetH _ _ _ aExp aBod, LetH _ _ _ bExp bBod) -> do
-       let aBod' = aBod aExp
-       let bBod' = bBod bExp
-       bodEq <- go aBod' bBod' (dep+1) seen
-       return $ bodEq
-     (FixH _ ab, FixH _ bb) -> go (ab a) (bb b) (dep+1) seen
      _ -> return False
 
 type Ctx = Seq (Uses,Name,HOAS)
@@ -337,13 +350,16 @@ prettyCtxElem (u,"",t) = T.concat [prettyUses u, " _: ", printHOAS t]
 prettyCtxElem (u,n,t)  = T.concat [prettyUses u , " ", n, ": ", printHOAS t]
 
 multiplyCtx :: Uses -> Ctx -> Ctx
-multiplyCtx rho ctx = fmap mul ctx
+multiplyCtx rho ctx = if rho == Once then ctx else fmap mul ctx
   where mul (pi, nam, typ) = (rho *# pi,nam,typ)
 
 -- Assumes both context are compatible (different only by quantities)
 addCtx :: Ctx -> Ctx -> Ctx
-addCtx ctx ctx' = Seq.zipWith add ctx ctx'
-  where add (pi, nam, typ) (pi',_,_) = (pi +# pi', nam,typ)
+addCtx ctx ctx' = case viewl ctx of
+  EmptyL          -> ctx'
+  (π, nam,typ) :< ctx -> case viewl ctx' of
+    EmptyL          -> (π,nam,typ) <| ctx
+    (π', _,_) :< ctx' -> (π +# π',nam,typ) <| addCtx ctx ctx'
 
 data CheckErr
   = QuantityMismatch Ctx (Uses,Name,HOAS) (Uses,Name,HOAS)
@@ -440,8 +456,10 @@ check pre ρ trm typ defs = case trm of
           (throwError (QuantityMismatch bodyCtx' (π',n',b') (π,name,exprType)))
         return $ multiplyCtx ρ (addCtx exprCtx bodyCtx')
   FixH name body -> do
-    let var = VarH name (length pre)
-    bodyCtx <- check (pre |> (None,name,typ)) ρ (body var) typ defs
+    let idx    = length pre
+    let var    = VarH name idx
+    let unroll = body (AnnH idx (FixH name body) typ)
+    bodyCtx <- check (pre |> (None,name,typ)) ρ unroll typ defs
     case viewr bodyCtx of
       EmptyR -> throwError $ EmptyContext
       bodyCtx' :> (π,_,_) -> do
@@ -479,6 +497,17 @@ infer pre ρ term defs = case term of
     let pre'     = pre |> (None,self,term) |> (None,name,bind)
     check pre' None (body self_var name_var) (TypH) defs
     return (pre, TypH)
+  LamH name (Just(π, bind)) termBody -> do
+    let var = VarH name (length pre)
+    let pre' = (pre |> (None,name,bind))
+    (ctx', typ) <- infer pre' Once (termBody var) defs
+    case viewr ctx' of
+      EmptyR -> throwError $ EmptyContext
+      ctx :> (π',n',b') -> do
+        unless (π' ≤# π) 
+          (throwError (QuantityMismatch pre' (π',n',b') (π,name,bind)))
+        let typeBody _ x = substFreeVar typ (length pre) x
+        return (multiplyCtx ρ ctx, AllH "" name π bind typeBody)
   LetH name π exprType expr body -> do
     exprCtx <- check pre π expr exprType defs
     let var = VarH name (length pre)
@@ -490,6 +519,9 @@ infer pre ρ term defs = case term of
           (throwError (QuantityMismatch bodyCtx' (π',n',b') (π,name,exprType)))
         return (multiplyCtx ρ (addCtx exprCtx bodyCtx'), typ)
   TypH -> return (pre, TypH)
+  AnnH idx val typ -> do
+    let ctx = Seq.update idx (ρ, "", typ) pre
+    return (ctx, typ)
   _ -> throwError $ CustomErr pre "can't infer type"
 
 checkRef :: Name -> CID -> Defs -> Except CheckErr ()
