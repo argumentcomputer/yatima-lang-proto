@@ -31,7 +31,7 @@ import           Control.Monad.ST.UnsafePerform
 
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
-import           Data.Sequence (Seq, ViewR ((:>), EmptyR), viewr, (|>))
+import           Data.Sequence (Seq, ViewL(..), ViewR(..), viewr, viewl, (|>), (<|))
 import qualified Data.Sequence as Seq
 import           Data.Set      (Set)
 import qualified Data.Set      as Set
@@ -99,6 +99,7 @@ data HOAS where
   AllH :: Name -> Name -> Uses -> HOAS -> (HOAS -> HOAS -> HOAS) -> HOAS
   TypH :: HOAS
   FixH :: Name -> (HOAS -> HOAS) -> HOAS
+  AnnH :: Int  -> HOAS -> HOAS -> HOAS
 
 -- | Find a term in a context
 findCtx :: Int -> [HOAS] -> Maybe HOAS
@@ -153,6 +154,7 @@ anonymizeHOAS h dep = case h of
   AllH s n u t b -> AllA u (go t) (unbind2 s n b)
   TypH           -> TypA
   FixH n b       -> unbind n b
+  AnnH _ a _     -> go a
   where
     go t          = anonymizeHOAS t dep
     unbind n b    = anonymizeHOAS (b (VarH n dep)) (dep + 1)
@@ -190,6 +192,7 @@ whnf t ds = case t of
     LamH _ _ b -> go (b a)
     x          -> AppH f a
   LetH n u t d b -> go (b d)
+  AnnH _ a _   -> go a
   x              -> x
   where
     go x = whnf x ds
@@ -259,6 +262,7 @@ substFreeVar a i v = case a of
     LetH n u t x b        -> LetH n u (substFreeVar t i v) (substFreeVar x i v) (\x -> substFreeVar (b x) i v)
     AllH s n u t b        -> AllH s n u (substFreeVar t i v) (\s x -> substFreeVar (b s x) i v)
     FixH n b              -> FixH n (\x -> substFreeVar (b x) i v)
+    AnnH j b t            -> AnnH j (substFreeVar b i v) (substFreeVar t i v)
     _                     -> a
 
 ---- | Read, eval and print a `HOAS` from a file
@@ -316,27 +320,21 @@ equal a b defs dep = runST $ top a b dep
        func_eq <- go af bf dep seen
        argm_eq <- go aa ba dep seen
        return $ func_eq && argm_eq
-     (LetH _ au at ax ab, LetH _ bu bt bx bb) -> do
-       let a1_body = ab ax
-       let b1_body = bb bx
-       let rig_eq  = au == bu
-       bind_eq <- go at bt dep seen
-       expr_eq <- go ax bx dep seen
-       body_eq <- go a1_body b1_body (dep+1) seen
-       return $ rig_eq && bind_eq && expr_eq && body_eq
-     (FixH _ ab, FixH _ bb) -> go (ab a) (bb b) (dep+1) seen
      _ -> return False
 
 type Ctx = Seq (Uses,HOAS)
 
 multiplyCtx :: Uses -> Ctx -> Ctx
-multiplyCtx rho ctx = fmap mul ctx
+multiplyCtx rho ctx = if rho == Once then ctx else fmap mul ctx
   where mul (pi, typ) = (rho *# pi, typ)
 
 -- Assumes both context are compatible (different only by quantities)
 addCtx :: Ctx -> Ctx -> Ctx
-addCtx ctx ctx' = Seq.zipWith add ctx ctx'
-  where add (pi, typ) (pi', _) = (pi +# pi', typ)
+addCtx ctx ctx' = case viewl ctx of
+  EmptyL          -> ctx'
+  (π, typ) :< ctx -> case viewl ctx' of
+    EmptyL          -> (π, typ) <| ctx
+    (π', _) :< ctx' -> (π +# π', typ) <| addCtx ctx ctx'
 
 data CheckErr
   = QuantityMismatch Ctx Uses Uses
@@ -377,9 +375,11 @@ check pre ρ trm typ defs = case trm of
         unless (π' ≤# π) (throwError (QuantityMismatch pre' π' π))
         return $ multiplyCtx ρ (addCtx ctx ctx')
   FixH name body -> do
-    let var = VarH name (length pre)
-    let pre' = (pre |> (None,typ))
-    ctx' <- check pre' ρ (body var) typ defs
+    let idx    = length pre
+    let var    = VarH name idx
+    let unroll = body (AnnH idx (FixH name body) typ)
+    let pre'   = pre |> (None,typ)
+    ctx' <- check pre' ρ unroll typ defs
     case viewr ctx' of
       EmptyR -> throwError $ EmptyContext
       ctx :> (π, _) -> do
@@ -394,7 +394,7 @@ check pre ρ trm typ defs = case trm of
 
 infer :: Ctx -> Uses -> HOAS -> Defs -> Except CheckErr (Ctx, HOAS)
 infer pre ρ term defs = case term of
-  VarH n idx -> do
+  VarH _ idx -> do
     let (_, typ) = Seq.index pre idx
     let ctx = Seq.update idx (ρ, typ) pre
     return (ctx, typ)
@@ -439,6 +439,9 @@ infer pre ρ term defs = case term of
         unless (π' ≤# π) (throwError (QuantityMismatch pre' π' π))
         return (multiplyCtx ρ (addCtx ctx ctx'), typ)
   TypH -> return (pre, TypH)
+  AnnH idx val typ -> do
+    let ctx = Seq.update idx (ρ, typ) pre
+    return (ctx, typ)
   _ -> throwError $ CustomErr pre "can't infer type"
 
 checkRef :: Name -> CID -> Defs -> Except CheckErr ()
