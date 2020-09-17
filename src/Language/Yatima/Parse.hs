@@ -248,15 +248,14 @@ foldLam body bs = foldr (\(n,ut) x -> Lam n ut x) body bs
 pLam :: Parser Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  bs   <- binders <* space
-  symbol "=>"
+  bs   <- binders
   body <- bind (fst <$> bs) (pExpr False)
   return $ foldLam body bs
   where
     binder  = pBinder True False
     binders = do
      b  <- binder <* space
-     bs <- bind (fst <$> b) $ ((try binders) <|> return [])
+     bs <- bind (fst <$> b) $ ((symbol "=> " >> return []) <|> binders)
      return $ b ++ bs
 
 foldAll :: Term -> [(Name, Name, Maybe (Uses, Term))] -> Term
@@ -270,7 +269,6 @@ pAll = do
   self <- (symbol "@" >> (pName True) <* space) <|> return ""
   symbol "∀" <|> symbol "all" <|> symbol "forall"
   bs   <- binders self <* space
-  symbol "->"
   body <- bindAll bs (pExpr False)
   return $ foldAll body bs
   where
@@ -279,7 +277,7 @@ pAll = do
     binders self = do
      ((n,ut):ns)  <- binder <* space
      let b  = ((self,n,ut) : ((\(n,ut) -> ("",n,ut)) <$> ns))
-     bs <- bindAll b $ ((try $ binders "") <|> return [])
+     bs <- bindAll b $ ((symbol "->" >> return []) <|> binders "")
      return $ b ++ bs
 
 pDecl :: Bool -> Parser (Name, Term, Term)
@@ -288,9 +286,9 @@ pDecl shadow = do
   index   <- asks _index
   when (not shadow && M.member nam index)
     (customFailure $ TopLevelRedefinition nam)
-  bs      <- (try binders <|> return []) <* space
+  bs      <- ((symbol ":" >> return []) <|> binders)
   let ns  = nam:(fst <$> bs)
-  typBody <- symbol ":" >> bind ns (pExpr False)
+  typBody <- bind ns (pExpr False)
   let typ = foldAll typBody ((\(n,ut) -> ("",n,ut)) <$> bs)
   expBody <- symbol "=" >> bind ns (pExpr False)
   let exp = foldLam expBody bs
@@ -299,7 +297,7 @@ pDecl shadow = do
     binder  = pBinder False False
     binders = do
      b  <- binder <* space
-     bs <- bind (fst <$> b) $ ((try binders) <|> return [])
+     bs <- bind (fst <$> b) $ ((symbol ":" >> return []) <|> binders)
      return $ b ++ bs
 
 -- | Parse a local, possibly recursive, definition
@@ -379,7 +377,7 @@ pInsertDef def = do
 
 -- | Parse a sequence of definitions, e.g. in a file
 pDefs :: Parser Index
-pDefs = (try $ space >> next) <|> (space >> eof >> asks _index)
+pDefs = (space >> next) <|> (space >> eof >> asks _index)
   where
   next = do
     def  <- pDef
@@ -449,6 +447,7 @@ pImports = next <|> (([],) <$> asks _index)
 
 pPackage :: Parser Package
 pPackage = do
+  space
   doc     <- maybe "" id <$> (optional $ pDoc)
   title   <- symbol "package" >> pPackageName <* space
   (imports, index) <- pImports <* space

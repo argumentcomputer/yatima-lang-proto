@@ -1,3 +1,5 @@
+package test where
+
 --let type : Type
 --  = Type;
 --
@@ -16,6 +18,7 @@
 --let & affineLet : Type = Type;
 --let 1 linearLet : Type = Type;
 
+
 def id (A: Type) (x: A) : A = x
 def id1 (A: Type) (1 x: A) : A = x
 def idAff (A: Type) (& x: A) : A = x
@@ -31,9 +34,10 @@ def aff_bad' : Type
     Type
 
 def test (A: Type) (& x: A) (1 y: A) : A
-  = let f (& x : A) (1 y : A) -> A = y;
+  = let f (& x : A) (1 y : A) : A = y;
     f x y
 
 def bad (A: Type) (0 x: A) (1 y: A) : A
   = let f : ∀ (0 x : A) (1 y : A) -> A = λ x y => y;
     f x y
+
