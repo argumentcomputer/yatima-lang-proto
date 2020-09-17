@@ -23,6 +23,7 @@ library:
     - Language.Yatima.Parse
     - Language.Yatima.HOAS
     - Language.Yatima.IPFS
+    - Language.Yatima
 
   dependencies:
     - base >= 4.7 && < 5

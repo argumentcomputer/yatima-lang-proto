@@ -29,6 +29,7 @@ library
       Language.Yatima.HOAS
       Language.Yatima.IPFS
   other-modules:
+      Language.Yatima
       Paths_yatima
   hs-source-dirs:
       src

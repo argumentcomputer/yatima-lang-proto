@@ -63,7 +63,9 @@ toLOAS trm ctx index cache = case trm of
     case find nam ctx of
       Just idx -> return $ VarL nam idx
       _        -> throwError $ FreeVariable nam ctx
-  Ref nam                 -> RefL nam <$> anonymizeRef nam index cache
+  Ref nam                 -> do
+    (_,a) <- separateRef nam index cache
+    return $ RefL nam a
   Lam nam ann bod         ->
     case ann of
       Just (use,typ) -> LamL nam <$> (Just . (use,) <$> go typ) <*> bind nam bod

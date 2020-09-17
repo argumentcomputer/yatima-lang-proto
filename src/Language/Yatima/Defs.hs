@@ -12,10 +12,10 @@ module Language.Yatima.Defs
   , Index
   , Cache
   , anonymize
+  , separateRef
   , separateMeta
   , mergeMeta
   , find
-  , anonymizeRef
   , deserial
   , deref
   , derefMetaDef
@@ -34,6 +34,9 @@ import           Data.IntMap                (IntMap)
 import qualified Data.IntMap                as IM
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
+import           Data.List                  (sortBy)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
 import qualified Data.ByteString.Lazy       as BSL
@@ -56,7 +59,7 @@ import           Language.Yatima.Term
 data Package = Package
   { _title   :: Name
   , _descrip :: Text
-  , _imports :: [CID] -- links to packages
+  , _imports :: Set CID -- links to packages
   , _packInd :: Index -- links to MetaDefs
   } deriving (Show, Eq)
 
@@ -87,7 +90,7 @@ writeCache c = void $ M.traverseWithKey go c
       unless exists (BS.writeFile file bs)
 
 emptyPackage :: Name -> Package
-emptyPackage n = Package n "" [] M.empty
+emptyPackage n = Package n "" Set.empty M.empty
 
 -- | An anonymized `Def`
 data AnonDef = AnonDef
@@ -157,32 +160,32 @@ decodeCtor err field ns = do
 encodeAnon :: Anon -> Encoding
 encodeAnon term = case term of
   VarA idx             -> encodeMapLen 2
-                          <> (encodeString "$0" <> encodeString "Var")
-                          <> (encodeString "$1" <> encodeInt      idx)
+                          <> (encodeString "0$ctor" <> encodeString "Var")
+                          <> (encodeString "1$indx" <> encodeInt     idx)
   RefA cid             -> encodeMapLen 2
-                          <> (encodeString "$0" <> encodeString "Ref")
-                          <> (encodeString "$1" <> encodeCID     cid)
+                          <> (encodeString "0$ctor" <> encodeString "Ref")
+                          <> (encodeString "1$link" <> encodeCID     cid)
   LamA typ bdy         -> encodeMapLen 3
-                          <> (encodeString "$0" <> encodeString "Lam")
-                          <> (encodeString "$1" <> encodeMaybeTyp typ)
-                          <> (encodeString "$2" <> encodeAnon bdy)
+                          <> (encodeString "0$ctor" <> encodeString "Lam")
+                          <> (encodeString "1$annt" <> encodeMaybeTyp typ)
+                          <> (encodeString "2$body" <> encodeAnon bdy)
   AppA fun arg         -> encodeMapLen 3
-                          <> (encodeString "$0" <> encodeString "App")
-                          <> (encodeString "$1" <> encodeAnon    fun)
-                          <> (encodeString "$2" <> encodeAnon    arg)
+                          <> (encodeString "0$ctor" <> encodeString "App")
+                          <> (encodeString "1$func" <> encodeAnon    fun)
+                          <> (encodeString "2$argm" <> encodeAnon    arg)
   LetA use typ exp bdy -> encodeMapLen 5
-                          <> (encodeString "$0" <> encodeString "Let")
-                          <> (encodeString "$1" <> encodeInt (fromEnum use))
-                          <> (encodeString "$2" <> encodeAnon typ)
-                          <> (encodeString "$3" <> encodeAnon exp)
-                          <> (encodeString "$4" <> encodeAnon bdy)
+                          <> (encodeString "0$ctor" <> encodeString "Let")
+                          <> (encodeString "1$uses" <> encodeInt (fromEnum use))
+                          <> (encodeString "2$type" <> encodeAnon typ)
+                          <> (encodeString "3$expr" <> encodeAnon exp)
+                          <> (encodeString "4$body" <> encodeAnon bdy)
   AllA use typ bdy     -> encodeMapLen 4
-                          <> (encodeString "$0" <> encodeString "All")
-                          <> (encodeString "$1" <> encodeInt (fromEnum use))
-                          <> (encodeString "$2" <> encodeAnon typ)
-                          <> (encodeString "$3" <> encodeAnon bdy)
+                          <> (encodeString "0$ctor" <> encodeString "All")
+                          <> (encodeString "1$uses" <> encodeInt (fromEnum use))
+                          <> (encodeString "2$type" <> encodeAnon typ)
+                          <> (encodeString "3$body" <> encodeAnon bdy)
   TypA                  -> encodeMapLen 1
-                          <> (encodeString "$0" <> encodeString "Typ")
+                          <> (encodeString "0$ctor" <> encodeString "Typ")
 
 encodeMaybeTyp :: Maybe (Uses,Anon) -> Encoding
 encodeMaybeTyp Nothing      = encodeListLen 0
@@ -196,35 +199,35 @@ decodeAnon = do
   size <- decodeMapLen
   case size of
     1 -> do
-      ctor <- decodeCtor "Anon" "$0" ["Typ"]
+      ctor <- decodeCtor "Anon" "0$ctor" ["Typ"]
       case ctor of
         "Typ" -> return TypA
         _ -> fail $ "invalid ctor: " ++ T.unpack ctor
     2 -> do
-      ctor <- decodeCtor "Anon" "$0" ["Var", "Ref"]
+      ctor <- decodeCtor "Anon" "0$ctor" ["Var", "Ref"]
       case ctor of
-        "Var" -> VarA <$> decodeField "Var" "$1" decodeInt
-        "Ref" -> RefA <$> decodeField "Ref" "$1" decodeCID
+        "Var" -> VarA <$> decodeField "Var" "1$indx" decodeInt
+        "Ref" -> RefA <$> decodeField "Ref" "1$link" decodeCID
     3 -> do
-      ctor <- decodeCtor "Anon" "$0" ["App", "Lam"]
+      ctor <- decodeCtor "Anon" "0$ctor" ["App", "Lam"]
       case ctor of
-        "App" -> AppA <$> decodeField "App" "$1" decodeAnon
-                      <*> decodeField "App" "$2" decodeAnon
-        "Lam" -> LamA <$> decodeField "Lam" "$1" decodeMaybeTyp
-                      <*> decodeField "Lam" "$2" decodeAnon
+        "App" -> AppA <$> decodeField "App" "1$func" decodeAnon
+                      <*> decodeField "App" "2$argm" decodeAnon
+        "Lam" -> LamA <$> decodeField "Lam" "1$annt" decodeMaybeTyp
+                      <*> decodeField "Lam" "2$body" decodeAnon
     4 -> do
-      ctor <- decodeCtor "Anon" "$0" ["All", "Op2", "Ite"]
+      ctor <- decodeCtor "Anon" "0$ctor" ["All"]
       case ctor of
-        "All" -> AllA <$> decodeField "All" "$1" decodeUses
-                      <*> decodeField "All" "$2" decodeAnon
-                      <*> decodeField "All" "$3" decodeAnon
+        "All" -> AllA <$> decodeField "All" "1$uses" decodeUses
+                      <*> decodeField "All" "2$type" decodeAnon
+                      <*> decodeField "All" "3$body" decodeAnon
     5 -> do
-      ctor <- decodeCtor "Anon" "$0" ["Let"]
+      ctor <- decodeCtor "Anon" "0$ctor" ["Let"]
       case ctor of
-        "Let" -> LetA <$> decodeField "Let" "$1" decodeUses
-                      <*> decodeField "Let" "$2" decodeAnon
-                      <*> decodeField "Let" "$3" decodeAnon
-                      <*> decodeField "Let" "$4" decodeAnon
+        "Let" -> LetA <$> decodeField "Let" "1$uses" decodeUses
+                      <*> decodeField "Let" "2$type" decodeAnon
+                      <*> decodeField "Let" "3$expr" decodeAnon
+                      <*> decodeField "Let" "4$body" decodeAnon
     _ -> fail "invalid map size"
 
 -- | `Uses` is an `Enum` instance, but we define a separate decoding function
@@ -284,16 +287,16 @@ decodeMetaMap = do
 -- standard cborg map encoding.
 encodeMeta :: Meta -> Encoding
 encodeMeta (Meta ns) = encodeMapLen 2
-    <> (encodeString "$0" <> encodeString "Meta")
-    <> (encodeString "$1" <> encodeMetaMap ns)
+    <> (encodeString "0$ctor" <> encodeString "Meta")
+    <> (encodeString "1$data" <> encodeMetaMap ns)
 
 -- | Decode an `Encoding` generate by `encodeMeta`
 decodeMeta :: Decoder s Meta
 decodeMeta = do
   size  <- decodeMapLen
   failM (size /= 2) ["invalid map size: ", T.pack $ show size]
-  decodeCtor "Meta" "$0" ["Meta"]
-  ns <- decodeField "Meta" "$1" decodeMetaMap
+  decodeCtor "Meta" "0$ctor" ["Meta"]
+  ns <- decodeField "Meta" "1$data" decodeMetaMap
   return $ Meta ns
 
 instance Serialise Meta where
@@ -302,19 +305,19 @@ instance Serialise Meta where
 
 encodeAnonDef :: AnonDef -> Encoding
 encodeAnonDef (AnonDef termAnon typeAnon ) = encodeMapLen 3
-  <> (encodeString "$0" <> encodeString "AnonDef")
-  <> (encodeString "$1" <> encodeCID  termAnon)
-  <> (encodeString "$2" <> encodeCID  typeAnon)
+  <> (encodeString "0$ctor" <> encodeString "AnonDef")
+  <> (encodeString "1$term" <> encodeCID  termAnon)
+  <> (encodeString "2$type" <> encodeCID  typeAnon)
 
 decodeAnonDef :: Decoder s AnonDef
 decodeAnonDef = do
   size     <- decodeMapLen
   failM (size /= 3) ["invalid map size: ", T.pack $ show size]
 
-  decodeCtor "AnonDef" "$0" ["AnonDef"]
+  decodeCtor "AnonDef" "0$ctor" ["AnonDef"]
 
-  termAnon <- decodeField "AnonDef" "$1" decodeCID
-  typeAnon <- decodeField "AnonDef" "$2" decodeCID
+  termAnon <- decodeField "AnonDef" "1$term" decodeCID
+  typeAnon <- decodeField "AnonDef" "2$type" decodeCID
 
   return $ AnonDef termAnon typeAnon
 
@@ -324,23 +327,23 @@ instance Serialise AnonDef where
 
 encodeMetaDef :: MetaDef -> Encoding
 encodeMetaDef (MetaDef anonDef doc termMeta typeMeta ) = encodeMapLen 5
-  <> (encodeString "$0" <> encodeString "MetaDef")
-  <> (encodeString "$1" <> encodeCID   anonDef)
-  <> (encodeString "$2" <> encodeString doc)
-  <> (encodeString "$3" <> encodeMeta  termMeta)
-  <> (encodeString "$4" <> encodeMeta  typeMeta)
+  <> (encodeString "0$ctor" <> encodeString "MetaDef")
+  <> (encodeString "1$anon" <> encodeCID   anonDef)
+  <> (encodeString "2$docu" <> encodeString doc)
+  <> (encodeString "3$term" <> encodeMeta  termMeta)
+  <> (encodeString "4$type" <> encodeMeta  typeMeta)
 
 decodeMetaDef :: Decoder s MetaDef
 decodeMetaDef = do
   size     <- decodeMapLen
   failM (size /= 5) ["invalid map size: ", T.pack $ show size]
 
-  decodeCtor "MetaDef" "$0" ["MetaDef"]
+  decodeCtor "MetaDef" "0$ctor" ["MetaDef"]
 
-  anonDef  <- decodeField "MetaDef" "$1" decodeCID
-  doc      <- decodeField "MetaDef" "$2" decodeString
-  termMeta <- decodeField "MetaDef" "$3" decodeMeta
-  typeMeta <- decodeField "MetaDef" "$4" decodeMeta
+  anonDef  <- decodeField "MetaDef" "1$anon" decodeCID
+  doc      <- decodeField "MetaDef" "2$docu" decodeString
+  termMeta <- decodeField "MetaDef" "3$term" decodeMeta
+  typeMeta <- decodeField "MetaDef" "4$type" decodeMeta
 
   return $ MetaDef anonDef doc termMeta typeMeta
 
@@ -348,25 +351,52 @@ instance Serialise MetaDef where
   encode = encodeMetaDef
   decode = decodeMetaDef
 
+encodeImports :: Set CID -> Encoding
+encodeImports is = encodeListLen (fromIntegral $ Set.size is)
+  <> foldr (\v r -> encodeCID v <> r) mempty is
+
+decodeImports :: Decoder s (Set CID)
+decodeImports = do
+  size <- decodeListLen
+  Set.fromList <$> replicateM size decodeCID
+
+encodeIndex :: Index -> Encoding
+encodeIndex i = encodeMapLen (fromIntegral $ M.size i) <> foldr go mempty i'
+  where
+    i' = sortBy cmp (M.toList i)
+    go = (\(k,v) r -> encodeString k <> encodeCID v <> r)
+    cmp  (k1,_) (k2,_) = cborCanonicalOrder (serialise k1) (serialise k2)
+
+cborCanonicalOrder :: BSL.ByteString -> BSL.ByteString -> Ordering
+cborCanonicalOrder x y
+  | BSL.length x < BSL.length y = LT
+  | BSL.length y > BSL.length x = GT
+  | otherwise = compare x y
+
+decodeIndex :: Decoder s Index
+decodeIndex = do
+  size  <- decodeMapLen
+  M.fromList <$> replicateM size ((,) <$> decodeString <*> decodeCID)
+
 encodePackage :: Package -> Encoding
 encodePackage package = encodeMapLen 5
-  <> (encodeString "$0" <> encodeString ("Package" :: Text))
-  <> (encodeString "$1" <> encodeString (_title   package))
-  <> (encodeString "$2" <> encodeString (_descrip package))
-  <> (encodeString "$3" <> encode (_imports package))
-  <> (encodeString "$4" <> encode (_packInd package))
+  <> (encodeString "0$ctor" <> encodeString  ("Pack" :: Text))
+  <> (encodeString "1$name" <> encodeString  (_title   package))
+  <> (encodeString "2$desc" <> encodeString  (_descrip package))
+  <> (encodeString "3$impt" <> encodeImports (_imports package))
+  <> (encodeString "4$defs" <> encodeIndex   (_packInd package))
 
 decodePackage :: Decoder s Package
 decodePackage = do
   size     <- decodeMapLen
   failM (size /= 5) ["invalid map size: ", T.pack $ show size]
 
-  decodeCtor "Package" "$0" ["Package"]
+  decodeCtor "Pack" "0$ctor" ["Pack"]
 
-  title    <- decodeField "Package" "$1" decodeString
-  descrip  <- decodeField "Package" "$2" decodeString
-  imports  <- decodeField "Package" "$3" decode
-  index    <- decodeField "Package" "$4" decode
+  title    <- decodeField "Pack" "1$name" decodeString
+  descrip  <- decodeField "Pack" "2$desc" decodeString
+  imports  <- decodeField "Pack" "3$impt" decodeImports
+  index    <- decodeField "Pack" "4$defs" decodeIndex
 
   return $ Package title descrip imports index
 
@@ -410,11 +440,11 @@ deserial cid cache = do
   bytes <- cacheLookup cid cache
   either (throwError . NoDeserial) return (deserialiseOrFail $ BSL.fromStrict bytes)
 
-anonymizeRef :: Name -> Index -> Cache -> Except DerefErr CID
-anonymizeRef n index cache = do
+separateRef :: Name -> Index -> Cache -> Except DerefErr (CID,CID)
+separateRef n index cache = do
   cid     <- indexLookup n index
   metaDef <- deserial @MetaDef cid cache
-  return (_anonDef metaDef)
+  return (cid, _anonDef metaDef)
 
 -- | Anonymize a term
 anonymize :: Name -> Term -> Index -> Cache -> Except DerefErr Anon
@@ -425,7 +455,9 @@ anonymize n t index cache = go t [n]
       Var n                 -> case find n ctx of
         Just i -> return $ VarA i
         _      -> throwError $ FreeVariable n ctx
-      Ref n                 -> RefA <$> anonymizeRef n index cache
+      Ref n                 -> do
+        (_,c) <- separateRef n index cache
+        return $ RefA c
       Lam n (Just (u,t)) b  -> do
         t' <- go t ctx
         b' <- go b (n:ctx)
@@ -494,8 +526,8 @@ separateMeta n t index cache = do
           Just i -> return $ VarA i
           _      -> throwError $ FreeVariable n ctx
       Ref n     -> do
-        c <- liftEither . runExcept $ anonymizeRef n index cache
-        entry (n,Just c) >> bump >> return (RefA c)
+        (metaCID, anonCID) <- liftEither . runExcept $ separateRef n index cache
+        entry (n,Just metaCID) >> bump >> return (RefA anonCID)
       Lam n (Just (u,t)) b  -> do
         bind n >> bump
         t' <- go t ctx

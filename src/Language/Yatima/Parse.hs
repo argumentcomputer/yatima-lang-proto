@@ -456,7 +456,7 @@ pPackage = do
     (customFailure $ MisnamedPackageFile sn title)
   when (title /= "") (void $ symbol "where")
   index <- local (\e -> e { _index = index }) pDefs
-  return $ Package title doc imports index
+  return $ Package title doc (Set.fromList imports) index
 
 -- | Parse a file
 pFile :: FilePath -> FilePath -> IO (CID,Package)

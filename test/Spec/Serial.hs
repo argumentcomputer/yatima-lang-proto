@@ -125,5 +125,6 @@ spec = do
     it "Anon" $ property $ prop_serial @Anon
     it "AnonDef" $ property $ prop_serial @AnonDef
     it "MetaDef" $ property $ prop_serial @MetaDef
+    it "Package" $ property $ prop_serial @Package
   describe "Checking metadata separation correctness" $
     it "x == merge (separate x)" $ property prop_separate

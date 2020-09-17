@@ -11,6 +11,7 @@ module Language.Yatima.CID
   , makeCID
   , cidFromText
   , cidToText
+  , printCIDBase32
   ) where
 
 import qualified Data.ByteString.Multibase  as MB
@@ -79,4 +80,7 @@ mkCborCIDv1 alg a = CID.newCidV1 CID.DagCbor (hashLazyWith alg (serialise a))
 
 makeCID :: Serialise a => a -> CID
 makeCID a = mkCborCIDv1 C.Blake2b_256 a
+
+printCIDBase32 :: CID -> ByteString
+printCIDBase32 c = cidToBase BaseN.Base32 c
 
