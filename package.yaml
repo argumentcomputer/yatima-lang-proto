@@ -89,3 +89,44 @@ executables:
       - TypeApplications
       - ScopedTypeVariables
 
+tests:
+  spec:
+    main:                Spec.hs
+    source-dirs:
+      - test
+    #ghc-options:
+    #- -threaded
+    #- -rtsopts
+    #- -with-rtsopts=-N
+    dependencies:
+      - base
+      - yatima
+      - megaparsec
+      - containers
+      - transformers
+      - mtl
+      - text
+      - vector
+      - unsafeperformst
+      - hspec
+      - QuickCheck
+      - quickcheck-instances
+      - raw-strings-qq
+      - bytestring
+      - multibase
+      - ipld-cid
+      - serialise
+      - cborg
+      - cryptonite
+      - multihash-cryptonite
+      - base16-bytestring
+    default-extensions:
+      - OverloadedStrings
+      - GADTSyntax
+      - StandaloneDeriving
+      - MultiWayIf
+      - TypeApplications
+      - ScopedTypeVariables
+    other-modules:
+      - Spec.Serial
+

@@ -66,3 +66,5 @@ runBlockGet cid_txt = do
   S.withClientM (blockGet cid_txt) env $ \e -> case e of
     Left err -> putStrLn $ "Error: " ++ show err
     Right rs -> foreach fail print rs
+
+

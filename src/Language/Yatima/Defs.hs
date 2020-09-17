@@ -114,6 +114,7 @@ data Anon where
   TypA :: Anon
 
 deriving instance Show Anon
+deriving instance Eq Anon
 
 -- | A `Term`'s metadata
 data Meta = Meta
@@ -300,7 +301,7 @@ instance Serialise AnonDef where
   decode = decodeAnonDef
 
 encodeMetaDef :: MetaDef -> Encoding
-encodeMetaDef (MetaDef anonDef doc termMeta typeMeta ) = encodeMapLen 4
+encodeMetaDef (MetaDef anonDef doc termMeta typeMeta ) = encodeMapLen 5
   <> (encodeString "$0" <> encodeString "MetaDef")
   <> (encodeString "$1" <> encodeCID   anonDef)
   <> (encodeString "$2" <> encodeString doc)
@@ -310,7 +311,7 @@ encodeMetaDef (MetaDef anonDef doc termMeta typeMeta ) = encodeMapLen 4
 decodeMetaDef :: Decoder s MetaDef
 decodeMetaDef = do
   size     <- decodeMapLen
-  failM (size /= 4) ["invalid map size: ", T.pack $ show size]
+  failM (size /= 5) ["invalid map size: ", T.pack $ show size]
 
   decodeCtor "MetaDef" "$0" ["MetaDef"]
 
@@ -327,9 +328,9 @@ instance Serialise MetaDef where
 
 encodePackage :: Package -> Encoding
 encodePackage package = encodeMapLen 5
-  <> (encodeString "$0" <> encode ("Package" :: Text))
-  <> (encodeString "$1" <> encode (_title   package))
-  <> (encodeString "$2" <> encode (_descrip package))
+  <> (encodeString "$0" <> encodeString ("Package" :: Text))
+  <> (encodeString "$1" <> encodeString (_title   package))
+  <> (encodeString "$2" <> encodeString (_descrip package))
   <> (encodeString "$3" <> encode (_imports package))
   <> (encodeString "$4" <> encode (_packInd package))
 
@@ -340,8 +341,8 @@ decodePackage = do
 
   decodeCtor "Package" "$0" ["Package"]
 
-  title    <- decodeField "Package" "$1" decode
-  descrip  <- decodeField "Package" "$2" decode
+  title    <- decodeField "Package" "$1" decodeString
+  descrip  <- decodeField "Package" "$2" decodeString
   imports  <- decodeField "Package" "$3" decode
   index    <- decodeField "Package" "$4" decode
 

@@ -75,3 +75,35 @@ executable yide
     , text
     , yatima
   default-language: Haskell2010
+
+test-suite spec
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Spec.Serial
+  hs-source-dirs:
+      test
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
+  build-depends:
+      QuickCheck
+    , base
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , containers
+    , cryptonite
+    , hspec
+    , ipld-cid
+    , megaparsec
+    , mtl
+    , multibase
+    , multihash-cryptonite
+    , quickcheck-instances
+    , raw-strings-qq
+    , serialise
+    , text
+    , transformers
+    , unsafeperformst
+    , vector
+    , yatima
+  default-language: Haskell2010
