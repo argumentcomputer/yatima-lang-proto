@@ -37,6 +37,7 @@ import qualified Data.Map                   as M
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
 import qualified Data.ByteString.Lazy       as BSL
+import qualified Data.ByteString            as BS
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -60,7 +61,7 @@ data Package = Package
   } deriving (Show, Eq)
 
 type Index = Map Name CID
-type Cache = Map CID BSL.ByteString
+type Cache = Map CID BS.ByteString
 
 readCache :: IO Cache
 readCache = do
@@ -68,9 +69,9 @@ readCache = do
   ns <- listDirectory ".yatima/cache"
   M.fromList <$> traverse go ns
   where
-    go :: FilePath -> IO (CID, BSL.ByteString)
+    go :: FilePath -> IO (CID, BS.ByteString)
     go f = do
-      bs <- BSL.readFile (".yatima/cache/" ++ f)
+      bs <- BS.readFile (".yatima/cache/" ++ f)
       case cidFromText (T.pack f) of
         Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ f ++ ", " ++ e
         Right c -> return (c,bs)
@@ -78,12 +79,12 @@ readCache = do
 writeCache :: Cache -> IO ()
 writeCache c = void $ M.traverseWithKey go c
   where
-    go :: CID -> BSL.ByteString -> IO ()
+    go :: CID -> BS.ByteString -> IO ()
     go c bs = do
       createDirectoryIfMissing True ".yatima/cache"
       let file = (".yatima/cache/" ++ (T.unpack $ cidToText c))
       exists <- doesFileExist file
-      unless exists (BSL.writeFile file bs)
+      unless exists (BS.writeFile file bs)
 
 emptyPackage :: Name -> Package
 emptyPackage n = Package n "" [] M.empty
@@ -378,13 +379,13 @@ find n cs = go n cs 0
 indexLookup :: Name -> Index -> Except DerefErr CID
 indexLookup n d = maybe (throwError $ NotInIndex n) pure (d M.!? n)
 
-cacheLookup :: CID -> Cache -> Except DerefErr BSL.ByteString
+cacheLookup :: CID -> Cache -> Except DerefErr BS.ByteString
 cacheLookup c d = maybe (throwError $ NotInCache c) pure (d M.!? c)
 
 deserial :: Serialise a => CID -> Cache -> Except DerefErr a
 deserial cid cache = do
   bytes <- cacheLookup cid cache
-  either (throwError . NoDeserial) return (deserialiseOrFail bytes)
+  either (throwError . NoDeserial) return (deserialiseOrFail $ BSL.fromStrict bytes)
 
 anonymizeRef :: Name -> Index -> Cache -> Except DerefErr CID
 anonymizeRef n index cache = do
@@ -556,13 +557,13 @@ insertDef (Def name doc term typ_) index cache = do
   let anonDefCID  = makeCID anonDef :: CID
   let metaDef     = MetaDef anonDefCID doc termMeta typeMeta
   let metaDefCID  = makeCID metaDef :: CID
-  let cache'      = M.insert metaDefCID  (serialise metaDef)  $
-                    M.insert anonDefCID  (serialise anonDef)  $
-                    M.insert typeAnonCID (serialise typeAnon) $
-                    M.insert termAnonCID (serialise termAnon) $
+  let cache'      = M.insert metaDefCID  (BSL.toStrict $ serialise metaDef)  $
+                    M.insert anonDefCID  (BSL.toStrict $ serialise anonDef)  $
+                    M.insert typeAnonCID (BSL.toStrict $ serialise typeAnon) $
+                    M.insert termAnonCID (BSL.toStrict $ serialise termAnon) $
                     cache
   return $ (metaDefCID,cache')
 
 insertPackage :: Package -> Cache -> (CID,Cache)
 insertPackage p cache = let pCID = makeCID p in
-  (pCID, M.insert pCID (serialise p) cache)
+  (pCID, M.insert pCID (BSL.toStrict $ serialise p) cache)

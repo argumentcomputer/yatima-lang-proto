@@ -388,7 +388,8 @@ pDefs = (try $ space >> next) <|> (space >> eof >> asks _index)
 
 pCid :: Parser CID
 pCid = do
-  txt <- T.pack <$> (manyTill anySingle space)
+  space
+  txt <- T.pack <$> (many alphaNumChar)
   case cidFromText txt of
     Left  err  -> customFailure $ InvalidCID err txt
     Right cid  -> return $ cid
@@ -417,7 +418,7 @@ pImport = label "an import" $ do
   nam <- pPackageName
   ali <- optional $ try $ (space >> symbol "as" >> pName False)
   imp <- choice
-    [ (symbol "from" >> IPFS nam ali <$> pCid)
+    [ try $ (space >> symbol "from" >> IPFS nam ali <$> pCid)
     , return $ Local nam ali
     ]
   case imp of
