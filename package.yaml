@@ -43,6 +43,7 @@ library:
     - servant-client
     - http-client
     - cborg
+    - cborg-json
     - ipfs-api
     - directory
 

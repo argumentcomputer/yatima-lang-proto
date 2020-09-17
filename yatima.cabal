@@ -39,6 +39,7 @@ library
     , base16-bytestring
     , bytestring
     , cborg
+    , cborg-json
     , containers
     , cryptonite
     , directory

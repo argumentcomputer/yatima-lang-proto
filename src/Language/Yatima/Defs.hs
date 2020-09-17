@@ -117,10 +117,7 @@ deriving instance Show Anon
 deriving instance Eq Anon
 
 -- | A `Term`'s metadata
-data Meta = Meta
-  { _nams :: IntMap Name
-  , _cids :: IntMap CID
-  } deriving (Show,Eq)
+data Meta = Meta { _entries :: IntMap (Name, Maybe CID) } deriving (Show,Eq)
 
 -- * Serialisation utilities
 -- | A helpful utility function like `when`, but with with pretty text errors
@@ -244,11 +241,38 @@ decodeMaybeTyp = do
       u <- decodeUses
       t <- decodeAnon
       return (Just (u,t))
-    _ -> fail "invalid list size"
+    _ -> fail "invalid lambda annotation"
 
 instance Serialise Anon where
   encode = encodeAnon
   decode = decodeAnon
+
+encodeMetaMap :: IntMap (Name,Maybe CID) -> Encoding
+encodeMetaMap m = encodeMapLen (fromIntegral (IM.size m))
+  <> IM.foldrWithKey go mempty m
+  where
+    go = (\k v r -> encodeString (T.pack $ show k) <> encodeEntry v <> r)
+    encodeEntry (n,Nothing) = encodeListLen 1 <> encodeString n
+    encodeEntry (n,Just c)  = encodeListLen 2 <> encodeString n <> encodeCID c
+
+decodeMetaMap :: Decoder s (IntMap (Name,Maybe CID))
+decodeMetaMap = do
+  size  <- decodeMapLen
+  IM.fromList <$> replicateM size decodeEntry
+  where
+    decodeEntry = do
+      keyString <- decodeString
+      let  key = (read (T.unpack keyString) :: Int)
+      len <- decodeListLen
+      case len of
+        1 -> do
+          n <- decodeString
+          return (key,(n,Nothing))
+        2 -> do
+          n <- decodeString
+          c <- decodeCID
+          return (key,(n,Just c))
+        _ -> fail "invalid Meta map entry"
 
 -- | This encoding is designed to match the
 -- [js-ipld-dag-cbor](https://github.com/ipld/js-ipld-dag-cbor) library's
@@ -259,20 +283,18 @@ instance Serialise Anon where
 -- where nams and locs are maps of integers to strings and `Loc`, using the
 -- standard cborg map encoding.
 encodeMeta :: Meta -> Encoding
-encodeMeta (Meta ns ls) = encodeMapLen 3
+encodeMeta (Meta ns) = encodeMapLen 2
     <> (encodeString "$0" <> encodeString "Meta")
-    <> (encodeString "$1" <> encode ns)
-    <> (encodeString "$2" <> encode ls)
+    <> (encodeString "$1" <> encodeMetaMap ns)
 
 -- | Decode an `Encoding` generate by `encodeMeta`
 decodeMeta :: Decoder s Meta
 decodeMeta = do
   size  <- decodeMapLen
-  failM (size /= 3) ["invalid map size: ", T.pack $ show size]
+  failM (size /= 2) ["invalid map size: ", T.pack $ show size]
   decodeCtor "Meta" "$0" ["Meta"]
-  ns <- decodeField "Meta" "$1" decode
-  ls <- decodeField "Meta" "$2" decode
-  return $ Meta ns ls
+  ns <- decodeField "Meta" "$1" decodeMetaMap
+  return $ Meta ns
 
 instance Serialise Meta where
   encode = encodeMeta
@@ -415,7 +437,6 @@ anonymize n t index cache = go t [n]
       Typ                   -> return TypA
       All s n u t b         -> AllA u <$> go t ctx <*> go b (n:s:ctx)
 
-
 deref :: Name -> CID -> Index -> Cache -> Except DerefErr Def
 deref name cid index cache = do
   mdCID   <- indexLookup name index
@@ -428,9 +449,9 @@ deref name cid index cache = do
 
 derefMetaDef :: MetaDef -> Cache -> Except DerefErr Def
 derefMetaDef metaDef cache = do
-  let termNames = _nams . _termMeta $ metaDef
+  let termNames = fst <$> (_entries . _termMeta $ metaDef)
   termName <- maybe (throwError $ MergeMissingNameAt 0) pure (termNames IM.!? 0)
-  let typeNames = _nams . _typeMeta $ metaDef
+  let typeNames = fst <$> ( _entries . _typeMeta $ metaDef)
   typeName <- maybe (throwError $ MergeMissingNameAt 0) pure (typeNames IM.!? 0)
   when (not $ termName == typeName) (throwError $ NameMismatch termName typeName)
   anonDef  <- deserial @AnonDef (_anonDef metaDef) cache
@@ -451,16 +472,16 @@ derefMetaDefCID name cid index cache = do
 
 separateMeta :: Name -> Term -> Index -> Cache -> Except DerefErr (Anon, Meta)
 separateMeta n t index cache = do
-  case runState (runExceptT (go t [n])) (Meta (IM.singleton 0 n) IM.empty, 1) of
+  case runState (runExceptT (go t [n])) (Meta (IM.singleton 0 (n,Nothing)), 1) of
     (Left  err,_)   -> throwError err
     (Right a,(m,_)) -> return (a,m)
 
   where
-    bind :: Name -> ExceptT DerefErr (State (Meta,Int)) ()
-    bind n = modify (\(Meta ns cs,i) -> (Meta (IM.insert i n ns) cs, i))
+    entry :: (Name,Maybe CID) -> ExceptT DerefErr (State (Meta,Int)) ()
+    entry e = modify (\(Meta es,i) -> (Meta (IM.insert i e es), i))
 
-    cids :: CID -> ExceptT DerefErr (State (Meta,Int)) ()
-    cids c = modify (\(Meta ns cs,i) -> (Meta ns (IM.insert i c cs), i))
+    bind :: Name -> ExceptT DerefErr (State (Meta,Int)) ()
+    bind n = entry (n,Nothing)
 
     bump :: ExceptT DerefErr (State (Meta,Int)) ()
     bump = modify (\(m,i) -> (m, i+1))
@@ -474,7 +495,7 @@ separateMeta n t index cache = do
           _      -> throwError $ FreeVariable n ctx
       Ref n     -> do
         c <- liftEither . runExcept $ anonymizeRef n index cache
-        bind n >> bump >> cids c >> return (RefA c)
+        entry (n,Just c) >> bump >> return (RefA c)
       Lam n (Just (u,t)) b  -> do
         bind n >> bump
         t' <- go t ctx
@@ -491,60 +512,66 @@ separateMeta n t index cache = do
         AllA u <$> go t ctx <*> go b (n:s:ctx)
 
 -- | Find a name in the binding context and return its index
-lookupName :: Int -> [Name] -> Maybe Name
-lookupName i []     = Nothing
-lookupName i (x:xs)
+lookupNameCtx :: Int -> [Name] -> Maybe Name
+lookupNameCtx i []     = Nothing
+lookupNameCtx i (x:xs)
   | i < 0     = Nothing
   | i == 0    = Just x
-  | otherwise = lookupName (i - 1) xs
+  | otherwise = lookupNameCtx (i - 1) xs
+
+lookupNameMeta :: Int -> Meta -> Except DerefErr Name
+lookupNameMeta i meta = do
+ let entry = (_entries meta IM.!? i)
+ (n,_) <- maybe (throwError $ MergeMissingNameAt i) pure entry
+ return n
 
 mergeMeta :: Anon -> Meta -> Except DerefErr Term
 mergeMeta anon meta = do
-  defName <- maybe (throwError $ MergeMissingNameAt 0) pure (_nams meta IM.!? 0)
+  defName <- lookupNameMeta 0 meta
   liftEither (evalState (runExceptT (go anon [defName])) 1)
 
   where
     bump :: ExceptT DerefErr (State Int) ()
     bump = modify (+1)
 
+    name :: Int -> ExceptT DerefErr (State Int) Name
+    name i = do
+     let entry = (_entries meta IM.!? i)
+     (n,_) <- maybe (throwError $ MergeMissingNameAt i) pure entry
+     return n
+
     go :: Anon -> [Name] -> ExceptT DerefErr (State Int) Term
     go t ctx = case t of
       VarA idx -> do
         i <- get
         bump
-        case lookupName idx ctx of
+        case lookupNameCtx idx ctx of
           Nothing -> throwError $ MergeFreeVariableAt i ctx idx
           Just n  -> return $ Var n
       RefA cid -> do
-        i <- get
+        n <- get >>= name
         bump
-        n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
         return $ Ref n
       LamA (Just (u,t)) b  -> do
-        i <- get
-        n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
+        n <- get >>= name
         bump
         t' <- go t ctx
         b' <- go b (n:ctx)
         return $ Lam n (Just (u,t')) b'
       LamA Nothing b  -> do
-        i <- get
-        n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
+        n <- get >>= name
         bump
         Lam n Nothing <$> go b (n:ctx)
       AppA f a   -> bump >> App <$> go f ctx <*> go a ctx
       LetA u t x b -> do
-        i <- get
-        n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
+        n <- get >>= name
         bump
         Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
       TypA         -> bump >> return Typ
       AllA u t b   -> do
-        i <- get
-        s <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? i)
+        s <- get >>= name
         bump
-        j <- get
-        n <- maybe (throwError $ MergeMissingNameAt i) pure (_nams meta IM.!? j)
+        n <- get >>= name
         bump
         All s n u <$> go t ctx <*> go b (n:s:ctx)
 
@@ -568,3 +595,4 @@ insertDef (Def name doc term typ_) index cache = do
 insertPackage :: Package -> Cache -> (CID,Cache)
 insertPackage p cache = let pCID = makeCID p in
   (pCID, M.insert pCID (BSL.toStrict $ serialise p) cache)
+

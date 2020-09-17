@@ -46,7 +46,7 @@ instance Arbitrary Anon where
     ]
 
 instance Arbitrary Meta where
-  arbitrary = Meta <$> arbitrary <*> arbitrary
+  arbitrary = Meta <$> arbitrary
 
 instance Arbitrary AnonDef where
   arbitrary = AnonDef <$> arbitrary <*> arbitrary
