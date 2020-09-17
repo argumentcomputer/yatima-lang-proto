@@ -9,6 +9,8 @@ module Language.Yatima.CID
   , hashLazyWith
   , mkCborCIDv1
   , makeCID
+  , cidFromText
+  , cidToText
   ) where
 
 import qualified Data.ByteString.Multibase  as MB
@@ -26,7 +28,7 @@ import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
 
-import           Data.IPLD.CID              (CID)
+import           Data.IPLD.CID              (CID, cidFromText, cidToText)
 import qualified Data.IPLD.CID              as CID
 import qualified Data.Multihash             as MH
 import qualified Crypto.Hash as C

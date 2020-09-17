@@ -41,6 +41,7 @@ library
     , cborg
     , containers
     , cryptonite
+    , directory
     , http-client
     , ipfs-api
     , ipld-cid
@@ -63,7 +64,7 @@ executable yide
       Paths_yatima
   hs-source-dirs:
       yide
-  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
   build-depends:
       base >=4.7 && <5
     , containers

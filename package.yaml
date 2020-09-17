@@ -44,6 +44,7 @@ library:
     - http-client
     - cborg
     - ipfs-api
+    - directory
 
 
   default-extensions:
@@ -85,4 +86,6 @@ executables:
       - GADTSyntax
       - StandaloneDeriving
       - MultiWayIf
+      - TypeApplications
+      - ScopedTypeVariables
 

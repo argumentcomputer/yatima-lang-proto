@@ -57,13 +57,13 @@ data LOAS where
 
 deriving instance Show LOAS
 
-toLOAS :: Term -> [Name] -> Defs -> Except DerefErr LOAS
-toLOAS trm ctx defs = case trm of
+toLOAS :: Term -> [Name] -> Index -> Cache -> Except DerefErr LOAS
+toLOAS trm ctx index cache = case trm of
   Var nam                 ->
     case find nam ctx of
       Just idx -> return $ VarL nam idx
       _        -> throwError $ FreeVariable nam ctx
-  Ref nam                 -> RefL nam <$> anonymizeRef nam defs
+  Ref nam                 -> RefL nam <$> anonymizeRef nam index cache
   Lam nam ann bod         ->
     case ann of
       Just (use,typ) -> LamL nam <$> (Just . (use,) <$> go typ) <*> bind nam bod
@@ -74,9 +74,9 @@ toLOAS trm ctx defs = case trm of
   Typ                     -> return TypL
   All slf nam use typ bod -> AllL slf nam use <$> go typ <*> bind2 slf nam bod
   where
-    go t        = toLOAS t ctx defs
-    bind    n t = toLOAS t (n:ctx) defs
-    bind2 s n t = toLOAS t (n:s:ctx) defs
+    go t        = toLOAS t ctx index cache
+    bind    n t = toLOAS t (n:ctx) index cache
+    bind2 s n t = toLOAS t (n:s:ctx) index cache
 
 -- | Convert a GHC higher-order representation to a lower-order one
 fromLOAS :: LOAS -> Term
@@ -139,6 +139,7 @@ fromHOAS t dep = case t of
   AllH slf nam use typ bod -> AllL slf nam use (go typ) (unbind2 slf nam bod)
   TypH                     -> TypL
   FixH nam bod             -> unbind nam bod
+  AnnH _   trm _           -> go trm
   where
     go          t = fromHOAS t                                 dep
     unbind    n b = fromHOAS (b (VarH n dep))                  (dep + 1)
@@ -163,10 +164,10 @@ anonymizeHOAS hoas dep = case hoas of
     unbind    n b = anonymizeHOAS (b (VarH n dep))                  (dep + 1)
     unbind2 s n b = anonymizeHOAS (b (VarH s dep) (VarH n (dep+1))) (dep + 2)
 
-defToHOAS :: Name -> Def -> Defs -> Except DerefErr (HOAS,HOAS)
-defToHOAS name def ds = do
-  term <- toLOAS (_term def) [name] ds
-  typ_ <- toLOAS (_type def) [name] ds
+defToHOAS :: Name -> Def -> Index -> Cache -> Except DerefErr (HOAS,HOAS)
+defToHOAS name def index cache = do
+  term <- toLOAS (_term def) [name] index cache
+  typ_ <- toLOAS (_type def) [name] index cache
   let term' = FixH name (\s -> toHOAS term [s] 1)
   let typ_' = FixH name (\s -> toHOAS typ_ [s] 1)
   return (term',typ_')
@@ -180,19 +181,19 @@ instance Show HOAS where
   --show t = show (anonymizeHOAS t 0)
  show t = T.unpack $ printHOAS t
 
-derefHOAS :: Name -> CID -> Defs -> Except DerefErr HOAS
-derefHOAS name cid ds = do
-  def  <- deref name cid ds
-  loas <- toLOAS (_term def) [name] ds
+derefHOAS :: Name -> CID -> Index -> Cache -> Except DerefErr HOAS
+derefHOAS name cid index cache = do
+  def  <- deref name cid index cache
+  loas <- toLOAS (_term def) [name] index cache
   return $ FixH name (\s -> toHOAS loas [s] 1)
 
 -- * Evaluation
 
 -- | Reduce a HOAS to weak-head-normal-form
-whnf :: HOAS -> Defs -> HOAS
-whnf trm defs = case trm of
+whnf :: HOAS -> Index -> Cache -> HOAS
+whnf trm index cache = case trm of
   RefH nam cid       ->
-    case runExcept (derefHOAS nam cid defs) of
+    case runExcept (derefHOAS nam cid index cache) of
       Right trm  -> go trm
       Left  err  -> error $ "BAD: Runtime DerefErr: " ++ show err
   FixH nam bod       -> go (bod trm)
@@ -203,14 +204,14 @@ whnf trm defs = case trm of
   LetH _ _ _ exp bod -> go (bod exp)
   x                  -> x
   where
-    go x = whnf x defs
+    go x = whnf x index cache
 
 hash :: HOAS -> Int -> CID
 hash term dep = makeCID $ anonymizeHOAS term dep
 
 -- | Normalize a HOAS term
-norm :: HOAS -> Defs -> HOAS
-norm term defs = runST (top $ term)
+norm :: HOAS -> Index -> Cache -> HOAS
+norm term index cache = runST (top $ term)
   where
     top :: HOAS -> ST s HOAS
     top term = do
@@ -219,7 +220,7 @@ norm term defs = runST (top $ term)
 
     go :: HOAS -> (STRef s (Set CID)) -> ST s HOAS
     go term seen = do
-      let step = whnf term defs
+      let step = whnf term index cache
       let termHash = hash term 0
       let stepHash = hash step 0
       seenSet <- readSTRef seen
@@ -255,17 +256,19 @@ catchDerefErr x = do
 -- | Read and evaluate a `HOAS` from a file
 readDef :: Name -> FilePath -> IO HOAS
 readDef name file = do
-  defs  <- pFile file
-  cid   <- catchDerefErr (indexLookup name defs)
-  def   <- catchDerefErr (derefHOAS name cid defs)
+  index <- _packInd . snd <$> pFile "" file
+  cache <- readCache
+  cid   <- catchDerefErr (indexLookup name index)
+  def   <- catchDerefErr (derefHOAS name cid index cache)
   return $ def
 
 normDef :: Name -> FilePath -> IO HOAS
 normDef name file = do
-  defs  <- pFile file
-  cid   <- catchDerefErr (indexLookup name defs)
-  def   <- catchDerefErr (derefHOAS name cid defs)
-  return $ norm def defs
+  index <- _packInd . snd <$> pFile "" file
+  cache <- readCache
+  cid   <- catchDerefErr (indexLookup name index)
+  def   <- catchDerefErr (derefHOAS name cid index cache)
+  return $ norm def index cache
 
 substFreeVar :: HOAS -> Int -> HOAS -> HOAS
 substFreeVar a i v = case a of
@@ -287,8 +290,8 @@ substFreeVar a i v = case a of
 
 -- * Type-checking
 
-equal :: HOAS -> HOAS -> Defs -> Int -> Bool
-equal a b defs dep = runST $ top a b dep
+equal :: HOAS -> HOAS -> Index -> Cache -> Int -> Bool
+equal a b index cache dep = runST $ top a b dep
   where
     top :: HOAS -> HOAS -> Int -> ST s Bool
     top a b dep = do
@@ -297,8 +300,8 @@ equal a b defs dep = runST $ top a b dep
 
     go :: HOAS -> HOAS -> Int -> STRef s (Set (CID,CID)) -> ST s Bool
     go a b dep seen = do
-      let a' = whnf a defs
-      let b' = whnf b defs
+      let a' = whnf a index cache
+      let b' = whnf b index cache
       let aCID = makeCID $ anonymizeHOAS a' 0
       let bCID = makeCID $ anonymizeHOAS b' 0
       s' <- readSTRef seen
@@ -422,20 +425,20 @@ instance Show CheckErr where
       , "\n"
       ]
 
-check :: Ctx -> Uses -> HOAS -> HOAS -> Defs -> Except CheckErr Ctx
-check pre ρ trm typ defs = case trm of
-  LamH name ann termBody -> case whnf typ defs of
+check :: Ctx -> Uses -> HOAS -> HOAS -> Index -> Cache -> Except CheckErr Ctx
+check pre ρ trm typ index cache = case trm of
+  LamH name ann termBody -> case whnf typ index cache of
     AllH s n π bind typeBody -> do
       maybe (pure ()) (\(φ,bind') -> do
         unless (π == φ)
           (throwError (QuantityMismatch pre (φ,name,bind') (π,n,bind)))
-        unless (equal bind bind' defs (length pre))
+        unless (equal bind bind' index cache (length pre))
           (throwError (TypeMismatch pre (φ,name,bind') (π,n,bind)))
         pure ()) ann
       let var      = VarH name (length pre)
       let bodyType = typeBody trm var
       let bodyTerm = termBody var
-      bodyCtx <- check (pre |> (None,name,bind)) Once bodyTerm bodyType defs
+      bodyCtx <- check (pre |> (None,name,bind)) Once bodyTerm bodyType index cache
       case viewr bodyCtx of
         EmptyR -> throwError $ EmptyContext
         bodyCtx' :> (π',n',b') -> do
@@ -444,9 +447,9 @@ check pre ρ trm typ defs = case trm of
           return $ multiplyCtx ρ bodyCtx'
     x -> throwError $ LambdaNonFunctionType pre trm typ x
   LetH name π exprType expr body -> do
-    exprCtx <- check pre π expr exprType defs
+    exprCtx <- check pre π expr exprType index cache
     let var = VarH name (length pre)
-    bodyCtx <- check (pre |> (None,name,exprType)) Once (body var) typ defs
+    bodyCtx <- check (pre |> (None,name,exprType)) Once (body var) typ index cache
     case viewr bodyCtx of
       EmptyR -> throwError $ EmptyContext
       bodyCtx' :> (π',n',b') -> do
@@ -457,7 +460,7 @@ check pre ρ trm typ defs = case trm of
     let idx    = length pre
     let var    = VarH name idx
     let unroll = body (AnnH idx (FixH name body) typ)
-    bodyCtx <- check (pre |> (None,name,typ)) ρ unroll typ defs
+    bodyCtx <- check (pre |> (None,name,typ)) ρ unroll typ index cache
     case viewr bodyCtx of
       EmptyR -> throwError $ EmptyContext
       bodyCtx' :> (π,_,_) -> do
@@ -465,40 +468,40 @@ check pre ρ trm typ defs = case trm of
           then return bodyCtx'
           else return $ multiplyCtx Many bodyCtx'
   _ -> do
-    (ctx, infr) <- infer pre ρ trm defs
-    if equal typ infr defs (length pre)
+    (ctx, infr) <- infer pre ρ trm index cache
+    if equal typ infr index cache (length pre)
       then return ctx
       else throwError (TypeMismatch ctx (ρ,"",typ) (Many,"",infr))
 
-infer :: Ctx -> Uses -> HOAS -> Defs -> Except CheckErr (Ctx, HOAS)
-infer pre ρ term defs = case term of
+infer :: Ctx -> Uses -> HOAS -> Index -> Cache -> Except CheckErr (Ctx, HOAS)
+infer pre ρ term index cache = case term of
   VarH n idx -> do
     let (_,_,typ) = Seq.index pre idx
     let ctx = Seq.update idx (ρ,n,typ) pre
     return (ctx, typ)
   RefH n c -> do
     let mapE = mapExcept (either (\e -> throwError $ DerefError pre n c e) pure)
-    def        <- mapE (deref n c defs)
-    (_,typ)    <- mapE (defToHOAS n def defs)
+    def        <- mapE (deref n c index cache)
+    (_,typ)    <- mapE (defToHOAS n def index cache)
     return (pre,typ)
   AppH func argm -> do
-    (funcCtx, funcType) <- infer pre ρ func defs
-    case whnf funcType defs of
+    (funcCtx, funcType) <- infer pre ρ func index cache
+    case whnf funcType index cache of
       AllH _ _ π bind body -> do
-        argmCtx <- check pre (ρ *# π) argm bind defs
+        argmCtx <- check pre (ρ *# π) argm bind index cache
         return (addCtx funcCtx argmCtx, body func argm)
       x -> throwError $ NonFunctionApplication funcCtx func funcType x
   AllH self name π bind body -> do
-    check pre  None bind (TypH) defs
+    check pre  None bind (TypH) index cache
     let self_var = VarH self $ length pre
     let name_var = VarH name $ length pre + 1
     let pre'     = pre |> (None,self,term) |> (None,name,bind)
-    check pre' None (body self_var name_var) (TypH) defs
+    check pre' None (body self_var name_var) (TypH) index cache
     return (pre, TypH)
   LamH name (Just(π, bind)) termBody -> do
     let var = VarH name (length pre)
     let pre' = (pre |> (None,name,bind))
-    (ctx', typ) <- infer pre' Once (termBody var) defs
+    (ctx', typ) <- infer pre' Once (termBody var) index cache
     case viewr ctx' of
       EmptyR -> throwError $ EmptyContext
       ctx :> (π',n',b') -> do
@@ -507,10 +510,10 @@ infer pre ρ term defs = case term of
         let typeBody _ x = substFreeVar typ (length pre) x
         return (multiplyCtx ρ ctx, AllH "" name π bind typeBody)
   LetH name π exprType expr body -> do
-    exprCtx <- check pre π expr exprType defs
+    exprCtx <- check pre π expr exprType index cache
     let var = VarH name (length pre)
     let pre' = (pre |> (None, name,exprType))
-    (bodyCtx, typ) <- infer pre' Once (body var) defs
+    (bodyCtx, typ) <- infer pre' Once (body var) index cache
     case viewr bodyCtx of
       EmptyR                -> throwError EmptyContext
       bodyCtx' :> (π',n',b') -> do
@@ -523,23 +526,25 @@ infer pre ρ term defs = case term of
     return (ctx, typ)
   _ -> throwError $ CustomErr pre "can't infer type"
 
-checkRef :: Name -> CID -> Defs -> Except CheckErr HOAS
-checkRef name cid defs = do
+checkRef :: Name -> CID -> Index -> Cache -> Except CheckErr HOAS
+checkRef name cid index cache = do
   let ctx = Seq.empty
   let mapE = mapExcept (either (\e -> throwError $ DerefError ctx name cid e) pure)
-  def  <- mapE $ derefMetaDefCID name cid defs
-  (trm,typ) <- mapE $ defToHOAS name def defs
-  check ctx Once trm typ defs
+  def  <- mapE $ derefMetaDefCID name cid index cache
+  (trm,typ) <- mapE $ defToHOAS name def index cache
+  check ctx Once trm typ index cache
   return typ
 
-checkFile :: FilePath -> IO ()
-checkFile file = do
-  defs <- pFile file
+checkFile :: FilePath -> FilePath -> IO ()
+checkFile root file = do
+  (_,p) <- pFile root file
+  let index = _packInd p
+  cache <- readCache
   let func :: (Name, CID) -> IO ()
       func (name, cid) = do
-        case runExcept $ checkRef name cid defs of
+        case runExcept $ checkRef name cid index cache of
           Left  e -> putStrLn $ T.unpack $ T.concat 
             ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n", T.pack $ show e]
           Right t -> putStrLn $ T.unpack $ T.concat
             ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHOAS t]
-  forM_ (M.toList $ _index defs) func
+  forM_ (M.toList $ index) func

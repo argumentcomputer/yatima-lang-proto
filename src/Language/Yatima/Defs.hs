@@ -3,13 +3,14 @@
 module Language.Yatima.Defs
   ( -- | IPFS content-identifiers
     module Language.Yatima.CID
-  , Defs(..)
-  , emptyDefs
+  , Package(..)
   , Anon(..)
   , Meta(..)
   , AnonDef(..)
   , MetaDef(..)
   , DerefErr(..)
+  , Index
+  , Cache
   , anonymize
   , separateMeta
   , mergeMeta
@@ -22,6 +23,11 @@ module Language.Yatima.Defs
   , indexLookup
   , cacheLookup
   , insertDef
+  , insertPackage
+  , decodeField
+  , decodeCtor
+  , readCache
+  , writeCache
   ) where
 
 import           Data.IntMap                (IntMap)
@@ -39,18 +45,48 @@ import           Codec.Serialise.Encoding
 import           Control.Monad.State.Strict
 import           Control.Monad.Except
 
+import           System.Directory
+
 import           Language.Yatima.CID
 import           Language.Yatima.Term
 
 -- * Serialisation datatypes
 
--- | A content-addressed environment with an index of local names
-data Defs = Defs { _index :: Map Name CID
-                 , _cache :: Map CID BSL.ByteString
-                 } deriving (Show, Eq)
+data Package = Package
+  { _title   :: Name
+  , _descrip :: Text
+  , _imports :: [CID] -- links to packages
+  , _packInd :: Index -- links to MetaDefs
+  } deriving (Show, Eq)
 
-emptyDefs :: Defs
-emptyDefs = Defs M.empty M.empty
+type Index = Map Name CID
+type Cache = Map CID BSL.ByteString
+
+readCache :: IO Cache
+readCache = do
+  createDirectoryIfMissing True ".yatima/cache"
+  ns <- listDirectory ".yatima/cache"
+  M.fromList <$> traverse go ns
+  where
+    go :: FilePath -> IO (CID, BSL.ByteString)
+    go f = do
+      bs <- BSL.readFile (".yatima/cache/" ++ f)
+      case cidFromText (T.pack f) of
+        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ f ++ ", " ++ e
+        Right c -> return (c,bs)
+
+writeCache :: Cache -> IO ()
+writeCache c = void $ M.traverseWithKey go c
+  where
+    go :: CID -> BSL.ByteString -> IO ()
+    go c bs = do
+      createDirectoryIfMissing True ".yatima/cache"
+      let file = (".yatima/cache/" ++ (T.unpack $ cidToText c))
+      exists <- doesFileExist file
+      unless exists (BSL.writeFile file bs)
+
+emptyPackage :: Name -> Package
+emptyPackage n = Package n "" [] M.empty
 
 -- | An anonymized `Def`
 data AnonDef = AnonDef
@@ -61,6 +97,7 @@ data AnonDef = AnonDef
 -- | The metadata from a `Def`
 data MetaDef = MetaDef
   { _anonDef   :: CID
+  , _document  :: Text
   , _termMeta  :: Meta
   , _typeMeta  :: Meta
   } deriving Show
@@ -262,11 +299,12 @@ instance Serialise AnonDef where
   decode = decodeAnonDef
 
 encodeMetaDef :: MetaDef -> Encoding
-encodeMetaDef (MetaDef anonDef termMeta typeMeta ) = encodeMapLen 4
+encodeMetaDef (MetaDef anonDef doc termMeta typeMeta ) = encodeMapLen 4
   <> (encodeString "$0" <> encodeString "MetaDef")
   <> (encodeString "$1" <> encodeCID   anonDef)
-  <> (encodeString "$2" <> encodeMeta  termMeta)
-  <> (encodeString "$3" <> encodeMeta  typeMeta)
+  <> (encodeString "$2" <> encodeString doc)
+  <> (encodeString "$3" <> encodeMeta  termMeta)
+  <> (encodeString "$4" <> encodeMeta  typeMeta)
 
 decodeMetaDef :: Decoder s MetaDef
 decodeMetaDef = do
@@ -276,14 +314,41 @@ decodeMetaDef = do
   decodeCtor "MetaDef" "$0" ["MetaDef"]
 
   anonDef  <- decodeField "MetaDef" "$1" decodeCID
-  termMeta <- decodeField "MetaDef" "$2" decodeMeta
-  typeMeta <- decodeField "MetaDef" "$3" decodeMeta
+  doc      <- decodeField "MetaDef" "$2" decodeString
+  termMeta <- decodeField "MetaDef" "$3" decodeMeta
+  typeMeta <- decodeField "MetaDef" "$4" decodeMeta
 
-  return $ MetaDef anonDef termMeta typeMeta
+  return $ MetaDef anonDef doc termMeta typeMeta
 
 instance Serialise MetaDef where
   encode = encodeMetaDef
   decode = decodeMetaDef
+
+encodePackage :: Package -> Encoding
+encodePackage package = encodeMapLen 5
+  <> (encodeString "$0" <> encode ("Package" :: Text))
+  <> (encodeString "$1" <> encode (_title   package))
+  <> (encodeString "$2" <> encode (_descrip package))
+  <> (encodeString "$3" <> encode (_imports package))
+  <> (encodeString "$4" <> encode (_packInd package))
+
+decodePackage :: Decoder s Package
+decodePackage = do
+  size     <- decodeMapLen
+  failM (size /= 5) ["invalid map size: ", T.pack $ show size]
+
+  decodeCtor "Package" "$0" ["Package"]
+
+  title    <- decodeField "Package" "$1" decode
+  descrip  <- decodeField "Package" "$2" decode
+  imports  <- decodeField "Package" "$3" decode
+  index    <- decodeField "Package" "$4" decode
+
+  return $ Package title descrip imports index
+
+instance Serialise Package where
+  encode = encodePackage
+  decode = decodePackage
 
 -- * Anonymization
 
@@ -310,16 +375,33 @@ find n cs = go n cs 0
       | otherwise = go n cs (i+1)
     go _ [] _     = Nothing
 
+indexLookup :: Name -> Index -> Except DerefErr CID
+indexLookup n d = maybe (throwError $ NotInIndex n) pure (d M.!? n)
+
+cacheLookup :: CID -> Cache -> Except DerefErr BSL.ByteString
+cacheLookup c d = maybe (throwError $ NotInCache c) pure (d M.!? c)
+
+deserial :: Serialise a => CID -> Cache -> Except DerefErr a
+deserial cid cache = do
+  bytes <- cacheLookup cid cache
+  either (throwError . NoDeserial) return (deserialiseOrFail bytes)
+
+anonymizeRef :: Name -> Index -> Cache -> Except DerefErr CID
+anonymizeRef n index cache = do
+  cid     <- indexLookup n index
+  metaDef <- deserial @MetaDef cid cache
+  return (_anonDef metaDef)
+
 -- | Anonymize a term
-anonymize :: Name -> Term -> Defs -> Except DerefErr Anon
-anonymize n t ds = go t [n]
+anonymize :: Name -> Term -> Index -> Cache -> Except DerefErr Anon
+anonymize n t index cache = go t [n]
   where
     go :: Term -> [Name] -> Except DerefErr Anon
     go t ctx = case t of
       Var n                 -> case find n ctx of
         Just i -> return $ VarA i
         _      -> throwError $ FreeVariable n ctx
-      Ref n                 -> RefA <$> anonymizeRef n ds
+      Ref n                 -> RefA <$> anonymizeRef n index cache
       Lam n (Just (u,t)) b  -> do
         t' <- go t ctx
         b' <- go b (n:ctx)
@@ -331,59 +413,42 @@ anonymize n t ds = go t [n]
       Typ                   -> return TypA
       All s n u t b         -> AllA u <$> go t ctx <*> go b (n:s:ctx)
 
-deserial :: Serialise a => CID -> Defs -> Except DerefErr a
-deserial cid ds = do
-  bytes <- cacheLookup cid ds
-  either (throwError . NoDeserial) return (deserialiseOrFail bytes)
 
-anonymizeRef :: Name -> Defs -> Except DerefErr CID
-anonymizeRef n ds = do
-  cid     <- indexLookup n ds
-  metaDef <- deserial @MetaDef cid ds
-  return (_anonDef metaDef)
-
-indexLookup :: Name -> Defs -> Except DerefErr CID
-indexLookup n d = maybe (throwError $ NotInIndex n) pure ((_index d) M.!? n)
-
-cacheLookup :: CID -> Defs -> Except DerefErr BSL.ByteString
-cacheLookup c d = maybe (throwError $ NotInCache c) pure ((_cache d) M.!? c)
-
-deref :: Name -> CID -> Defs -> Except DerefErr Def
-deref name cid ds = do
-  mdCID   <- indexLookup name ds
-  metaDef <- deserial @MetaDef mdCID ds
+deref :: Name -> CID -> Index -> Cache -> Except DerefErr Def
+deref name cid index cache = do
+  mdCID   <- indexLookup name index
+  metaDef <- deserial @MetaDef mdCID cache
   let anonCID = _anonDef metaDef
   when (cid /= anonCID) (throwError $ CIDMismatch name cid anonCID)
-  def <- derefMetaDef metaDef ds
+  def <- derefMetaDef metaDef cache
   when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
   return def
 
-derefMetaDef :: MetaDef -> Defs -> Except DerefErr Def
-derefMetaDef metaDef ds = do
+derefMetaDef :: MetaDef -> Cache -> Except DerefErr Def
+derefMetaDef metaDef cache = do
   let termNames = _nams . _termMeta $ metaDef
   termName <- maybe (throwError $ MergeMissingNameAt 0) pure (termNames IM.!? 0)
   let typeNames = _nams . _typeMeta $ metaDef
   typeName <- maybe (throwError $ MergeMissingNameAt 0) pure (typeNames IM.!? 0)
   when (not $ termName == typeName) (throwError $ NameMismatch termName typeName)
-  anonDef  <- deserial @AnonDef (_anonDef metaDef) ds
-  termAnon <- deserial @Anon (_termAnon anonDef) ds
+  anonDef  <- deserial @AnonDef (_anonDef metaDef) cache
+  termAnon <- deserial @Anon (_termAnon anonDef) cache
   term     <- mergeMeta termAnon (_termMeta metaDef)
-  typeAnon <- deserial @Anon (_typeAnon anonDef) ds
+  typeAnon <- deserial @Anon (_typeAnon anonDef) cache
   typ_     <- mergeMeta typeAnon (_typeMeta metaDef)
-  return $ Def termName term typ_
+  return $ Def termName (_document metaDef) term typ_
 
-derefMetaDefCID :: Name -> CID -> Defs -> Except DerefErr Def
-derefMetaDefCID name cid ds = do
-  mdCID   <- indexLookup name ds
-  metaDef <- deserial @MetaDef mdCID ds
+derefMetaDefCID :: Name -> CID -> Index -> Cache -> Except DerefErr Def
+derefMetaDefCID name cid index cache = do
+  mdCID   <- indexLookup name index
+  metaDef <- deserial @MetaDef mdCID cache
   when (cid /= mdCID) (throwError $ CIDMismatch name cid mdCID)
-  def <- derefMetaDef metaDef ds
+  def <- derefMetaDef metaDef cache
   when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
   return $ def
 
-
-separateMeta :: Name -> Term -> Defs -> Except DerefErr (Anon, Meta)
-separateMeta n t ds = do
+separateMeta :: Name -> Term -> Index -> Cache -> Except DerefErr (Anon, Meta)
+separateMeta n t index cache = do
   case runState (runExceptT (go t [n])) (Meta (IM.singleton 0 n) IM.empty, 1) of
     (Left  err,_)   -> throwError err
     (Right a,(m,_)) -> return (a,m)
@@ -406,7 +471,7 @@ separateMeta n t ds = do
           Just i -> return $ VarA i
           _      -> throwError $ FreeVariable n ctx
       Ref n     -> do
-        c <- liftEither . runExcept $ anonymizeRef n ds
+        c <- liftEither . runExcept $ anonymizeRef n index cache
         bind n >> bump >> cids c >> return (RefA c)
       Lam n (Just (u,t)) b  -> do
         bind n >> bump
@@ -481,20 +546,23 @@ mergeMeta anon meta = do
         bump
         All s n u <$> go t ctx <*> go b (n:s:ctx)
 
-insertDef :: Def -> Defs -> Except DerefErr Defs
-insertDef (Def name term typ_) defs@(Defs index cache) = do
-  (termAnon, termMeta) <- separateMeta name term defs
-  (typeAnon, typeMeta) <- separateMeta name typ_ defs
+insertDef :: Def -> Index -> Cache -> Except DerefErr (CID,Cache)
+insertDef (Def name doc term typ_) index cache = do
+  (termAnon, termMeta) <- separateMeta name term index cache
+  (typeAnon, typeMeta) <- separateMeta name typ_ index cache
   let termAnonCID = makeCID termAnon :: CID
   let typeAnonCID = makeCID typeAnon :: CID
   let anonDef     = AnonDef termAnonCID typeAnonCID
   let anonDefCID  = makeCID anonDef :: CID
-  let metaDef     = MetaDef anonDefCID termMeta typeMeta
+  let metaDef     = MetaDef anonDefCID doc termMeta typeMeta
   let metaDefCID  = makeCID metaDef :: CID
-  let index'      = M.insert name        metaDefCID           $ index
   let cache'      = M.insert metaDefCID  (serialise metaDef)  $
                     M.insert anonDefCID  (serialise anonDef)  $
                     M.insert typeAnonCID (serialise typeAnon) $
                     M.insert termAnonCID (serialise termAnon) $
                     cache
-  return (Defs index' cache')
+  return $ (metaDefCID,cache')
+
+insertPackage :: Package -> Cache -> (CID,Cache)
+insertPackage p cache = let pCID = makeCID p in
+  (pCID, M.insert pCID (serialise p) cache)

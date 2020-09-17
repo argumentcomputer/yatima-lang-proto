@@ -34,7 +34,7 @@ import           Language.Yatima.Term
 
 
 data YideState = YideState
-  { _yideDefs :: Defs
+  { _yideDefs :: Index
   }
 
 
@@ -95,27 +95,29 @@ parseLine = do
 
 process :: Text -> Repl ()
 process line = do
-  defs <- gets _yideDefs
-  case parse' parseLine (ParseEnv Set.empty defs) "" line of
-    Left  e -> liftIO $ putStr (errorBundlePretty e)
-    Right x -> procCommand x
+  index <- gets _yideDefs
+  procCommand <$> liftIO (parseIO parseLine (ParseEnv Set.empty index) "" line)
+  return ()
   where
     procCommand :: Command -> Repl ()
     procCommand c = case c of
       Browse -> do
-        ds <- gets _yideDefs
-        liftIO $ print ds
+        index <- gets _yideDefs
+        liftIO $ print index
       Help   -> liftIO $ putStrLn "help text fills you with determination "
       Quit   -> abort
       Eval t -> do
-        ds <- gets _yideDefs
-        t  <- liftIO $ catchDerefErr (toLOAS t [""] ds)
-        liftIO $ putStrLn $ T.unpack $ printHOAS $ norm (toHOAS t [] 0) ds
+        index <- gets _yideDefs
+        cache <- liftIO $ readCache
+        t  <- liftIO $ catchDerefErr (toLOAS t [""] index cache)
+        let t' = norm (toHOAS t [] 0) index cache
+        liftIO $ putStrLn $ T.unpack $ printHOAS t'
         return ()
       Defn d -> do
-        ds <- gets _yideDefs
-        ds' <- liftIO $ catchDerefErr (insertDef d ds)
-        put (YideState ds')
+        index <- gets _yideDefs
+        cache <- liftIO $ readCache
+        (_,c')   <- liftIO $ catchDerefErr (insertDef d index cache)
+        liftIO $ writeCache c'
         return ()
 
 

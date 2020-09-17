@@ -75,18 +75,18 @@ prettyTerm t = go t
 
 
 prettyDef :: Def -> Text
-prettyDef (Def name term typ_) = T.concat 
-  [ name, "\n"
-  , "  : ", prettyTerm $ typ_, "\n"
+prettyDef (Def name doc term typ_) = T.concat 
+  [ if doc == "" then "" else T.concat [doc,"\n"]
+  , name,": ", prettyTerm $ typ_, "\n"
   , "  = ", prettyTerm $ term
   ]
 
-prettyDefs :: Defs -> Either DerefErr Text
-prettyDefs ds = M.foldrWithKey go (Right "") (_index ds)
+prettyDefs :: Index -> Cache -> Either DerefErr Text
+prettyDefs index cache = M.foldrWithKey go (Right "") index
   where
     go :: Name -> CID -> Either DerefErr Text -> Either DerefErr Text
     go n c (Left e)    = Left e
-    go n c (Right txt) = case runExcept (derefMetaDefCID n c ds) of
+    go n c (Right txt) = case runExcept (derefMetaDefCID n c index cache) of
       Left e   -> Left e
       Right d  -> return $ T.concat
         [ txt,"\n"

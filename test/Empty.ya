@@ -1,0 +1,7 @@
+package Empty where
+
+def Empty : Type =
+  @self
+  ∀ (P : ∀ Empty -> Type) ->
+    P self
+

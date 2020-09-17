@@ -11,68 +11,31 @@ conventions specified in `Text.MegaParsec.Char.Lexer`. A helpful tutorial
 explaining Megaparsec can be found on [Mark Karpov's
 blog](https://markkarpov.com/tutorial/megaparsec.html)
 
-Because the `Parser` type defined here is wrapped in a `RWST` transformer, if
-you wish to extend or modify it, you will find the `parserTest` and `parse'`
-functions useful for testing and running the parsers defined here:
+Because the `Parser` type defined here is wrapped in an `RWST` and `IO` monad
+transformer, if you wish to extend or modify it, you will find the `parseIO
+function useful for testing and running the parsers defined here:
 
 @
-> parserTest (pExpr False) "λ y => (λ x => x) y"
+> parseIO (pExpr False) "λ y => (λ x => x) y"
 Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
 @
 
-`parserTest` only prints the output though, if you want to get the resulting
-datatype you need to use `parse'`
-
-@
-> :t parse' pTerm defaultParseEnv ""
-parse' pTerm defaultParseEnv ""
-:: Text -> Either (ParseErrorBundle Text ParseErr) Term
-@
-
-Here's an example on correct input:
-
-@
-> parse' pTerm defaultParseEnv "" "λ x => x" 
-Right (Lam "x" (Var "x" 0))
-@
-
-And on input that errors:
-@
-> parse' pTerm defaultParseEnv "" "λ x => y" 
-Left (ParseErrorBundle 
-(UndefinedReference "y")]) :| [], bundlePosState = PosState {pstateInput =
-"\955 x => y", pstateOffset = 0, pstateSourcePos = SourcePos {sourceName =
-"", sourceLine = Pos 1, sourceColumn = Pos 1}, pstateTabWidth = Pos 8,
-pstateLinePrefix = ""}})
-@
-
-`ParseErrorBundle` is a big illegible blob with a lot of stuff in it, which is why 
-we have `parserTest` to prettily print the errror:
-
-@
-> parserTest pTerm  "λ x => y" 
-1:9:
-  |
-1 | λ x => y
-  |         ^
-Undefined reference: y
-@
-
 |-}
-module Language.Yatima.Parse 
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+module Language.Yatima.Parse
   ( ParseErr(..)
   , ParseEnv(..)
   , Parser
   , parseDefault
-  , parserTest
-  , parse'
+  , parseIO
   , pName
   , pLam
   , pVar
   , pTerm
   , pExpr
   , pFile
-  , prettyFile
+  --, prettyFile
   , pDef
   , symbol
   , space
@@ -86,6 +49,7 @@ import           Control.Monad.RWS.Lazy     hiding (All)
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
+import qualified Data.ByteString.Lazy       as BSL
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
 import           Data.Char                  (isDigit)
@@ -94,6 +58,7 @@ import qualified Data.Set                   as Set
 import qualified Data.Text.IO               as TIO
 
 import           System.Exit
+import           System.Directory
 
 import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
@@ -106,8 +71,9 @@ import           Language.Yatima.Defs
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
   { -- | The binding context for local variables
-    _context :: Set Name
-  , _defs    :: Defs
+    _context  :: Set Name
+  , _index    :: Map Name CID
+  -- , _packs    :: Map Name CID
   }
 
 -- | A stub for a future parser state
@@ -117,21 +83,42 @@ type ParseState = ()
 type ParseLog = ()
 
 -- | An empty parser environment, useful for testing
-defaultParseEnv = ParseEnv Set.empty emptyDefs
+defaultParseEnv = ParseEnv Set.empty M.empty -- M.empty
 
 -- | Custom parser errrors with bespoke messaging
 data ParseErr
   = UndefinedReference Name
+  | UnknownPackage Name
+  | MisnamedPackageImport Name Name CID
+  | MisnamedPackageFile   FilePath Name
+  | ConflictingImportNames Name CID [Name]
   | TopLevelRedefinition Name
   | ReservedKeyword Name
   | LeadingDigit Name
   | LeadingApostrophe Name
   | CorruptDefs DerefErr
+  | InvalidCID String Text
   deriving (Eq, Ord,Show)
 
 instance ShowErrorComponent ParseErr where
   showErrorComponent (UndefinedReference nam) =
     "Undefined reference: " ++ T.unpack nam
+  showErrorComponent (UnknownPackage nam) =
+    "Unknown package: " ++ T.unpack nam
+  showErrorComponent (MisnamedPackageImport a b c) = concat
+    [ "Package was imported declaring name ", show a
+    , " but the package titles itself " , show b 
+    , " at CID ", show c
+    ]
+  showErrorComponent (MisnamedPackageFile a b) = concat
+    [ "Package is declared in file ", show a
+    , " but the package titles itself ", show b 
+    ]
+  showErrorComponent (ConflictingImportNames n cid ns) = concat
+    [ "Imported package, ", show n
+    , " from CID, ", show cid
+    , " which contains the following conflicting names", show ns
+    ]
   showErrorComponent (TopLevelRedefinition nam) =
     "illegal redefinition of " ++ T.unpack nam
   showErrorComponent (ReservedKeyword nam) =
@@ -142,6 +129,8 @@ instance ShowErrorComponent ParseErr where
     "illegal leading apostrophe in name: " ++ T.unpack nam
   showErrorComponent (CorruptDefs e) =
     "ERR: The defined environment is corrupt: " ++ show e
+  showErrorComponent (InvalidCID err txt) =
+    "Inalid CID: " ++ show txt ++ ", " ++ err
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
@@ -154,31 +143,25 @@ instance ShowErrorComponent ParseErr where
 -- in future extension of the parser with mutable state and logging, since we
 -- then only have to make those changes in one place (as opposed to also
 -- changing all the unwrapping functions
-type Parser a
-  = RWST ParseEnv ParseLog ParseState (ParsecT ParseErr Text Identity) a
+--
+-- Additionally, ParsecT wraps around the `IO` monad in order to be able to
+-- resolve package imports.
+type Parser a = RWST ParseEnv ParseLog ParseState (ParsecT ParseErr Text IO) a
 
 -- | A top level parser with default env and state
-parseDefault :: Show a => Parser a -> Text
-             -> Either (ParseErrorBundle Text ParseErr) a
-parseDefault p s = do
-  (a,_,_) <- runIdentity $ runParserT (runRWST p defaultParseEnv ()) "" s
-  return a
-
--- | A useful testing function
-parserTest :: Show a => Parser a -> Text -> IO ()
-parserTest p s = case parseDefault p s of
-  Left  e -> putStr (errorBundlePretty e)
-  Right x -> print x
+parseDefault :: Show a => Parser a -> Text -> IO a
+parseDefault p s = parseIO p defaultParseEnv "" s
 
 -- | A utility for running a `Parser`, since the `RWST` monad wraps `ParsecT`
-parse' :: Show a => Parser a -> ParseEnv -> String -> Text
-       -> Either (ParseErrorBundle Text ParseErr) a
-parse' p env file txt = do
-  (a,_,_) <- runIdentity $ runParserT (runRWST p env ()) file txt
-  return a
+parseIO :: Show a => Parser a -> ParseEnv -> String -> Text -> IO a
+parseIO p env file txt = do
+  a <- runParserT (runRWST p env ()) file txt
+  case a of
+    Left  e       -> putStr (errorBundlePretty e) >> exitFailure
+    Right (m,_,_) -> return m
 
-pName :: Parser Text
-pName = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
+pName :: Bool -> Parser Text
+pName bind = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
   n  <- alphaNumChar <|> oneOf nameSymbol
   ns <- many (alphaNumChar <|> oneOf nameSymbol)
   let nam = T.pack (n : ns)
@@ -187,7 +170,7 @@ pName = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
      | nam `Set.member` keywords -> customFailure $ ReservedKeyword nam
      | otherwise -> return nam
   where
-    nameSymbol = "_'" :: [Char]
+    nameSymbol = if bind then "_'" else "_'/" :: [Char]
 
     keywords :: Set Text
     keywords = Set.fromList $
@@ -207,10 +190,11 @@ pName = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
       , "define"
       ]
 
+
 -- | Consume whitespace, while skipping comments. Yatima line comments begin
--- with @//@, and block comments are bracketed by @*/@ and @*/@ symbols.
+-- with @--@, and block comments are bracketed by @{-@ and @-}@ symbols.
 space :: Parser ()
-space = L.space space1 (L.skipLineComment "--") (L.skipBlockComment "/*" "*/")
+space = L.space space1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 
 -- | A symbol is a string which can be followed by whitespace. The @sc@ argument
 -- is for parsing indentation sensitive whitespace
@@ -248,11 +232,11 @@ pBinder annOptional namOptional = choice
   ]
   where
     unNam = (\x -> [("", Just (Many, x))]) <$> pTerm
-    unAnn = (\x -> [(x , Nothing       )]) <$> pName
+    unAnn = (\x -> [(x , Nothing       )]) <$> pName True
     ann = do
       symbol "("
       uses  <- pUses
-      names <- sepEndBy1 pName space
+      names <- sepEndBy1 (pName True) space
       typ_  <- symbol ":" >> pExpr False
       string ")"
       return $ (,Just (uses,typ_)) <$> names
@@ -283,7 +267,7 @@ bindAll bs = bind (foldr (\(s,n,_) ns -> s:n:ns) [] bs)
 
 pAll :: Parser Term
 pAll = do
-  self <- (symbol "@" >> pName <* space) <|> return ""
+  self <- (symbol "@" >> (pName True) <* space) <|> return ""
   symbol "∀" <|> symbol "all" <|> symbol "forall"
   bs   <- binders self <* space
   symbol "->"
@@ -300,8 +284,8 @@ pAll = do
 
 pDecl :: Bool -> Parser (Name, Term, Term)
 pDecl shadow = do
-  nam     <- pName <* space
-  index   <- asks (_index . _defs)
+  nam     <- (pName True) <* space
+  index   <- asks _index
   when (not shadow && M.member nam index)
     (customFailure $ TopLevelRedefinition nam)
   bs      <- (try binders <|> return []) <* space
@@ -331,10 +315,10 @@ pLet = do
 pVar :: Parser Term
 pVar = label "a local or global reference: \"x\", \"add\"" $ do
   env <- ask
-  nam <- pName
+  nam <- pName False
   case nam `Set.member` (_context env) of
     True  -> return $ Var nam
-    False -> case M.lookup nam ((_index . _defs) env) of
+    False -> case M.lookup nam (_index env) of
       Nothing -> customFailure $ UndefinedReference nam
       Just _  -> return $ Ref nam
 
@@ -365,47 +349,131 @@ pExpr parens = do
     args = next <|> (return [])
     next :: Parser [Term]
     next = do
-      notFollowedBy (void (symbol "def") <|> eof)
+      notFollowedBy (void (symbol "def") <|> (void (symbol "{|")) <|> eof)
       t  <- pTerm <* space
       ts <- args
       return (t:ts)
 
+pDoc :: Parser Text
+pDoc = do
+  d <- optional (string "{|" >> T.pack <$> (manyTill anySingle (symbol "|}")))
+  return $ maybe "" id d
+
 -- | Parse a definition
 pDef :: Parser Def
 pDef = label "a definition" $ do
+  doc <- pDoc
   symbol "def"
   (nam,exp,typ) <- pDecl False
-  return $ Def nam exp typ
+  return $ Def nam "" exp typ
 
-pInsertDef :: Def -> Parser Defs
+pInsertDef :: Def -> Parser Index
 pInsertDef def = do
-  defs <- asks _defs
-  case runExcept (insertDef def defs) of
+  index <- asks _index
+  cache <- liftIO $ readCache
+  case runExcept (insertDef def index cache) of
     Left  e -> customFailure $ CorruptDefs e
-    Right x -> return x
+    Right (cid,cac) -> do
+      liftIO $ writeCache cac
+      return $ M.insert (_name def) cid index
 
 -- | Parse a sequence of definitions, e.g. in a file
-pDefs :: Parser Defs
-pDefs = (try $ space >> next) <|> end
+pDefs :: Parser Index
+pDefs = (try $ space >> next) <|> (space >> eof >> asks _index)
   where
-  end = space >> eof >> asks _defs
   next = do
     def  <- pDef
-    defs <- pInsertDef def
-    local (\e -> e { _defs = defs }) pDefs
+    ind <- pInsertDef def
+    local (\e -> e { _index = ind }) pDefs
+
+pCid :: Parser CID
+pCid = do
+  txt <- T.pack <$> (manyTill anySingle space)
+  case cidFromText txt of
+    Left  err  -> customFailure $ InvalidCID err txt
+    Right cid  -> return $ cid
+
+pPackageName :: Parser Text
+pPackageName = label "a package name" $ do
+  n  <- letterChar
+  ns <- many (alphaNumChar <|> oneOf ("-" :: [Char]))
+  let nam = T.pack (n : ns)
+  return nam
+
+data Import
+  = IPFS  Name (Maybe Name) CID
+  | Local Name (Maybe Name)
+
+pDeserial :: forall a. Serialise a => CID -> Parser a
+pDeserial cid = do
+  cache <- liftIO $ readCache
+  case runExcept (deserial @a cid cache) of
+    Left  e -> customFailure $ CorruptDefs $ e
+    Right a -> return a
+
+pImport :: Parser (Name,CID,Index)
+pImport = label "an import" $ do
+  symbol "with"
+  nam <- pPackageName
+  ali <- optional $ try $ (space >> symbol "as" >> pName False)
+  imp <- choice
+    [ (symbol "from" >> IPFS nam ali <$> pCid)
+    , return $ Local nam ali
+    ]
+  case imp of
+    IPFS nam ali cid -> do
+      p <- pDeserial @Package cid
+      unless (nam == (_title p))
+        (customFailure $ MisnamedPackageImport nam (_title p) cid)
+      let pre = maybe "" (\x -> T.append x "/") ali
+      return (nam,cid, M.mapKeys (T.append pre) (_packInd p))
+    Local nam ali -> do
+      (cid,p) <- liftIO $ pFile "" (T.unpack nam ++ ".ya")
+      unless (nam == (_title p))
+        (customFailure $ MisnamedPackageImport nam (_title p) cid)
+      let pre = maybe "" (\x -> T.append x "/") ali
+      return (nam,cid, M.mapKeys (T.append pre) (_packInd p))
+
+pImports :: Parser ([CID], Index)
+pImports = next <|> (([],) <$> asks _index)
+  where
+  next = do
+    (nam,cid,imp) <- pImport <* space
+    index <- asks _index
+    let conflict = M.keys $ M.intersection imp index
+    unless (conflict == [])
+      (customFailure $ ConflictingImportNames nam cid conflict)
+    (cs,ind) <- local (\e -> e { _index = M.union imp index }) pImports
+    return (cid:cs, ind)
+
+pPackage :: Parser Package
+pPackage = do
+  doc     <- maybe "" id <$> (optional $ pDoc)
+  title   <- symbol "package" >> pPackageName <* space
+  (imports, index) <- pImports <* space
+  sn <- sourceName <$> getSourcePos
+  when (title /= "" && ((T.unpack title) ++ ".ya") /= sn)
+    (customFailure $ MisnamedPackageFile sn title)
+  when (title /= "") (void $ symbol "where")
+  index <- local (\e -> e { _index = index }) pDefs
+  return $ Package title doc imports index
 
 -- | Parse a file
-pFile :: FilePath -> IO Defs
-pFile file = do
-  txt <- TIO.readFile file
-  case parse' pDefs defaultParseEnv file txt of
-    Left  e -> putStr (errorBundlePretty e) >> exitFailure
-    Right m -> return m
+pFile :: FilePath -> FilePath -> IO (CID,Package)
+pFile root file = do
+  unless (root == "") (setCurrentDirectory root)
+  createDirectoryIfMissing True ".yatima/cache"
+  txt   <- TIO.readFile file
+  pack  <- parseIO pPackage defaultParseEnv file txt
+  cache <- readCache
+  let (cid,cache') = insertPackage pack cache
+  writeCache cache'
+  return (cid,pack)
 
 -- | Parse and pretty-print a file
-prettyFile :: FilePath -> IO ()
-prettyFile file = do
-  defs <- pFile file
-  case prettyDefs defs of
-    Left e  -> putStrLn $ show e
-    Right t -> putStrLn $ T.unpack t
+--prettyFile :: FilePath -> IO ()
+--prettyFile file = do
+--  defs <- pFile file
+--  case prettyDefs defs of
+--    Left e  -> putStrLn $ show e
+--    Right t -> putStrLn $ T.unpack t
