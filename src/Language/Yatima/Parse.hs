@@ -24,21 +24,21 @@ Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
 datatype you need to use `parse'`
 
 @
-> :t parse' pTerm defaultParseEnv ""
-parse' pTerm defaultParseEnv ""
+> :t parse' pTerm () ""
+parse' pTerm () ""
 :: Text -> Either (ParseErrorBundle Text ParseErr) Term
 @
 
 Here's an example on correct input:
 
 @
-> parse' pTerm defaultParseEnv "" "λ x => x" 
+> parse' pTerm () "" "λ x => x" 
 Right (Lam "x" (Var "x" 0))
 @
 
 And on input that errors:
 @
-> parse' pTerm defaultParseEnv "" "λ x => y" 
+> parse' pTerm () "" "λ x => y" 
 Left (ParseErrorBundle 
 (UndefinedReference "y")]) :| [], bundlePosState = PosState {pstateInput =
 "\955 x => y", pstateOffset = 0, pstateSourcePos = SourcePos {sourceName =
@@ -63,6 +63,8 @@ module Language.Yatima.Parse
   ( ParseErr(..)
   , Parser
   , parseDefault
+  , parseTerm
+  , unsafeParseTerm
   , parserTest
   , parse'
   , pName
@@ -74,9 +76,11 @@ module Language.Yatima.Parse
   , prettyFile
   ) where
 
+import Debug.Trace
+
 import           Control.Monad.Except
 import           Control.Monad.Identity
-import           Control.Monad.RWS.Lazy     hiding (All)
+import           Control.Monad.RWS.Lazy     hiding (All, Any)
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -98,10 +102,7 @@ import           Language.Yatima.Print
 
 
 -- | The environment of a Parser
-data ParseEnv = ParseEnv
-  { -- | The binding context for local variables
-    _context :: Set Name
-  }
+type ParseEnv = ()
 
 -- | A stub for a future parser state
 type ParseState = ()
@@ -109,20 +110,14 @@ type ParseState = ()
 -- | A stub for a future parser log
 type ParseLog = ()
 
--- | An empty parser environment, useful for testing
-defaultParseEnv = ParseEnv Set.empty
-
 -- | Custom parser errrors with bespoke messaging
 data ParseErr
-  = UndefinedReference Name
-  | ReservedKeyword Name
+  = ReservedKeyword Name
   | LeadingDigit Name
   | LeadingApostrophe Name
   deriving (Eq, Ord, Show)
 
 instance ShowErrorComponent ParseErr where
-  showErrorComponent (UndefinedReference nam) =
-    "Undefined reference: " ++ T.unpack nam
   showErrorComponent (ReservedKeyword nam) =
     "Reserved keyword: " ++ T.unpack nam
   showErrorComponent (LeadingDigit nam) = 
@@ -141,14 +136,12 @@ instance ShowErrorComponent ParseErr where
 -- in future extension of the parser with mutable state and logging, since we
 -- then only have to make those changes in one place (as opposed to also
 -- changing all the unwrapping functions
-type Parser a
-  = RWST ParseEnv ParseLog ParseState (ParsecT ParseErr Text Identity) a
+type Parser a = RWST ParseEnv ParseLog ParseState (ParsecT ParseErr Text Identity) a
 
 -- | A top level parser with default env and state
-parseDefault :: Show a => Parser a -> Text
-             -> Either (ParseErrorBundle Text ParseErr) a
+parseDefault :: Show a => Parser a -> Text -> Either (ParseErrorBundle Text ParseErr) a
 parseDefault p s = do
-  (a,_,_) <- runIdentity $ runParserT (runRWST p defaultParseEnv ()) "" s
+  (a,_,_) <- runIdentity $ runParserT (runRWST p () ()) "" s
   return a
 
 -- | A useful testing function
@@ -156,6 +149,18 @@ parserTest :: Show a => Parser a -> Text -> IO ()
 parserTest p s = case parseDefault p s of
   Left  e -> putStr (errorBundlePretty e)
   Right x -> print x
+
+-- | Parses a source-code to a Term, simplified API
+parseTerm :: Text -> Maybe Term
+parseTerm code = case parseDefault (pExpr False) code of
+  Left err -> Nothing
+  Right trm -> Just trm
+
+-- | Parses a source-code to a Term, simplified API, throws
+unsafeParseTerm :: Text -> Term
+unsafeParseTerm code = case parseTerm code of
+  Nothing  -> error "Bad parse."
+  Just trm -> trm
 
 -- | A utility for running a `Parser`, since the `RWST` monad wraps `ParsecT`
 parse' :: Show a => Parser a -> ParseEnv -> String -> Text
@@ -203,55 +208,63 @@ space = L.space space1 (L.skipLineComment "--") (L.skipBlockComment "/*" "*/")
 symbol :: Text -> Parser Text
 symbol txt = L.symbol space txt
 
--- | Add a list of names to the binding context
-bind :: [Name] -> Parser a -> Parser a
-bind bs p =
-  local (\e -> e { _context = Set.union (_context e) (Set.fromList bs) }) p
+-- | Parse a hole: @?name@
+pHol :: Parser Term
+pHol = label "a hole: \"?name\"" $ do
+  symbol "?"
+  name <- pName
+  return (Hol name)
 
-foldLam:: Term -> [Name] -> Term
-foldLam body bs = foldr (\n x -> Lam n x) body bs
+-- | Parse an any: @*@
+pAny :: Parser Term
+pAny = label "an any: \"*\"" $ do
+  symbol "*"
+  return Any
 
 -- | Parse a lambda: @λ x y z => body@
 pLam :: Parser Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
-  symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  bs   <- pBinder <* space
+  symbol "λ"
+  vars <- sepEndBy1 pName space <* space
   symbol "=>"
-  body <- bind bs (pExpr False)
-  return $ foldLam body bs
+  body <- pExpr False
+  return (foldr Lam body vars)
 
----- | Parse an untyped binding sequence @x y z@ within a lambda
-pBinder :: Parser [Name]
-pBinder = label "a single binder in lambda" $ do
-  --symbol "("
-  names <- sepEndBy1 pName space
-  --string ")"
-  return names
+-- | Parse a forall: @∀ (a: A) (b: B) (c: C) -> body@
+pAll :: Parser Term
+pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
+  symbol "∀"
+  bnds <- sepEndBy1 pBnd space <* space
+  symbol "->"
+  body <- pExpr False
+  return (foldr (\ (name,tipo) -> All name tipo) body bnds)
 
--- TODO: Use this when adding types to lambdas (if desired in future)
---pBinders :: Parser [Name]
---pBinders = label "a binding sequence in a lambda" $ do
---  (try $ next) <|> pBinder
---  where
---   next = do
---     b  <- pBinder <* space
---     bs <- bind b $ pBinders
---     return $ b ++ bs
+-- | Parses a forall binder: @(a: A)@
+pBnd :: Parser (Name, Term)
+pBnd = do
+  symbol "("
+  name <- pName
+  space
+  symbol ":"
+  tipo <- pExpr False
+  space
+  symbol ")"
+  return (name, tipo)
 
 -- | Parse a local variable or a locally indexed alias of a global reference
 pVar :: Parser Term
 pVar = label "a local or global reference: \"x\", \"add\"" $ do
-  ctx <- asks _context
   nam <- pName
-  case nam `Set.member` ctx of
-    True  -> return $ Var nam
-    False -> customFailure $ UndefinedReference nam
+  return (Var nam)
 
 -- | Parse a term
 pTerm :: Parser Term
 pTerm = do
   choice
     [ pLam
+    , pAll
+    , pHol
+    , pAny
     , pExpr True
     , pVar
     ]
@@ -270,7 +283,7 @@ pExpr parens = do
 pFile :: FilePath -> IO Term
 pFile file = do
   txt <- TIO.readFile file
-  case parse' (pExpr False) defaultParseEnv file txt of
+  case parse' (pExpr False) () file txt of
     Left  e -> putStr (errorBundlePretty e) >> exitFailure
     Right m -> return m
 

@@ -1,8 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
+--
+-- hash: beed63978e6c2b8988690f0c3438d6919350188c88d2a7a4a96287f7c653e4ec
 
 name:           yatima
 version:        0.1.0.0
@@ -24,6 +26,7 @@ library
       Language.Yatima.Print
       Language.Yatima.Parse
       Language.Yatima.HOAS
+      Language.Yatima
   other-modules:
       Paths_yatima
   hs-source-dirs:

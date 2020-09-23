@@ -24,14 +24,22 @@ prettyTerm t = go t
 
     go :: Term -> Text
     go t = case t of
-      Var n   -> n
-      Lam n b -> T.concat ["λ ", lams n b]
-      App f a -> apps f a
+      Hol name           -> T.concat ["?", name]
+      Var name           -> name
+      All name bind body -> T.concat ["∀ ", alls name bind body]
+      Lam name body      -> T.concat ["λ ", lams name body]
+      App func argm      -> apps func argm
+      Any                -> "*"
+
+    alls :: Name -> Term -> Term -> Text
+    alls name bind body = case body of
+      All name' bind' body' -> T.concat ["(", name, ": ", go bind, ") ", alls name' bind' body']
+      _                     -> T.concat ["(", name, ": ", go bind, ") => ", go body]
 
     lams :: Name -> Term -> Text
     lams n b = case b of
-        Lam n' b' -> T.concat [n, " ", lams n' b']
-        _         -> T.concat [n, " => ", go b]
+      Lam n' b' -> T.concat [n, " ", lams n' b']
+      _         -> T.concat [n, " => ", go b]
 
     apps :: Term -> Term -> Text
     apps f@(Lam _ _) a  = T.concat ["(", go f, ") ", go a]

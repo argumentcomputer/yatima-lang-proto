@@ -14,8 +14,8 @@ module Language.Yatima.Term
   , Term(..)
   ) where
 
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T hiding (find)
+import           Data.Text (Text)
+import qualified Data.Text as T hiding (find)
 
 -- * Yatima expressions
 
@@ -24,11 +24,19 @@ type Name = Text
 
 -- | A Yatima term with names and source locations
 data Term where
+  -- | A hole
+  Hol :: Name -> Term
   -- | Local variable
   Var :: Name -> Term
+  -- | A forall
+  All :: Name -> Term -> Term -> Term
   -- | A lambda
   Lam :: Name -> Term -> Term
   -- | An application of a function to an argument
   App :: Term -> Term -> Term
+  -- | The type of types
+  Any :: Term
 
 deriving instance Show Term
+
+
