@@ -66,14 +66,14 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 import           Language.Yatima.Term
 import           Language.Yatima.Print
-import           Language.Yatima.Defs
+import           Language.Yatima.IPLD hiding (_index)
+import qualified Language.Yatima.IPLD as    IPLD
 
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
   { -- | The binding context for local variables
-    _context  :: Set Name
-  , _index    :: Map Name CID
-  -- , _packs    :: Map Name CID
+    _context    :: Set Name
+  , _index      :: Map Name CID
   }
 
 -- | A stub for a future parser state
@@ -241,22 +241,17 @@ pBinder annOptional namOptional = choice
       string ")"
       return $ (,Just (uses,typ_)) <$> names
 
-foldLam:: Term -> [(Name, Maybe (Uses, Term))] -> Term
-foldLam body bs = foldr (\(n,ut) x -> Lam n ut x) body bs
+foldLam:: Term -> [Name] -> Term
+foldLam body bs = foldr (\n x -> Lam n x) body bs
 
 -- | Parse a lambda: @λ x y z => body@
 pLam :: Parser Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  bs   <- binders
-  body <- bind (fst <$> bs) (pExpr False)
+  bs   <- sepEndBy1 (pName True) space
+  symbol "=>"
+  body <- bind bs (pExpr False)
   return $ foldLam body bs
-  where
-    binder  = pBinder True False
-    binders = do
-     b  <- binder <* space
-     bs <- bind (fst <$> b) $ ((symbol "=> " >> return []) <|> binders)
-     return $ b ++ bs
 
 foldAll :: Term -> [(Name, Name, Maybe (Uses, Term))] -> Term
 foldAll body bs = foldr (\(s,n,Just (u,t)) x -> All s n u t x) body bs
@@ -291,7 +286,7 @@ pDecl shadow = do
   typBody <- bind ns (pExpr False)
   let typ = foldAll typBody ((\(n,ut) -> ("",n,ut)) <$> bs)
   expBody <- symbol "=" >> bind ns (pExpr False)
-  let exp = foldLam expBody bs
+  let exp = foldLam expBody (fst <$> bs)
   return (nam, exp, typ)
   where
     binder  = pBinder False False
@@ -425,13 +420,13 @@ pImport = label "an import" $ do
       unless (nam == (_title p))
         (customFailure $ MisnamedPackageImport nam (_title p) cid)
       let pre = maybe "" (\x -> T.append x "/") ali
-      return (nam,cid, M.mapKeys (T.append pre) (_packInd p))
+      return (nam,cid, M.mapKeys (T.append pre) (IPLD._index p))
     Local nam ali -> do
       (cid,p) <- liftIO $ pFile "" (T.unpack nam ++ ".ya")
       unless (nam == (_title p))
         (customFailure $ MisnamedPackageImport nam (_title p) cid)
       let pre = maybe "" (\x -> T.append x "/") ali
-      return (nam,cid, M.mapKeys (T.append pre) (_packInd p))
+      return (nam,cid, M.mapKeys (T.append pre) (IPLD._index p))
 
 pImports :: Parser ([CID], Index)
 pImports = next <|> (([],) <$> asks _index)
@@ -467,6 +462,9 @@ pFile root file = do
   pack  <- parseIO pPackage defaultParseEnv file txt
   cache <- readCache
   let (cid,cache') = insertPackage pack cache
+  putStr "parsing: "
+  putStr (T.unpack $ _title pack)
+  putStrLn $ " " ++ (T.unpack $ printCIDBase32 cid)
   writeCache cache'
   return (cid,pack)
 

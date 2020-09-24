@@ -30,7 +30,7 @@ data Term where
   -- | Local variable
   Var :: Name -> Term
   -- | A lambda
-  Lam :: Name -> Maybe (Uses,Term) -> Term -> Term
+  Lam :: Name -> Term -> Term
   -- | An application of a function to an argument
   App :: Term -> Term -> Term
   -- | An local reference to a term in the def cache
@@ -54,3 +54,5 @@ data Def = Def
   , _term :: Term
   , _type :: Term
   } deriving Show
+
+--type Defs = Map Name Term

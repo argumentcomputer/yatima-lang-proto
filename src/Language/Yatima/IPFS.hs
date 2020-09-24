@@ -20,7 +20,7 @@ import           System.Directory
 import           Control.Monad
 
 import           Codec.Serialise
-import           Language.Yatima.Defs
+import           Language.Yatima.IPLD
 import           Language.Yatima.Term
 
 import           Network.IPFS.API
@@ -35,13 +35,12 @@ dagPut :: BSL.ByteString -> Maybe Text -> Maybe Text -> Maybe Bool -> Maybe Text
        -> ClientM Value
 dagPut = client (Proxy :: Proxy ApiV0DagPut)
 
-dagPutAnon :: Maybe Bool -> Anon -> ClientM Value
-dagPutAnon pin anon =
-  dagPut (serialise anon) (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
+dagPutTree :: Maybe Bool -> Tree -> ClientM Value
+dagPutTree pin tree =
+  dagPut (serialise tree) (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
 
 dagPutBytes :: Maybe Bool -> BSL.ByteString -> ClientM Value
-dagPutBytes pin bytes =
-  dagPut bytes (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
+dagPutBytes pin bs = dagPut bs (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
 
 dagGet :: Text -> S.ClientM (SourceIO BS.ByteString)
 dagGet = S.client (Proxy :: Proxy ApiV0DagGet)
@@ -49,11 +48,11 @@ dagGet = S.client (Proxy :: Proxy ApiV0DagGet)
 blockGet :: Text -> S.ClientM (SourceIO BS.ByteString)
 blockGet = S.client (Proxy :: Proxy ApiV0BlockGet)
 
-runDagPut :: Anon -> IO ()
-runDagPut anon = do
+runDagPut :: Tree -> IO ()
+runDagPut tree = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
-  res <- runClientM (dagPutAnon (Just True) anon) env
+  res <- runClientM (dagPutTree (Just True) tree) env
   case res of
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
@@ -74,16 +73,45 @@ runBlockGet cid_txt = do
     Left err -> putStrLn $ "Error: " ++ show err
     Right rs -> foreach fail print rs
 
+runDagPutFile :: FilePath -> FilePath -> IO (Either ClientError Value)
+runDagPutFile root file = do
+  unless (root == "") (setCurrentDirectory root)
+  putStrLn file
+  manager' <- newManager defaultManagerSettings
+  bs <- BS.readFile (root ++ ".yatima/cache/" ++ file)
+  let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
+  let client = (dagPutBytes (Just True) . BSL.fromStrict) bs
+  runClientM client env
+
 runDagPutCache :: FilePath -> IO ()
 runDagPutCache root = do
   unless (root == "") (setCurrentDirectory root)
   manager' <- newManager defaultManagerSettings
-  cache <- readCache
+  cache  <- readCache
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
   let client = traverse (dagPutBytes (Just True) . BSL.fromStrict) cache
   res <- runClientM client env
   case res of
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
+
+runDagPutCache' :: FilePath -> IO ()
+runDagPutCache' root = do
+  unless (root == "") (setCurrentDirectory root)
+  ns <- listDirectory ".yatima/cache"
+  traverse go ns
+  return ()
+  where
+    go :: FilePath -> IO ()
+    go f = do
+      bs <- BS.readFile (root ++ ".yatima/cache/" ++ f)
+      case cidFromText (T.pack f) of
+        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ f ++ ", " ++ e
+        Right c -> do
+          putStrLn $ (T.unpack $ printCIDBase32 c)
+          e <- runDagPutFile root f
+          case e of
+            Left e  -> print e >> return ()
+            Right v -> print v >> return ()
 
 

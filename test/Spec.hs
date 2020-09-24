@@ -3,8 +3,8 @@ module Main where
 import           Test.Hspec
 import           Test.QuickCheck
 
-import           Spec.Serial as Serial
+import           Spec.IPLD as IPLD
 
 main :: IO ()
 main = hspec $ do
-  describe "Yatima Serialization" $ Serial.spec
+  describe "Yatima IPLD Serialization" $ IPLD.spec

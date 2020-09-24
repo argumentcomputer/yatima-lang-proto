@@ -16,7 +16,7 @@ library:
   source-dirs: src
   exposed-modules:
     - Language.Yatima.Term
-    - Language.Yatima.Defs
+    - Language.Yatima.IPLD
     - Language.Yatima.CID
     - Language.Yatima.Uses
     - Language.Yatima.Print
@@ -56,40 +56,40 @@ library:
     - MultiWayIf
     - TupleSections
 
-executables:
-  yide:
-    main: Main.hs
-    source-dirs: yide
-    dependencies:
-      - base >= 4.7 && < 5
-      - containers
-      - text
-      - yatima
-      - mtl
-      - megaparsec
-      - haskeline
-      - process
-      # - serialise
-      # - bytestring
-      # - base16-bytestring
-      # - multibase
-      # - cryptonite
-      # - multihash-cryptonite
-      # - ipld-cid
-      # - unsafeperformst
-      # - aeson
-      # - servant
-      # - servant-client
-      # - http-client
-      # - cborg
-      # - ipfs-api
-    default-extensions:
-      - OverloadedStrings
-      - GADTSyntax
-      - StandaloneDeriving
-      - MultiWayIf
-      - TypeApplications
-      - ScopedTypeVariables
+#executables:
+#  yide:
+#    main: Main.hs
+#    source-dirs: yide
+#    dependencies:
+#      - base >= 4.7 && < 5
+#      - containers
+#      - text
+#      - yatima
+#      - mtl
+#      - megaparsec
+#      - haskeline
+#      - process
+#      # - serialise
+#      # - bytestring
+#      # - base16-bytestring
+#      # - multibase
+#      # - cryptonite
+#      # - multihash-cryptonite
+#      # - ipld-cid
+#      # - unsafeperformst
+#      # - aeson
+#      # - servant
+#      # - servant-client
+#      # - http-client
+#      # - cborg
+#      # - ipfs-api
+#    default-extensions:
+#      - OverloadedStrings
+#      - GADTSyntax
+#      - StandaloneDeriving
+#      - MultiWayIf
+#      - TypeApplications
+#      - ScopedTypeVariables
 
 tests:
   spec:
@@ -130,5 +130,5 @@ tests:
       - TypeApplications
       - ScopedTypeVariables
     other-modules:
-      - Spec.Serial
+      - Spec.IPLD
 

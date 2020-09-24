@@ -24,6 +24,9 @@ import qualified Data.ByteString.Multibase  as MB
 import qualified Data.ByteString.BaseN      as BaseN
 import qualified Data.ByteString.Base16     as BS16
 import qualified Data.ByteString.Base16     as BS16
+import           Data.Text                  (Text)
+import qualified Data.Text                  as T
+import           Data.Text.Encoding         (decodeUtf8)
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -81,6 +84,7 @@ mkCborCIDv1 alg a = CID.newCidV1 CID.DagCbor (hashLazyWith alg (serialise a))
 makeCID :: Serialise a => a -> CID
 makeCID a = mkCborCIDv1 C.Blake2b_256 a
 
-printCIDBase32 :: CID -> ByteString
-printCIDBase32 c = cidToBase BaseN.Base32 c
+printCIDBase32 :: CID -> Text
+printCIDBase32 c = decodeUtf8 $ cidToBase BaseN.Base32 c
+
 

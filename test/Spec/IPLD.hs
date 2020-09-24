@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
-module Spec.Serial where
+module Spec.IPLD where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -16,7 +16,7 @@ import           Data.Text                            (Text)
 import qualified Data.Text                            as T
 
 import           Language.Yatima.CID
-import           Language.Yatima.Defs
+import           Language.Yatima.IPLD
 import           Language.Yatima.Term
 import           Language.Yatima.Uses
 
@@ -33,25 +33,26 @@ deriving instance Bounded Uses
 instance Arbitrary Uses where
   arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary Anon where
-  arbitrary = frequency
-    [ (100,VarA <$> arbitrary)
-    , (100,RefA <$> arbitrary)
-    , (100, return TypA)
-    , (50, LamA <$> arbitrary <*> arbitrary)
-    , (50, AppA <$> arbitrary <*> arbitrary)
-    , (33, AllA <$> arbitrary <*> arbitrary <*> arbitrary)
-    , (33, LetA <$> (arbitrary :: Gen Uses) <*> (arbitrary :: Gen Anon)
-           <*> (arbitrary :: Gen Anon) <*> (arbitrary :: Gen Anon))
+instance Arbitrary Tree where
+  arbitrary = oneof
+    [ Vari <$> arbitrary
+    , Link <$> arbitrary
+    , Bind <$> arbitrary
+    , do
+        n <- (\n -> (n * 2) `div` 3) <$> getSize
+        i <- choose (0,n)
+        c <- name_gen
+        ts <- resize n $ vector i
+        return $ Ctor c (fromIntegral i) ts
     ]
 
 instance Arbitrary Meta where
   arbitrary = Meta <$> arbitrary
 
-instance Arbitrary AnonDef where
-  arbitrary = AnonDef <$> arbitrary <*> arbitrary
+instance Arbitrary TreeDef where
+  arbitrary = TreeDef <$> arbitrary <*> arbitrary
 
-deriving instance Eq AnonDef
+deriving instance Eq TreeDef
 
 instance Arbitrary MetaDef where
   arbitrary = MetaDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
@@ -67,10 +68,9 @@ prop_serial x = let s = serialise x in
     Left _   -> False
     Right x' -> x == x' && (serialise x' == s)
 
-
 test_defs :: (Index,Cache)
 test_defs =
-  let trm = Lam "A" (Just(Many,Typ)) (Lam "x" (Just(Many,Var "A")) (Var "x"))
+  let trm = Lam "A" (Lam "x" (Var "x"))
       typ = All "" "A" Many Typ (All "" "x" Many (Var "A") (Var "A"))
       def = Def "id" "" trm typ
       Right (cid, cache) = runExcept (insertDef def M.empty M.empty)
@@ -80,22 +80,16 @@ test_index = fst test_defs
 test_cache = snd test_defs
 
 name_gen :: Gen Text
-name_gen = T.pack <$> (listOf $ elements nameChar)
+name_gen = T.pack <$> (listOf1 $ elements nameChar)
   where
     nameChar = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9']
-
-ann_gen :: [Name] -> Gen (Maybe (Uses, Term))
-ann_gen ctx = oneof
-  [ return Nothing
-  , fmap Just $ (,) <$> arbitrary <*> (term_gen ctx)
-  ]
 
 term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
   [ (100,Var <$> elements ctx)
   , (100,Ref <$> elements (M.keys test_index))
   , (100, return Typ)
-  , (50, (name_gen >>= \n -> Lam n <$> ann_gen ctx <*> term_gen (n:ctx)))
+  , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, App <$> term_gen ctx <*> term_gen ctx)
   , (33, (name_gen >>= \s -> name_gen >>= \n -> 
             All s n <$> arbitrary <*> term_gen ctx <*> term_gen (n:s:ctx)))
@@ -111,19 +105,19 @@ prop_separate :: Term -> Bool
 prop_separate t = either (const False) id (runExcept $ go t)
   where
     go :: Term -> Except DerefErr Bool
-    go t = do
-      (a,m) <- separateMeta "test" t test_index test_cache
-      t'    <- mergeMeta a m
-      (a',m') <- separateMeta "test" t' test_index test_cache
-      return $ t == t' && a' == a && m == m'
+    go term = do
+      (tree,meta) <- termToTree "test" term test_index test_cache
+      term'    <- treeToTerm tree meta
+      (tree',meta') <- termToTree "test" term' test_index test_cache
+      return $ term == term' && tree == tree' && meta == meta'
 
 spec :: SpecWith ()
 spec = do
   describe "Checking serialisation correctness: `x == deserialise (serialise x)`" $ do
     it "Cid"  $ property $ prop_serial @CID
     it "Meta" $ property $ prop_serial @Meta
-    it "Anon" $ property $ prop_serial @Anon
-    it "AnonDef" $ property $ prop_serial @AnonDef
+    it "Anon" $ property $ prop_serial @Tree
+    it "TreeDef" $ property $ prop_serial @TreeDef
     it "MetaDef" $ property $ prop_serial @MetaDef
     it "Package" $ property $ prop_serial @Package
   describe "Checking metadata separation correctness" $
