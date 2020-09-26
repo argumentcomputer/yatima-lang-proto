@@ -22,9 +22,8 @@ module Language.Yatima.IPLD
   , indexLookup
   , cacheLookup
   , insertDef
+  , insertDefs
   , insertPackage
-  , readCache
-  , writeCache
   ) where
 
 import           Data.IntMap                (IntMap)
@@ -457,29 +456,40 @@ insertPackage :: Package -> Cache -> (CID,Cache)
 insertPackage p cache = let pCID = makeCID p in
   (pCID, M.insert pCID (BSL.toStrict $ serialise p) cache)
 
-readCache :: IO Cache
-readCache = do
-  createDirectoryIfMissing True ".yatima/cache"
-  ns <- listDirectory ".yatima/cache"
-  M.fromList <$> traverse go ns
-  where
-    go :: FilePath -> IO (CID, BS.ByteString)
-    go f = do
-      bs <- BS.readFile (".yatima/cache/" ++ f)
-      case cidFromText (T.pack f) of
-        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ f ++ ", " ++ e
-        Right c -> return (c,bs)
-
-writeCache :: Cache -> IO ()
-writeCache c = void $ M.traverseWithKey go c
-  where
-    go :: CID -> BS.ByteString -> IO ()
-    go c bs = do
-      createDirectoryIfMissing True ".yatima/cache"
-      let file = (".yatima/cache/" ++ (T.unpack $ printCIDBase32 c))
-      exists <- doesFileExist file
-      unless exists (BS.writeFile file bs)
+insertDefs :: [Def] -> Index -> Cache -> Except DerefErr (Index,Cache)
+insertDefs [] index cache = return (index,cache)
+insertDefs (d:ds) index cache = do
+  (cid,cache') <- insertDef d index cache
+  insertDefs ds (M.insert (_name d) cid index) cache'
 
 emptyPackage :: Name -> Package
 emptyPackage n = Package n "" Set.empty M.empty
 
+-- | Checks that all Refs in a term correspond to valid MetaDef cache entries
+-- and that the term has no free variables
+validateTerm :: Term -> [Name] -> Index -> Cache -> Except DerefErr Term
+validateTerm trm ctx index cache = case trm of
+  Var nam                 -> case find nam ctx of
+    Just idx -> return $ Var nam
+    _        -> throwError $ FreeVariable nam ctx
+  Ref nam                 -> makeLink nam index cache >> return (Ref nam)
+  Lam nam bod             -> Lam nam <$> bind nam bod
+  App fun arg             -> App <$> go fun <*> go arg
+  Let nam use typ exp bod ->
+    Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
+  Typ                     -> return Typ
+  All slf nam use typ bod -> All slf nam use <$> go typ <*> bind2 slf nam bod
+  where
+    go t        = validateTerm t ctx index cache
+    bind    n t = validateTerm t (n:ctx) index cache
+    bind2 s n t = validateTerm t (n:s:ctx) index cache
+
+indexToDefs :: Index -> Cache -> Except DerefErr (Map Name Def)
+indexToDefs index cache = M.traverseWithKey go index
+  where
+    go :: Name -> CID -> Except DerefErr Def
+    go n cid = do
+     (Def name doc term typ_) <- deref n cid index cache
+     term' <- validateTerm term [n] index cache
+     typ_' <- validateTerm typ_ [n] index cache
+     return $ Def name doc term' typ_'

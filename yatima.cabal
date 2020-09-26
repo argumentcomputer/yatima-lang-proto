@@ -26,6 +26,7 @@ library
       Language.Yatima.Uses
       Language.Yatima.Print
       Language.Yatima.Parse
+      Language.Yatima.Import
       Language.Yatima.HOAS
       Language.Yatima.IPFS
       Language.Yatima

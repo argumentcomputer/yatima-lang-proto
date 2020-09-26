@@ -21,6 +21,7 @@ import           Control.Monad
 
 import           Codec.Serialise
 import           Language.Yatima.IPLD
+import           Language.Yatima.Import
 import           Language.Yatima.Term
 
 import           Network.IPFS.API

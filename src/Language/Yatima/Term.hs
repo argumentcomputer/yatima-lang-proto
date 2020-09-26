@@ -9,18 +9,21 @@ Stability   : experimental
 This module defines `Term`, the type of expressions in the Yatima language.
 
 -}
-module Language.Yatima.Term 
+module Language.Yatima.Term
   ( -- | IPFS content-identifiers
     module Language.Yatima.Uses
   , Name(..)
   , Term(..)
   , Def(..)
+  , Defs
   ) where
 
 import           Language.Yatima.Uses
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
+import           Data.Map                   (Map)
+import qualified Data.Map                   as M
 
 -- | An abstract name used in Yatima term for parsing and printing
 type Name = Text
@@ -55,4 +58,4 @@ data Def = Def
   , _type :: Term
   } deriving Show
 
---type Defs = Map Name Term
+type Defs = Map Name Def

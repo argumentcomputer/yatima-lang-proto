@@ -21,6 +21,7 @@ library:
     - Language.Yatima.Uses
     - Language.Yatima.Print
     - Language.Yatima.Parse
+    - Language.Yatima.Import
     - Language.Yatima.HOAS
     - Language.Yatima.IPFS
     - Language.Yatima
@@ -31,6 +32,9 @@ library:
     - text
     - mtl
     - megaparsec
+
+    - directory
+
     - serialise
     - bytestring
     - base16-bytestring
@@ -38,15 +42,16 @@ library:
     - cryptonite
     - multihash-cryptonite
     - ipld-cid
+    - cborg
+    - cborg-json
+
     - unsafeperformst
-    - aeson
+
     - servant
     - servant-client
     - http-client
-    - cborg
-    - cborg-json
+    - aeson
     - ipfs-api
-    - directory
 
 
   default-extensions:

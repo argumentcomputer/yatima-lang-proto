@@ -88,6 +88,6 @@ prettyDefs index cache = M.foldrWithKey go (Right "") index
       Left e   -> Left e
       Right d  -> return $ T.concat
         [ txt,"\n"
-        , n,"#", T.pack $ show c,"\n"
+        , printCIDBase32 c,"\n"
         , prettyDef d, "\n"
         ]
