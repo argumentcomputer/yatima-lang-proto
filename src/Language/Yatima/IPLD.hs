@@ -8,7 +8,7 @@ module Language.Yatima.IPLD
   , Meta(..)
   , TreeDef(..)
   , MetaDef(..)
-  , DerefErr(..)
+  , IPLDErr(..)
   , Index
   , Cache
   , makeLink
@@ -24,6 +24,8 @@ module Language.Yatima.IPLD
   , insertDef
   , insertDefs
   , insertPackage
+  , indexToDefs
+  , usesToTree
   ) where
 
 import           Data.IntMap                (IntMap)
@@ -229,7 +231,7 @@ instance Serialise Package where
   decode = decodePackage
 
 -- * Anonymization
-data DerefErr
+data IPLDErr
   = NoDeserial DeserialiseFailure
   | NotInIndex Name
   | NotInCache CID
@@ -240,10 +242,41 @@ data DerefErr
   | MergeMissingNameAt Int
   | UnexpectedCtor Name Word [Tree] [Name] Int
   | UnexpectedBind Tree [Name] Int
-  deriving (Eq,Show)
+  deriving Eq
+
+instance Show IPLDErr where
+  show (NoDeserial e)      = "Deserialise Failure: " ++ show e
+  show (NotInIndex n)      = "Not In Index: " ++ show n
+  show (NotInCache c)      = "Not In Cache: " ++ (T.unpack $ printCIDBase32 c)
+  show (CIDMismatch n x y) = concat
+    ["CID Mismatch on ",show n,":\n"
+    , T.unpack $ printCIDBase32 x, "\n"
+    , T.unpack $ printCIDBase32 y
+    ]
+  show (NameMismatch x y)   = "Name Mismatch: " ++ show x ++ " " ++ show y
+  show (FreeVariable n ctx) = concat
+    ["Free Variable: " ,show n," with context ", show ctx]
+  show (MergeFreeVariableAt i ctx j) = concat
+    ["Free Variable while merging Tree and Meta: ", show i
+    , " ", show ctx
+    , " ", show j
+    ]
+  show (MergeMissingNameAt i)        = concat
+    ["Missing Name entry while merging Tree and Meta: ", show i]
+  show (UnexpectedCtor n w ts ctx i) = concat
+    ["UnexpectedCtor: ", show n, " arity ", show w, " with args ", show ts
+    , "\ncontext: ", show ctx
+    , "\nterm index: ", show i
+    ]
+  show (UnexpectedBind t ctx i)      = concat
+    ["UnexpectedBind: ", show t
+    , "\ncontext: ", show ctx
+    , "\nterm index: ", show i
+    ]
+
 
 deriving instance Ord DeserialiseFailure
-deriving instance Ord DerefErr
+deriving instance Ord IPLDErr
 
 -- | Find a name in the binding context and return its index
 find :: Name -> [Name] -> Maybe Int
@@ -254,34 +287,34 @@ find n cs = go n cs 0
       | otherwise = go n cs (i+1)
     go _ [] _     = Nothing
 
-indexLookup :: Name -> Index -> Except DerefErr CID
+indexLookup :: Name -> Index -> Except IPLDErr CID
 indexLookup n d = maybe (throwError $ NotInIndex n) pure (d M.!? n)
 
-cacheLookup :: CID -> Cache -> Except DerefErr BS.ByteString
+cacheLookup :: CID -> Cache -> Except IPLDErr BS.ByteString
 cacheLookup c d = maybe (throwError $ NotInCache c) pure (d M.!? c)
 
-deserial :: Serialise a => CID -> Cache -> Except DerefErr a
+deserial :: Serialise a => CID -> Cache -> Except IPLDErr a
 deserial cid cache = do
   bytes <- cacheLookup cid cache
   either (throwError . NoDeserial) return (deserialiseOrFail $ BSL.fromStrict bytes)
 
-makeLink :: Name -> Index -> Cache -> Except DerefErr (CID,CID)
+makeLink :: Name -> Index -> Cache -> Except IPLDErr (CID,CID)
 makeLink n index cache = do
   cid     <- indexLookup n index
   metaDef <- deserial @MetaDef cid cache
   return (cid, _anonDef metaDef)
 
-deref :: Name -> CID -> Index -> Cache -> Except DerefErr Def
+deref :: Name -> CID -> Index -> Cache -> Except IPLDErr Def
 deref name cid index cache = do
   mdCID   <- indexLookup name index
   metaDef <- deserial @MetaDef mdCID cache
   let anonCID = _anonDef metaDef
-  when (cid /= anonCID) (throwError $ CIDMismatch name cid anonCID)
+  --when (cid /= anonCID) (throwError $ CIDMismatch name cid anonCID)
   def <- derefMetaDef metaDef cache
   when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
   return def
 
-derefMetaDef :: MetaDef -> Cache -> Except DerefErr Def
+derefMetaDef :: MetaDef -> Cache -> Except IPLDErr Def
 derefMetaDef metaDef cache = do
   let termNames = fst <$> (_entries . _termMeta $ metaDef)
   termName <- maybe (throwError $ MergeMissingNameAt 0) pure (termNames IM.!? 0)
@@ -295,7 +328,7 @@ derefMetaDef metaDef cache = do
   typ_     <- treeToTerm typeTree (_typeMeta metaDef)
   return $ Def termName (_document metaDef) term typ_
 
-derefMetaDefCID :: Name -> CID -> Index -> Cache -> Except DerefErr Def
+derefMetaDefCID :: Name -> CID -> Index -> Cache -> Except IPLDErr Def
 derefMetaDefCID name cid index cache = do
   mdCID   <- indexLookup name index
   metaDef <- deserial @MetaDef mdCID cache
@@ -310,7 +343,7 @@ usesToTree Affi = Ctor "Affi" 0 []
 usesToTree Once = Ctor "Once" 0 []
 usesToTree Many = Ctor "Many" 0 []
 
-termToTree :: Name -> Term -> Index -> Cache -> Except DerefErr (Tree, Meta)
+termToTree :: Name -> Term -> Index -> Cache -> Except IPLDErr (Tree, Meta)
 termToTree n t index cache =
   case runState (runExceptT (go t [n])) meta  of
     (Left  err,_)   -> throwError err
@@ -318,16 +351,16 @@ termToTree n t index cache =
   where
     meta = (Meta (IM.singleton 0 (n,Nothing)), 1)
 
-    entry :: (Name,Maybe CID) -> ExceptT DerefErr (State (Meta,Int)) ()
+    entry :: (Name,Maybe CID) -> ExceptT IPLDErr (State (Meta,Int)) ()
     entry e = modify (\(Meta es,i) -> (Meta (IM.insert i e es), i))
 
-    bind :: Name -> ExceptT DerefErr (State (Meta,Int)) ()
+    bind :: Name -> ExceptT IPLDErr (State (Meta,Int)) ()
     bind n = entry (n,Nothing)
 
-    bump :: ExceptT DerefErr (State (Meta,Int)) ()
+    bump :: ExceptT IPLDErr (State (Meta,Int)) ()
     bump = modify (\(m,i) -> (m, i+1))
 
-    go :: Term -> [Name] -> ExceptT DerefErr (State (Meta,Int)) Tree
+    go :: Term -> [Name] -> ExceptT IPLDErr (State (Meta,Int)) Tree
     go t ctx = case t of
       Var n                 -> do
         bump
@@ -372,28 +405,28 @@ lookupNameCtx i (x:xs)
   | i == 0    = Just x
   | otherwise = lookupNameCtx (i - 1) xs
 
-lookupNameMeta :: Int -> Meta -> Except DerefErr Name
+lookupNameMeta :: Int -> Meta -> Except IPLDErr Name
 lookupNameMeta i meta = do
  let entry = (_entries meta IM.!? i)
  (n,_) <- maybe (throwError $ MergeMissingNameAt i) pure entry
  return n
 
-treeToTerm :: Tree -> Meta -> Except DerefErr Term
+treeToTerm :: Tree -> Meta -> Except IPLDErr Term
 treeToTerm anon meta = do
   defName <- lookupNameMeta 0 meta
   liftEither (evalState (runExceptT (go anon [defName])) 1)
 
   where
-    bump :: ExceptT DerefErr (State Int) ()
+    bump :: ExceptT IPLDErr (State Int) ()
     bump = modify (+1)
 
-    name :: Int -> ExceptT DerefErr (State Int) Name
+    name :: Int -> ExceptT IPLDErr (State Int) Name
     name i = do
      let entry = (_entries meta IM.!? i)
      (n,_) <- maybe (throwError $ MergeMissingNameAt i) pure entry
      return n
 
-    uses :: Name -> [Name] -> ExceptT DerefErr (State Int) Uses
+    uses :: Name -> [Name] -> ExceptT IPLDErr (State Int) Uses
     uses n ctx = case n of
       "None" -> return None
       "Affi" -> return Affi
@@ -401,7 +434,7 @@ treeToTerm anon meta = do
       "Many" -> return Many
       n      -> get >>= \i -> throwError $ UnexpectedCtor n 0 [] ctx i
 
-    go :: Tree -> [Name] -> ExceptT DerefErr (State Int) Term
+    go :: Tree -> [Name] -> ExceptT IPLDErr (State Int) Term
     go t ctx = case t of
       Vari idx -> do
         i <- get
@@ -435,7 +468,7 @@ treeToTerm anon meta = do
           All s n u <$> go t ctx <*> go b (n:s:ctx)
         (c, a, b) -> get >>= \i -> throwError $ UnexpectedCtor c a b ctx i
 
-insertDef :: Def -> Index -> Cache -> Except DerefErr (CID,Cache)
+insertDef :: Def -> Index -> Cache -> Except IPLDErr (CID,Cache)
 insertDef (Def name doc term typ_) index cache = do
   (termAnon, termMeta) <- termToTree name term index cache
   (typeAnon, typeMeta) <- termToTree name typ_ index cache
@@ -456,7 +489,7 @@ insertPackage :: Package -> Cache -> (CID,Cache)
 insertPackage p cache = let pCID = makeCID p in
   (pCID, M.insert pCID (BSL.toStrict $ serialise p) cache)
 
-insertDefs :: [Def] -> Index -> Cache -> Except DerefErr (Index,Cache)
+insertDefs :: [Def] -> Index -> Cache -> Except IPLDErr (Index,Cache)
 insertDefs [] index cache = return (index,cache)
 insertDefs (d:ds) index cache = do
   (cid,cache') <- insertDef d index cache
@@ -467,7 +500,7 @@ emptyPackage n = Package n "" Set.empty M.empty
 
 -- | Checks that all Refs in a term correspond to valid MetaDef cache entries
 -- and that the term has no free variables
-validateTerm :: Term -> [Name] -> Index -> Cache -> Except DerefErr Term
+validateTerm :: Term -> [Name] -> Index -> Cache -> Except IPLDErr Term
 validateTerm trm ctx index cache = case trm of
   Var nam                 -> case find nam ctx of
     Just idx -> return $ Var nam
@@ -484,10 +517,10 @@ validateTerm trm ctx index cache = case trm of
     bind    n t = validateTerm t (n:ctx) index cache
     bind2 s n t = validateTerm t (n:s:ctx) index cache
 
-indexToDefs :: Index -> Cache -> Except DerefErr (Map Name Def)
+indexToDefs :: Index -> Cache -> Except IPLDErr (Map Name Def)
 indexToDefs index cache = M.traverseWithKey go index
   where
-    go :: Name -> CID -> Except DerefErr Def
+    go :: Name -> CID -> Except IPLDErr Def
     go n cid = do
      (Def name doc term typ_) <- deref n cid index cache
      term' <- validateTerm term [n] index cache

@@ -33,7 +33,7 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 data ImportErr
   = UnknownPackage Name
-  | CorruptDefs DerefErr
+  | CorruptDefs IPLDErr
   | InvalidCID String Text
   | MisnamedPackageImport Name Name CID
   | MisnamedPackageFile FilePath Name
@@ -69,7 +69,7 @@ instance ShowErrorComponent ImportErr where
 type ParserIO a = Parser ImportErr IO a
 
 customIOFailure :: ImportErr -> ParserIO a
-customIOFailure = customFailure . EnvironmentError
+customIOFailure = customFailure . ParseEnvironmentError
 
 -- | A utility for running a `Parser`, since the `RWST` monad wraps `ParsecT`
 parseIO :: Show a => ParserIO a -> ParseEnv -> String -> Text -> IO a
@@ -144,7 +144,7 @@ pImport env = label "an import" $ do
       open  <- _open <$> (liftIO $ readIORef env)
       let file = (T.unpack nam ++ ".ya")
       when (Set.member file open) (customIOFailure $ LocalImportCycle file)
-      (cid,p) <- liftIO $ pFile (Just env) "" (T.unpack nam ++ ".ya")
+      (cid,p) <- liftIO $ pFile env (T.unpack nam ++ ".ya")
 
       unless (nam == (_title p))
         (customIOFailure $ MisnamedPackageImport nam (_title p) cid)
@@ -183,13 +183,9 @@ pPackage env file = do
   return $ (cid, pack)
 
 -- | Parse a file
-pFile :: Maybe (IORef PackageEnv) -> FilePath -> FilePath -> IO (CID,Package)
-pFile env root file = do
-  unless (root == "") (setCurrentDirectory root)
-  createDirectoryIfMissing True ".yatima/cache"
-  env   <- maybe (newIORef (PackageEnv root Set.empty Set.empty)) pure env
+pFile :: IORef PackageEnv -> FilePath -> IO (CID,Package)
+pFile env file = do
   modifyIORef' env (\e -> e { _open = Set.insert file (_open e)})
-
   txt   <- TIO.readFile file
   (cid,pack)  <- parseIO (pPackage env file) defaultParseEnv file txt
   modifyIORef' env (\e -> e { _open = Set.delete file (_open e)})
@@ -225,11 +221,3 @@ writeCache c = void $ M.traverseWithKey go c
       exists <- doesFileExist file
       unless exists (BS.writeFile file bs)
 
--- | Parse and pretty-print a file
-prettyFile :: FilePath -> FilePath -> IO ()
-prettyFile root file = do
-  (cid,pack) <- pFile Nothing root file
-  cache <- readCache
-  case prettyDefs (_index pack) cache of
-    Left e  -> putStrLn $ show e
-    Right t -> putStrLn $ T.unpack t

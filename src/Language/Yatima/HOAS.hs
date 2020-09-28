@@ -36,6 +36,7 @@ import           Control.Monad.Except
 import           Control.Monad.Identity
 import           Control.Monad.ST
 import           Control.Monad.ST.UnsafePerform
+import           Debug.Trace
 
 import           Data.Word
 import           Data.ByteString (ByteString)
@@ -103,7 +104,7 @@ toHOAS ctx t = case t of
 -- | Convert a GHC higher-order representation to a lower-order one
 fromHOAS :: Ctx -> HOAS -> Term
 fromHOAS ctx t = case t of
-  VarH nam idx             -> Var (maybe free snd3 (atCtx idx ctx))
+  VarH nam idx             -> Var nam
   LamH nam bod             -> Lam nam (bind nam bod)
   AppH fun arg             -> App (go fun) (go arg)
   RefH nam                 -> Ref nam
@@ -113,9 +114,7 @@ fromHOAS ctx t = case t of
   FixH nam bod             -> bind nam bod
   AnnH _   trm _           -> go trm
   where
-    snd3 (x,y,z) = y
     dep          = Seq.length ctx
-    free         = T.pack $ "^" ++ show dep
     go t         = fromHOAS ctx t
     f n          = (Many,n,TypH)
     bind n b     = fromHOAS (f n:<|ctx) (b (VarH n dep))
@@ -132,18 +131,10 @@ defToHOAS name def =
 printHOAS :: HOAS -> Text
 printHOAS = prettyTerm . (fromHOAS Seq.empty)
 
-
 instance Show HOAS where
  show t = T.unpack $ printHOAS t
 
---derefHOAS :: Name -> CID -> Index -> Cache -> Except DerefErr HOAS
---derefHOAS name cid index cache = do
---  def  <- deref name cid index cache
---  loas <- toLOAS (_term def) [name] index cache
---  return $ FixH name (\s -> toHOAS loas [s] 1)
---
 ---- * Evaluation
-
 -- | Reduce a HOAS to weak-head-normal-form
 whnf :: HOAS -> Defs -> HOAS
 whnf trm defs = case trm of
@@ -160,14 +151,6 @@ whnf trm defs = case trm of
   where
     go x = whnf x defs
 
--- | simple MurmurHash implementation
---mix64 :: Word64 -> Word64
---mix64 h =
---  let h1     = xor h (shiftR h 33)
---      h2     = h1 * 0xff51afd7ed558ccd
---      h3     = xor h2 (shiftR h2 33)
---      h4     = h3 * 0xc4ceb9fe1a85ec53
---   in xor h4 (shiftR h4 33)
 
 newtype Hash  = Hash { _unHash :: ByteString } deriving (Eq,Ord) via ByteString
 newtype HashF = HashF { _runHashF :: HOAS -> Hash }
@@ -212,11 +195,15 @@ equal hashF a b defs dep = runST $ top a b dep
   where
     top :: HOAS -> HOAS -> Int -> ST s Bool
     top a b dep = do
+--      traceM $ show a
+--      traceM $ show b
       seen <- newSTRef (Set.empty)
       go a b dep seen
 
     go :: HOAS -> HOAS -> Int -> STRef s (Set (Hash,Hash)) -> ST s Bool
     go a b dep seen = do
+--      traceM $ show a
+--      traceM $ show b
       let a' = whnf a defs
       let b' = whnf b defs
       let aHash = _runHashF hashF a'
@@ -277,16 +264,17 @@ addCtx ctx ctx' = case viewl ctx of
     EmptyL          -> (π,nam,typ) <| ctx
     (π', _,_) :< ctx' -> (π +# π',nam,typ) <| addCtx ctx ctx'
 
-data CheckErr
+data CheckErr e
   = QuantityMismatch Ctx (Uses,Name,HOAS) (Uses,Name,HOAS)
   | TypeMismatch Ctx     (Uses,Name,HOAS) (Uses,Name,HOAS)
   | EmptyContext
-  | DerefError Ctx Name
+  | UndefinedReference Ctx Name
   | LambdaNonFunctionType  Ctx HOAS HOAS HOAS
   | NonFunctionApplication Ctx HOAS HOAS HOAS
   | CustomErr Ctx Text
+  | CheckEnvironmentError Ctx Name e
 
-instance Show CheckErr where
+instance Show e => Show (CheckErr e) where
   show e = case e of
     QuantityMismatch ctx a b -> concat
       ["Quantity Mismatch: \n"
@@ -323,11 +311,17 @@ instance Show CheckErr where
       , "\n"
       ]
     EmptyContext -> "Empty Context"
-    DerefError ctx name -> concat
-      ["Dereference error: \n"
+    CheckEnvironmentError ctx name e -> concat
+      ["Environment error: \n"
       , "Name: ", show name, "\n"
---      , "CID:  ", show cid, "\n"
---      , "Error:", show derefErr
+      , show e, "\n"
+      , "With context:"
+      , T.unpack $ prettyCtx ctx
+      , "\n"
+      ]
+    UndefinedReference ctx name -> concat
+      ["UndefinedReference error: \n"
+      , "Name: ", show name, "\n"
       , "With context:"
       , T.unpack $ prettyCtx ctx
       , "\n"
@@ -340,7 +334,7 @@ instance Show CheckErr where
       , "\n"
       ]
 
-check :: HashF -> Ctx -> Uses -> HOAS -> HOAS -> Defs -> Except CheckErr Ctx
+check :: HashF -> Ctx -> Uses -> HOAS -> HOAS -> Defs -> Except (CheckErr e) Ctx
 check hashF pre ρ trm typ defs = case trm of
   LamH name termBody -> case whnf typ defs of
     AllH s n π bind typeBody -> do
@@ -382,14 +376,14 @@ check hashF pre ρ trm typ defs = case trm of
       then return ctx
       else throwError (TypeMismatch ctx (ρ,"",typ) (Many,"",infr))
 
-infer :: HashF -> Ctx -> Uses -> HOAS -> Defs -> Except CheckErr (Ctx, HOAS)
+infer :: HashF -> Ctx -> Uses -> HOAS -> Defs -> Except (CheckErr e) (Ctx, HOAS)
 infer hashF pre ρ term defs = case term of
   VarH n idx -> do
     let (_,_,typ) = Seq.index pre idx
     let ctx = Seq.update idx (ρ,n,typ) pre
     return (ctx, typ)
   RefH n -> do
-    let mapMaybe = maybe (throwError $ DerefError pre n) pure
+    let mapMaybe = maybe (throwError $ UndefinedReference pre n) pure
     def         <- mapMaybe (defs M.!? n)
     let (_,typ) = (defToHOAS n def)
     return (pre,typ)

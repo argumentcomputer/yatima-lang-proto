@@ -79,10 +79,10 @@ prettyDef (Def name doc term typ_) = T.concat
   , "  = ", prettyTerm $ term
   ]
 
-prettyDefs :: Index -> Cache -> Either DerefErr Text
+prettyDefs :: Index -> Cache -> Either IPLDErr Text
 prettyDefs index cache = M.foldrWithKey go (Right "") index
   where
-    go :: Name -> CID -> Either DerefErr Text -> Either DerefErr Text
+    go :: Name -> CID -> Either IPLDErr Text -> Either IPLDErr Text
     go n c (Left e)    = Left e
     go n c (Right txt) = case runExcept (derefMetaDefCID n c index cache) of
       Left e   -> Left e

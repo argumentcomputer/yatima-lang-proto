@@ -84,7 +84,7 @@ data ParseErr e
   | ReservedKeyword Name
   | LeadingDigit Name
   | LeadingApostrophe Name
-  | EnvironmentError e
+  | ParseEnvironmentError e
   deriving (Eq, Ord,Show)
 
 instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
@@ -98,7 +98,7 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
     "illegal leading digit in name: " ++ T.unpack nam
   showErrorComponent (LeadingApostrophe nam) =
     "illegal leading apostrophe in name: " ++ T.unpack nam
-  showErrorComponent (EnvironmentError e) = showErrorComponent e
+  showErrorComponent (ParseEnvironmentError e) = showErrorComponent e
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
