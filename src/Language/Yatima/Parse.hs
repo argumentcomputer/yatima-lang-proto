@@ -238,19 +238,31 @@ pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
   bnds <- sepEndBy1 pBnd space <* space
   symbol "->"
   body <- pExpr False
-  return (foldr (\ (name,tipo) -> All name None tipo) body bnds)
+  return (foldr (\ (name,uses,tipo) -> All name uses tipo) body bnds)
 
+-- | Parse a quantitative usage semirig annotation. The absence of annotation is
+-- considered to be the `Many` multiplicity.
+pUses :: Parser Uses
+pUses = pUsesAnnotation <|> return Many
+
+pUsesAnnotation :: Parser Uses
+pUsesAnnotation = choice
+  [ symbol "0"       >> return None
+  , symbol "&"       >> return Affi
+  , symbol "1"       >> return Once
+  ]
 -- | Parses a forall binder: @(a: A)@
-pBnd :: Parser (Name, Term)
+pBnd :: Parser (Name, Uses, Term)
 pBnd = do
   symbol "("
+  uses  <- pUses
   name <- pName
   space
   symbol ":"
   tipo <- pExpr False
   space
   symbol ")"
-  return (name, tipo)
+  return (name, uses, tipo)
 
 -- | Parse a local variable or a locally indexed alias of a global reference
 pVar :: Parser Term

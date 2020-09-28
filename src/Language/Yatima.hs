@@ -3,18 +3,14 @@ module Language.Yatima where
 import Language.Yatima.Uses
 import qualified Language.Yatima.HOAS as HOAS
 import Language.Yatima.HOAS (HOAS, Error)
+import Language.Yatima.Print (prettyTerm)
 import qualified Language.Yatima.Print as Print
+import Language.Yatima.Parse (parseTerm, unsafeParseTerm)
 import qualified Language.Yatima.Parse as Parse
 import qualified Language.Yatima.Term as Term
 import Language.Yatima.Term (Term)
 import qualified Data.Text as Text
 import Data.Text (Text)
-
-parseTerm :: Text -> Maybe Term
-parseTerm = Parse.parseTerm
-
-unsafeParseTerm :: Text -> Term
-unsafeParseTerm = Parse.unsafeParseTerm
 
 whnf :: Term -> Term
 whnf = HOAS.hoasToTerm [] . HOAS.whnf . HOAS.termToHoas []
@@ -44,9 +40,6 @@ synth term tipo =
   case HOAS.synth hTerm hTipo of
     Left err -> Left err
     Right tt -> Right (HOAS.hoasToTerm [] (fst tt), HOAS.hoasToTerm [] (snd tt))
-
-prettyTerm :: Term -> Text
-prettyTerm = Print.prettyTerm
     
 prettyInfer :: Term -> Text
 prettyInfer term = case infer term of
