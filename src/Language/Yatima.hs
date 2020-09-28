@@ -50,18 +50,21 @@ prettyFile root file = do
 --      h4     = h3 * 0xc4ceb9fe1a85ec53
 --   in xor h4 (shiftR h4 33)
 
-hash :: Index -> HashF
-hash index = HashF $ \t ->
-  Hash $ cidToBytes $ makeCID (treeFromHOAS Seq.empty index t)
+hash :: Index -> Cache -> HashF
+hash index cache = HashF $ \t ->
+  Hash $ cidToBytes $ makeCID (treeFromHOAS Seq.empty index cache t)
 
-treeFromHOAS :: Ctx -> Index -> HOAS -> Tree
-treeFromHOAS ctx index t = case t of
+treeFromHOAS :: Ctx -> Index -> Cache -> HOAS -> Tree
+treeFromHOAS ctx index cache t = case t of
   VarH nam idx             -> Vari idx
   LamH nam bod             -> Ctor "Lam" 1 [bind nam bod]
   AppH fun arg             -> Ctor "App" 2 [go fun, go arg]
-  RefH nam                 -> case index M.!? nam of
-    Nothing -> error $ "Undefined Reference " ++ (T.unpack nam)
-    Just c  -> Link c
+  RefH nam                 -> case (runExcept $ makeLink nam index cache) of
+    Left e     -> error $ concat
+      ["BAD HASHF: UndefinedReference:", (T.unpack nam), "\n"
+      ,"IPLD Error: ", show e
+      ]
+    Right (_,c) -> Link c
   LetH nam use typ exp bod ->
     Ctor "Let" 4 [uses use, go typ, go exp, bind nam bod]
   AllH slf nam use typ bod -> Ctor "All" 3 [uses use, go typ, bind2 slf nam bod]
@@ -71,11 +74,11 @@ treeFromHOAS ctx index t = case t of
   where
     uses         = usesToTree
     dep          = Seq.length ctx
-    go t         = treeFromHOAS ctx index t
+    go t         = treeFromHOAS ctx index cache t
     f n          = (Many,n,TypH)
-    bind n b     = Bind $ treeFromHOAS (f n:<|ctx) index (b (VarH n dep))
-    bind2 s n b  = Bind $ Bind $
-      treeFromHOAS (f n:<|f s:<|ctx) index (b (VarH s dep) (VarH n (dep+1)))
+    bind n b     = Bind $ treeFromHOAS (f n:<|ctx) index cache (b (VarH n dep))
+    bind2 s n b  = Bind $ Bind $ treeFromHOAS (f n:<|f s:<|ctx) index cache
+      (b (VarH s dep) (VarH n (dep+1)))
 
 checkRef :: Name -> CID -> Index -> Cache -> Except (CheckErr IPLDErr) HOAS
 checkRef name cid index cache = do
@@ -84,7 +87,7 @@ checkRef name cid index cache = do
   def  <- mapE $ derefMetaDefCID name cid index cache
   defs <- mapE $ indexToDefs index cache
   let (trm,typ) = defToHOAS name def
-  check (hash index) ctx Once trm typ defs
+  check (hash index cache) ctx Once trm typ defs
   return typ
 
 checkFile :: FilePath -> FilePath -> IO ()
@@ -118,4 +121,4 @@ normDef name root file = do
   cid   <- catchIPLDErr (indexLookup name index)
   def   <- catchIPLDErr (derefMetaDefCID name cid index cache)
   defs  <- catchIPLDErr (indexToDefs index cache)
-  return $ norm (hash index) (fst $ defToHOAS name def) defs
+  return $ norm (hash index cache) (fst $ defToHOAS name def) defs

@@ -32,11 +32,12 @@ module Language.Yatima.HOAS
   , infer
   ) where
 
+--import           Debug.Trace
+
 import           Control.Monad.Except
 import           Control.Monad.Identity
 import           Control.Monad.ST
 import           Control.Monad.ST.UnsafePerform
-import           Debug.Trace
 
 import           Data.Word
 import           Data.ByteString (ByteString)
@@ -139,7 +140,7 @@ instance Show HOAS where
 whnf :: HOAS -> Defs -> HOAS
 whnf trm defs = case trm of
   RefH nam       -> case defs M.!? nam of
-    Just d  -> fst (defToHOAS nam d)
+    Just d  -> go $ fst (defToHOAS nam d)
     Nothing -> error $ "Undefined Reference " ++ (T.unpack nam)
   FixH nam bod       -> go (bod trm)
   AppH fun arg       -> case go fun of
@@ -195,19 +196,21 @@ equal hashF a b defs dep = runST $ top a b dep
   where
     top :: HOAS -> HOAS -> Int -> ST s Bool
     top a b dep = do
---      traceM $ show a
---      traceM $ show b
       seen <- newSTRef (Set.empty)
       go a b dep seen
 
     go :: HOAS -> HOAS -> Int -> STRef s (Set (Hash,Hash)) -> ST s Bool
     go a b dep seen = do
---      traceM $ show a
---      traceM $ show b
+      --traceM $ "a: " ++ show a
+      --traceM $ "b: " ++ show b
       let a' = whnf a defs
       let b' = whnf b defs
+      --traceM $ "a': " ++ show a'
+      --traceM $ "b': " ++ show b'
       let aHash = _runHashF hashF a'
       let bHash = _runHashF hashF b'
+      --traceM $ "aHash: " ++ (show $ _unHash aHash)
+      --traceM $ "bHash: " ++ (show $ _unHash bHash)
       s' <- readSTRef seen
       if | (aHash == bHash)              -> return True
          | (aHash,bHash) `Set.member` s' -> return True
