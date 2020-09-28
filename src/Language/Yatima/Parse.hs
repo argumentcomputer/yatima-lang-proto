@@ -97,6 +97,7 @@ import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 
+import           Language.Yatima.Uses
 import           Language.Yatima.Term
 import           Language.Yatima.Print
 
@@ -237,7 +238,7 @@ pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
   bnds <- sepEndBy1 pBnd space <* space
   symbol "->"
   body <- pExpr False
-  return (foldr (\ (name,tipo) -> All name tipo) body bnds)
+  return (foldr (\ (name,tipo) -> All name None tipo) body bnds)
 
 -- | Parses a forall binder: @(a: A)@
 pBnd :: Parser (Name, Term)

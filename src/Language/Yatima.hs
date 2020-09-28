@@ -1,5 +1,6 @@
 module Language.Yatima where
 
+import Language.Yatima.Uses
 import qualified Language.Yatima.HOAS as HOAS
 import Language.Yatima.HOAS (HOAS, Error)
 import qualified Language.Yatima.Print as Print
@@ -24,17 +25,17 @@ norm = HOAS.hoasToTerm [] . HOAS.norm . HOAS.termToHoas []
 infer :: Term -> Either Error Term
 infer term =
   let hTerm = HOAS.termToHoas [] term in
-  case HOAS.infer [] hTerm of
+  case HOAS.infer [] Once hTerm of
     Left err -> Left err
-    Right ty -> Right (HOAS.hoasToTerm [] ty)
+    Right (_,ty) -> Right (HOAS.hoasToTerm [] ty)
 
 check :: Term -> Term -> Either Error Term
 check term tipo =
   let hTerm = HOAS.termToHoas [] term in
   let hTipo = HOAS.termToHoas [] tipo in
-  case HOAS.check [] hTerm hTipo of
-    Left err -> Left err
-    Right ty -> Right (HOAS.hoasToTerm [] ty)
+  case HOAS.check [] Once hTerm hTipo of
+    Left err     -> Left err
+    Right (_,ty) -> Right (HOAS.hoasToTerm [] ty)
 
 synth :: Term -> Term -> Either Error (Term, Term)
 synth term tipo =

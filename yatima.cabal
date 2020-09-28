@@ -22,6 +22,7 @@ extra-source-files:
 
 library
   exposed-modules:
+      Language.Yatima.Uses
       Language.Yatima.Term
       Language.Yatima.Print
       Language.Yatima.Parse

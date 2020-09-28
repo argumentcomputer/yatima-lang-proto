@@ -16,6 +16,7 @@ module Language.Yatima.Term
 
 import           Data.Text (Text)
 import qualified Data.Text as T hiding (find)
+import Language.Yatima.Uses
 
 -- * Yatima expressions
 
@@ -29,7 +30,7 @@ data Term where
   -- | Local variable
   Var :: Name -> Term
   -- | A forall
-  All :: Name -> Term -> Term -> Term
+  All :: Name -> Uses -> Term -> Term -> Term
   -- | A lambda
   Lam :: Name -> Term -> Term
   -- | An application of a function to an argument
