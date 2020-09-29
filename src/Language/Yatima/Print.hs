@@ -37,29 +37,30 @@ prettyTerm t = go t
 
     go :: Term -> Text
     go t = case t of
-      Var n          -> n
-      Ref n          -> n
-      Lam n b        -> T.concat ["λ", lams n b]
-      App f a        -> apps f a
-      All "" n u t b -> T.concat ["∀", alls n u t b]
-      All s n u t b  -> T.concat ["@", s, " ∀", alls n u t b]
-      Typ            -> "Type"
-      Let n u t x b  -> T.concat ["let ",uses u,name n,": ",go t," = ",go x,";\n",go b]
+      Hol name                     -> T.concat ["?", name]
+      Var name                     -> name
+      Ref name                     -> name
+      All ""   name used bind body -> T.concat ["∀ ", alls name used bind body]
+      All self name used bind body ->
+        T.concat ["@", self, "∀ ", alls name used bind body]
+      Lam name body           -> T.concat ["λ ", lams name body]
+      App func argm           -> apps func argm
+      Let name used typ_ expr body  -> T.concat
+        ["let ", uses used, name, ": ", go typ_, " = ", go expr, ";\n", go body]
+      Any                     -> "*"
 
     lams :: Name -> Term -> Text
-    lams n b = case b of
-       Lam n' b' -> T.concat [" ", n, lams n' b']
-       _         -> T.concat [" ", n, " => ", go b]
-       where
+    lams name (Lam name' body') = T.concat [" ", name, lams name' body']
+    lams name body              = T.concat [" ", name, " => ", go body]
 
     alls :: Name -> Uses -> Term -> Term -> Text
-    alls n u t b = case b of
-      All _ n' u' t' b' -> T.concat [txt, alls n' u' t' b']
-      _                 -> T.concat [txt, " -> ", go b]
-      where
-        txt = case (n, u, t) of
-          ("", Many, t) -> T.concat [" ", go t]
-          _             -> T.concat [" (", uses u, n,": ", go t,")"]
+    alls name used bind (All "" name' used' bind' body') = T.concat 
+      [allHead name used bind, alls name' used' bind' body']
+    alls name used bind body = T.concat 
+      [allHead name used bind, " -> ", go body]
+
+    allHead ""   Many body = T.concat [" ", go t]
+    allHead name used body = T.concat [" (", uses used, name,": ", go body,")"]
 
     apps :: Term -> Term -> Text
     apps f a = case (f,a) of

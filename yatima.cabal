@@ -27,11 +27,13 @@ library
       Language.Yatima.Print
       Language.Yatima.Parse
       Language.Yatima.Import
-      Language.Yatima.HOAS
+      Language.Yatima.Core
       Language.Yatima.IPFS
       Language.Yatima
   other-modules:
+      Language.Yatima.Ctx
       Language.Yatima.Defs
+      Language.Yatima.HOAS
       Paths_yatima
   hs-source-dirs:
       src

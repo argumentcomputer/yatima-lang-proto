@@ -22,7 +22,7 @@ library:
     - Language.Yatima.Print
     - Language.Yatima.Parse
     - Language.Yatima.Import
-    - Language.Yatima.HOAS
+    - Language.Yatima.Core
     - Language.Yatima.IPFS
     - Language.Yatima
 

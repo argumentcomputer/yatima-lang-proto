@@ -1,12 +1,24 @@
 module Language.Yatima where
 
-import Language.Yatima.Term
-import Language.Yatima.Parse
-import Language.Yatima.Print
 import Language.Yatima.Import
 import Language.Yatima.IPFS
 import Language.Yatima.IPLD
-import Language.Yatima.HOAS
+import Language.Yatima.Uses
+
+import qualified Language.Yatima.Ctx as Ctx
+import           Language.Yatima.Ctx (Ctx, (<|))
+
+import qualified Language.Yatima.Core as Core
+import Language.Yatima.Core (HOAS(..), HashF(..), Hash(..), PreContext, CheckErr, defToHOAS)
+
+import Language.Yatima.Print (prettyTerm)
+import qualified Language.Yatima.Print as Print
+
+import Language.Yatima.Parse (parseTerm, unsafeParseTerm)
+import qualified Language.Yatima.Parse as Parse
+
+import qualified Language.Yatima.Term as Term
+import Language.Yatima.Term (Term, Name)
 
 import           Control.Monad.Except
 import           Data.IORef
@@ -18,7 +30,7 @@ import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import           Data.Sequence (Seq(..), ViewL(..), ViewR(..), viewr, viewl, (|>), (<|))
+import           Data.Sequence (Seq(..))
 import qualified Data.Sequence as Seq
 
 import           System.Directory
@@ -37,7 +49,7 @@ prettyFile :: FilePath -> FilePath -> IO ()
 prettyFile root file = do
   (_,pack)  <- loadFile root file
   cache <- readCache
-  case prettyDefs (_index pack) cache of
+  case Print.prettyDefs (_index pack) cache of
     Left e  -> putStrLn $ show e
     Right t -> putStrLn $ T.unpack t
 
@@ -52,9 +64,9 @@ prettyFile root file = do
 
 hash :: Index -> Cache -> HashF
 hash index cache = HashF $ \t ->
-  Hash $ cidToBytes $ makeCID (treeFromHOAS Seq.empty index cache t)
+  Hash $ cidToBytes $ makeCID (treeFromHOAS Ctx.empty index cache t)
 
-treeFromHOAS :: Ctx -> Index -> Cache -> HOAS -> Tree
+treeFromHOAS :: PreContext -> Index -> Cache -> HOAS -> Tree
 treeFromHOAS ctx index cache t = case t of
   VarH nam idx             -> Vari idx
   LamH nam bod             -> Ctor "Lam" 1 [bind nam bod]
@@ -68,26 +80,24 @@ treeFromHOAS ctx index cache t = case t of
   LetH nam use typ exp bod ->
     Ctor "Let" 4 [uses use, go typ, go exp, bind nam bod]
   AllH slf nam use typ bod -> Ctor "All" 3 [uses use, go typ, bind2 slf nam bod]
-  TypH                     -> Ctor "Typ" 0 []
+  AnyH                     -> Ctor "Any" 0 []
   FixH nam bod             -> bind nam bod
   AnnH _   trm _           -> go trm
   where
     uses         = usesToTree
-    dep          = Seq.length ctx
+    dep          = Ctx.depth ctx
     go t         = treeFromHOAS ctx index cache t
-    f n          = (Many,n,TypH)
-    bind n b     = Bind $ treeFromHOAS (f n:<|ctx) index cache (b (VarH n dep))
-    bind2 s n b  = Bind $ Bind $ treeFromHOAS (f n:<|f s:<|ctx) index cache
-      (b (VarH s dep) (VarH n (dep+1)))
+    bind n b     = Bind $ treeFromHOAS ((n,AnyH)<|ctx) index cache (b (VarH n dep))
+    bind2 s n b  = Bind $ Bind $ treeFromHOAS
+      ((n,AnyH)<|(s,AnyH)<|ctx) index cache (b (VarH s dep) (VarH n (dep+1)))
 
 checkRef :: Name -> CID -> Index -> Cache -> Except (CheckErr IPLDErr) HOAS
 checkRef name cid index cache = do
-  let ctx = Seq.empty
-  let mapE = mapExcept (either (\e -> throwError $ CheckEnvironmentError ctx name e) pure)
+  let mapE = mapExcept (either (\e -> throwError $ Core.CheckEnvironmentError name e) pure)
   def  <- mapE $ derefMetaDefCID name cid index cache
   defs <- mapE $ indexToDefs index cache
   let (trm,typ) = defToHOAS name def
-  check (hash index cache) ctx Once trm typ defs
+  Core.check (hash index cache) defs Ctx.empty Once trm typ
   return typ
 
 checkFile :: FilePath -> FilePath -> IO ()
@@ -103,7 +113,7 @@ checkFile root file = do
             , printCIDBase32 cid, "\n"
             , T.pack $ show e]
           Right t -> putStrLn $ T.unpack $ T.concat
-            ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHOAS t]
+            ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
   forM_ (M.toList $ index) func
 
 catchIPLDErr :: Except IPLDErr a -> IO a
@@ -121,4 +131,61 @@ normDef name root file = do
   cid   <- catchIPLDErr (indexLookup name index)
   def   <- catchIPLDErr (derefMetaDefCID name cid index cache)
   defs  <- catchIPLDErr (indexToDefs index cache)
-  return $ norm (hash index cache) (fst $ defToHOAS name def) defs
+  return $ Core.norm (fst $ defToHOAS name def) defs
+
+--whnf :: Term -> Term
+--whnf = Core.hoasToTerm Ctx.empty . Core.whnf . Core.termToHoas Ctx.empty
+--
+--norm :: Term -> Term
+--norm = Core.hoasToTerm [] . Core.norm . Core.termToHoas []
+
+--infer :: Term -> Either (CheckErr e) Term
+--infer term =
+--  let hTerm = Core.termToHoas [] term in
+--  case Core.infer [] Once hTerm of
+--    Left err -> Left err
+--    Right (_,ty) -> Right (Core.hoasToTerm [] ty)
+--
+--check :: Defs -> Term -> Term -> Either (CheckErr e) Term
+--check term tipo =
+--  let hTerm = Core.termToHoas [] term in
+--  let hType = Core.termToHoas [] tipo in
+--  case runExcept (Core.check [] Once hTerm hType) of
+--    Left err     -> Left err
+--    Right (_,ty) -> Right (Core.hoasToTerm [] ty)
+--
+--synth :: Term -> Term -> Either (CheckErr e) (Term, Term)
+--synth term typ_ =
+--  let hTerm = Core.termToHoas [] term in
+--  let hType = Core.termToHoas [] typ_ in
+--  case runExcept (Core.synth hashF hTerm hType) of
+--    Left err -> Left err
+--    Right tt -> Right (Core.hoasToTerm Ctx.empty (fst tt), Core.hoasToTerm Ctx.empty (snd tt))
+--    
+--prettyInfer :: Term -> Text
+--prettyInfer term = case infer term of
+--  Left err -> HOAS.prettyError err
+--  Right ty -> Print.prettyTerm ty
+--
+--prettyCheck :: Term -> Term -> Text
+--prettyCheck term tipo = case check term tipo of
+--  Left err -> HOAS.prettyError err
+--  Right ty -> Print.prettyTerm ty
+--
+--prettySynth :: Term -> Term -> Text
+--prettySynth term tipo = case synth term tipo of
+--  Left err -> HOAS.prettyError err
+--  Right (ty,tr) -> Text.concat [Print.prettyTerm tr, " :: ", Print.prettyTerm ty]
+--
+--testSynth :: Text -> Text -> IO ()
+--testSynth termCode typeCode = do
+--  let term = unsafeParseTerm termCode
+--  let tipo = unsafeParseTerm typeCode
+--  putStrLn ("input-term: " ++ Text.unpack (prettyTerm term))
+--  putStrLn ("input-type: " ++ Text.unpack (prettyTerm tipo))
+--  case synth term tipo of
+--    Left err -> print (Text.unpack (HOAS.prettyError err))
+--    Right (sTerm, sTipo) -> do
+--      putStrLn ("synth-term: " ++ Text.unpack (prettyTerm sTerm))
+--      putStrLn ("synth-type: " ++ Text.unpack (prettyTerm sTipo))
+-- >>>>>>> e7e75e5dde6c8e5d0cad6a8398932c897d17a388

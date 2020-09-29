@@ -19,8 +19,10 @@ function useful for testing and running the parsers defined here:
 > parseIO (pExpr False) "λ y => (λ x => x) y"
 Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
 @
-
 |-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 module Language.Yatima.Parse
   ( ParseErr(..)
   , ParseEnv(..)
@@ -32,18 +34,19 @@ module Language.Yatima.Parse
   , pVar
   , pTerm
   , pExpr
-  --, pFile
-  --, prettyFile
   , pDef
   , pDefs
   , pDoc
   , symbol
   , space
   , defaultParseEnv
+  , parseTerm
+  , unsafeParseTerm
   ) where
 
 import           Control.Monad.Except
-import           Control.Monad.RWS.Lazy     hiding (All)
+import           Control.Monad.Identity
+import           Control.Monad.RWS.Lazy     hiding (All, Any)
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -57,6 +60,7 @@ import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 
+import           Language.Yatima.Uses
 import           Language.Yatima.Term
 import           Language.Yatima.Print
 
@@ -114,14 +118,30 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
 type Parser e m a =
   RWST ParseEnv ParseLog ParseState (ParsecT (ParseErr e) Text m) a
 
-parseDefault :: (Ord e, Monad m, Show a) => Parser e m a -> Text 
+parseDefault :: (Ord e, Monad m) => Parser e m a -> Text 
              -> m (Either (ParseErrorBundle Text (ParseErr e)) a)
 parseDefault p s = parseM p defaultParseEnv "" s
 
+-- | A utility for running a `Parser`, since the `RWST` monad wraps `ParsecT`
 parseM :: (Ord e, Monad m) => Parser e m a -> ParseEnv -> String -> Text
        -> m (Either (ParseErrorBundle Text (ParseErr e)) a)
 parseM p env file txt =
   (fmap (\(x,y,z) -> x)) <$> runParserT (runRWST p env ()) file txt
+
+-- | Parses a source-code to a Term, simplified API
+parseTerm :: forall e. Ord e => Text -> Maybe Term
+parseTerm code = case (runIdentity $ parseDefault p code) of
+  Left err  -> Nothing
+  Right trm -> Just trm
+  where
+    p :: Parser e Identity Term
+    p = pExpr False
+
+-- | Parses a source-code to a Term, simplified API, throws
+unsafeParseTerm :: forall e. Ord e => Text -> Term
+unsafeParseTerm code = case parseTerm @e code of
+  Nothing  -> error "Bad parse."
+  Just trm -> trm
 
 pName :: (Ord e, Monad m) => Bool -> Parser e m Text
 pName bind = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
@@ -151,7 +171,10 @@ pName bind = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
       , "lambda"
       , "def"
       , "define"
+      , "*"
       ]
+
+
 
 
 -- | Consume whitespace, while skipping comments. Yatima line comments begin
@@ -181,11 +204,11 @@ pUsesAnnotation = choice
   , symbol "1"       >> return Once
   ]
 
--- | Parse the type of types: `Type`
-pTyp :: (Ord e, Monad m) => Parser e m Term
-pTyp = do
-  string "Type"
-  return $ Typ
+-- | Parse an any: @*@
+pAny :: (Ord e, Monad m) => Parser e m Term
+pAny = label "an any: \"*\"" $ do
+  string "*"
+  return $ Any
 
 pBinder :: (Ord e, Monad m) => Bool -> Bool -> Parser e m [(Name, Maybe (Uses, Term))]
 pBinder annOptional namOptional = choice
@@ -204,17 +227,23 @@ pBinder annOptional namOptional = choice
       string ")"
       return $ (,Just (uses,typ_)) <$> names
 
-foldLam:: Term -> [Name] -> Term
-foldLam body bs = foldr (\n x -> Lam n x) body bs
+
+-- | Parse a hole: @?name@
+pHol :: (Ord e, Monad m) => Parser e m Term
+pHol = label "a hole: \"?name\"" $ do
+  symbol "?"
+  name <- pName False
+  return (Hol name)
+
 
 -- | Parse a lambda: @λ x y z => body@
 pLam :: (Ord e, Monad m) => Parser e m Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  bs   <- sepEndBy1 (pName True) space
+  vars <- sepEndBy1 (pName True) space <* space
   symbol "=>"
-  body <- bind bs (pExpr False)
-  return $ foldLam body bs
+  body <- bind vars (pExpr False)
+  return (foldr Lam body vars)
 
 foldAll :: Term -> [(Name, Name, Maybe (Uses, Term))] -> Term
 foldAll body bs = foldr (\(s,n,Just (u,t)) x -> All s n u t x) body bs
@@ -222,16 +251,16 @@ foldAll body bs = foldr (\(s,n,Just (u,t)) x -> All s n u t x) body bs
 bindAll :: (Ord e, Monad m) => [(Name,Name,Maybe (Uses,Term))] -> Parser e m a -> Parser e m a
 bindAll bs = bind (foldr (\(s,n,_) ns -> s:n:ns) [] bs)
 
+-- | Parse a forall: @∀ (a: A) (b: B) (c: C) -> body@
 pAll :: (Ord e, Monad m) => Parser e m Term
-pAll = do
+pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
   self <- (symbol "@" >> (pName True) <* space) <|> return ""
   symbol "∀" <|> symbol "all" <|> symbol "forall"
-  bs   <- binders self <* space
-  body <- bindAll bs (pExpr False)
-  return $ foldAll body bs
+  binds <- binders self <* space
+  body  <- bindAll binds (pExpr False)
+  return $ foldAll body binds
   where
     binder  = pBinder False True
-
     binders self = do
      ((n,ut):ns)  <- binder <* space
      let b  = ((self,n,ut) : ((\(n,ut) -> ("",n,ut)) <$> ns))
@@ -249,7 +278,7 @@ pDecl shadow = do
   typBody <- bind ns (pExpr False)
   let typ = foldAll typBody ((\(n,ut) -> ("",n,ut)) <$> bs)
   expBody <- symbol "=" >> bind ns (pExpr False)
-  let exp = foldLam expBody (fst <$> bs)
+  let exp = foldr Lam expBody (fst <$> bs)
   return (nam, exp, typ)
   where
     binder  = pBinder False False
@@ -284,9 +313,10 @@ pTerm :: (Ord e, Monad m) => Parser e m Term
 pTerm = do
   from <- getOffset
   choice
-    [ pTyp
-    , pLam
+    [ pLam
     , pAll
+    , pHol
+    , pAny
     , pExpr True
     , pLet
     , pVar

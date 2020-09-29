@@ -71,7 +71,7 @@ prop_serial x = let s = serialise x in
 test_defs :: (Index,Cache)
 test_defs =
   let trm = Lam "A" (Lam "x" (Var "x"))
-      typ = All "" "A" Many Typ (All "" "x" Many (Var "A") (Var "A"))
+      typ = All "" "A" Many Any (All "" "x" Many (Var "A") (Var "A"))
       def = Def "id" "" trm typ
       Right (cid, cache) = runExcept (insertDef def M.empty M.empty)
    in (M.singleton "id" cid, cache)
@@ -88,7 +88,7 @@ term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
   [ (100,Var <$> elements ctx)
   , (100,Ref <$> elements (M.keys test_index))
-  , (100, return Typ)
+  , (100, return Any)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, App <$> term_gen ctx <*> term_gen ctx)
   , (33, (name_gen >>= \s -> name_gen >>= \n -> 
@@ -104,7 +104,7 @@ instance Arbitrary Term where
 prop_separate :: Term -> Bool
 prop_separate t = either (const False) id (runExcept $ go t)
   where
-    go :: Term -> Except DerefErr Bool
+    go :: Term -> Except IPLDErr Bool
     go term = do
       (tree,meta) <- termToTree "test" term test_index test_cache
       term'    <- treeToTerm tree meta

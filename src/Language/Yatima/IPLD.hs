@@ -389,7 +389,7 @@ termToTree n t index cache =
         x' <- go x (n:ctx)
         b' <- go b (n:ctx)
         return $ Ctor "Let" 4 [usesToTree u, t', Bind x', Bind b']
-      Typ                   -> bump >> return (Ctor "Typ" 0 [])
+      Any                   -> bump >> return (Ctor "Any" 0 [])
       All s n u t b         -> do
         bind s >> bump
         bind n >> bump
@@ -458,7 +458,7 @@ treeToTerm anon meta = do
           u <- uses u ctx
           bump
           Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
-        ("Typ",0,[]) -> bump >> return Typ
+        ("Any",0,[]) -> bump >> return Any
         ("All",3,[Ctor u 0 [], t, Bind (Bind b)]) -> do
           u <- uses u ctx
           s <- get >>= name
@@ -510,7 +510,7 @@ validateTerm trm ctx index cache = case trm of
   App fun arg             -> App <$> go fun <*> go arg
   Let nam use typ exp bod ->
     Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
-  Typ                     -> return Typ
+  Any                     -> return Any
   All slf nam use typ bod -> All slf nam use <$> go typ <*> bind2 slf nam bod
   where
     go t        = validateTerm t ctx index cache

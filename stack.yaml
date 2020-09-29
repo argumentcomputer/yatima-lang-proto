@@ -17,10 +17,6 @@ extra-deps:
   - sandi-0.5@sha256:b278d072ca717706ea38f9bd646e023f7f2576a778fb43565b434f93638849aa,3010
   - ipfs-api-0.1.0.0@sha256:b6ba437b9671a7983b689fd5ddef23a74c8472c231096d53de47813ed1c16e10,1313
 
-nix:
-  enable: true
-  packages: [zlib]
-
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
