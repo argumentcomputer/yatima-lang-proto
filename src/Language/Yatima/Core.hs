@@ -10,7 +10,7 @@ Stability   : experimental
 {-# LANGUAGE DerivingVia #-}
 module Language.Yatima.Core where
 
---import           Debug.Trace
+import           Debug.Trace
 import           Control.Monad.Except
 import           Control.Monad.Identity
 import           Control.Monad.ST
@@ -218,7 +218,6 @@ fill hole term = case term of
     go x = fill hole x
 
 -- * Type System
-
 check :: HashF -> Defs -> PreContext -> Uses -> HOAS -> HOAS
       -> Except (CheckErr e) (Context, HOAS)
 check hashF defs pre use term typ = case term of
@@ -270,13 +269,17 @@ check hashF defs pre use term typ = case term of
 infer :: HashF -> Defs -> PreContext -> Uses -> HOAS
       -> Except (CheckErr e) (Context, HOAS)
 infer hashF defs pre use term = case term of
-  VarH nam lvl -> case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
-    Nothing            -> throwError $ UnboundVariable nam lvl
-    Just ((_,typ),ctx) -> return (ctx, typ)
-  RefH n -> do
-    let mapMaybe = maybe (throwError $ UndefinedReference n) pure
-    def         <- mapMaybe (defs M.!? n)
-    let (_,typ) = (defToHOAS n def)
+  VarH nam lvl -> do
+    --traceM ("VarH " ++ show nam ++ " " ++ show lvl)
+    let dep = Ctx.depth pre - lvl - 1
+    case Ctx.adjust dep (toContext pre) (\(_,typ) -> (use,typ)) of
+      Nothing            -> throwError $ UnboundVariable nam lvl
+      Just ((_,typ),ctx) -> return (ctx, typ)
+  RefH nam -> do
+    --traceM ("RefH " ++ show nam)
+    let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
+    def         <- mapMaybe (defs M.!? nam)
+    let (_,typ) = (defToHOAS nam def)
     return (toContext pre,typ)
   LamH name body -> throwError $ UntypedLambda
   AppH func argm -> do
@@ -351,7 +354,6 @@ instance Show e => Show (CheckErr e) where
       , "- Instead found: ", T.unpack $ prettyCtxElem b, "\n"
       , "With context:\n"
       , T.unpack $ prettyCtx ctx
-      , "\n"
       ]
     InferQuantityMismatch ctx a b -> concat
       ["Type inference quantity mismatch: \n"
@@ -359,7 +361,6 @@ instance Show e => Show (CheckErr e) where
       , "- But inferred:  ", T.unpack $ prettyCtxElem b, "\n"
       , "With context:\n"
       , T.unpack $ prettyCtx ctx
-      , "\n"
       ]
     TypeMismatch ctx a b -> concat
       ["Type Mismatch: \n"
@@ -367,7 +368,6 @@ instance Show e => Show (CheckErr e) where
       , "- Instead, found: ", T.unpack $ prettyPreElem ("",b), "\n"
       , "With context:\n"
       , T.unpack $ prettyPre ctx
-      , "\n"
       ]
     LambdaNonFunctionType ctx trm typ typ' -> concat
       ["The type of a lambda must be a forall: \n"
@@ -376,7 +376,6 @@ instance Show e => Show (CheckErr e) where
       , "  Reduced type: ",  T.unpack $ printHOAS typ',"\n"
       , "With context:\n"
       , T.unpack $ prettyPre ctx
-      , "\n"
       ]
     UnboundVariable nam idx -> concat
       ["Unbound free variable: ", show nam, " at level ", show idx]
@@ -395,14 +394,12 @@ instance Show e => Show (CheckErr e) where
       , "  Reduced type: ",  T.unpack $ printHOAS typ',"\n"
       , "With context:\n"
       , T.unpack $ prettyCtx ctx
-      , "\n"
       ]
     EmptyContext -> "Empty Context"
     CheckEnvironmentError name e -> concat
       ["Environment error: \n"
       , "Name: ", show name, "\n"
       , show e, "\n"
-      , "\n"
       ]
     UndefinedReference name -> concat
       ["UndefinedReference error: \n"
@@ -413,6 +410,5 @@ instance Show e => Show (CheckErr e) where
       , T.unpack txt,"\n"
       , "With context:\n"
       , T.unpack $ prettyPre ctx
-      , "\n"
       ]
 

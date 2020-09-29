@@ -14,6 +14,9 @@ newtype Ctx a = Ctx { _ctx :: Seq (Name,a) }
 instance Functor Ctx where
   fmap f (Ctx seq) = Ctx $ fmap (\(n,a) -> (n,f a)) seq
 
+instance Show a => Show (Ctx a) where
+  show ctx = show (_ctx ctx)
+
 depth :: Ctx a -> Int
 depth = length . _ctx
 
@@ -36,19 +39,11 @@ find nam (Ctx ((n,a) :<| cs))
   | otherwise  = find nam (Ctx cs)
 find nam (Ctx Empty) = Nothing
 
--- | Gets the term at given Bruijn-level in a context
-at :: Int -> Ctx a -> Maybe (Name, a)
-at lvl ctx = go ((depth ctx) - lvl - 1) ctx where
-  go :: Int -> Ctx a -> Maybe (Name, a)
-  go 0 (Ctx (x :<| xs)) = Just x
-  go i (Ctx (x :<| xs)) = go (i - 1) (Ctx xs)
-  go i (Ctx Empty)      = Nothing
-
 -- | Modifies the context at a single place and returns the old value
 adjust :: Int -> Ctx a -> (a -> a) -> Maybe (a, Ctx a)
 adjust idx (Ctx Empty)               f = Nothing
 adjust idx (Ctx ((name, a) :<| ctx)) f
-  | idx > 0 = do
+  | idx == 0 = return $ (a, Ctx ((name, f a) :<| ctx))
+  | otherwise = do
       (a', Ctx ctx') <- adjust (idx - 1) (Ctx ctx) f
       return (a', Ctx ((name, a) :<| ctx'))
-  | otherwise = return $ (a, Ctx ((name, f a) :<| ctx))
