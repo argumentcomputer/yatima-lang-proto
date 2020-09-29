@@ -5,18 +5,18 @@ package Vector
   with Nat
 where
 
-def Vector (A:Type) (size: Nat): Type =
+def Vector (A:*) (size: Nat): * =
   @self
-  ∀ (  P : ∀ (size: Nat) (_:Vector A size) -> Type)
+  ∀ (  P : ∀ (size: Nat) (_:Vector A size) -> *)
     (nil : P zero (λ P n c => n))
     (cons: ∀ (size: Nat) (head: A) (tail: Vector A size)
       -> P (succ size) (λ P n c => c size head tail))
     -> P size self
 
-def nil (A: Type) : Vector A zero
+def nil (A: *) : Vector A zero
   = λ P n c => n
 
-def cons (A: Type) (size: Nat) (head: A) (tail: Vector A size) : Vector A (succ size)
+def cons (A: *) (size: Nat) (head: A) (tail: Vector A size) : Vector A (succ size)
   = λ P n c => c size head tail
 
 

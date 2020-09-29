@@ -4,9 +4,9 @@
 package Nat where
 
 {| The type of natural numbers |}
-def Nat : Type =
+def Nat : * =
   @self
-  ∀ (0 P : ∀ (_:Nat) -> Type)
+  ∀ (0 P : ∀ (_:Nat) -> *)
     (& zero : P (λ P z s => z))
     (& succ : ∀ (pred: Nat) -> (P (λ P z s => s pred)))
     -> P self
