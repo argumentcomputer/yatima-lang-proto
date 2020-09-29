@@ -40,10 +40,10 @@ prettyTerm t = go t
       Hol name                     -> T.concat ["?", name]
       Var name                     -> name
       Ref name                     -> name
-      All ""   name used bind body -> T.concat ["∀ ", alls name used bind body]
+      All ""   name used bind body -> T.concat ["∀", alls name used bind body]
       All self name used bind body ->
-        T.concat ["@", self, "∀ ", alls name used bind body]
-      Lam name body           -> T.concat ["λ ", lams name body]
+        T.concat ["@", self, " ∀", alls name used bind body]
+      Lam name body           -> T.concat ["λ", lams name body]
       App func argm           -> apps func argm
       Let name used typ_ expr body  -> T.concat
         ["let ", uses used, name, ": ", go typ_, " = ", go expr, ";\n", go body]

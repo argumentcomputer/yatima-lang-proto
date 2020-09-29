@@ -240,7 +240,7 @@ pHol = label "a hole: \"?name\"" $ do
 pLam :: (Ord e, Monad m) => Parser e m Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
   symbol "λ" <|> symbol "lam" <|> symbol "lambda"
-  vars <- sepEndBy1 (pName True) space <* space
+  vars <- sepEndBy1 (pName True) space
   symbol "=>"
   body <- bind vars (pExpr False)
   return (foldr Lam body vars)
