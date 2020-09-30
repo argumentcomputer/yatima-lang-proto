@@ -22,6 +22,7 @@ import           Language.Yatima.Uses
 
 import           Test.Hspec
 import           Test.QuickCheck
+import           Test.QuickCheck.Gen
 import           Test.QuickCheck.Instances.ByteString
 import           Test.QuickCheck.Instances.Text
 
@@ -80,9 +81,10 @@ test_index = fst test_defs
 test_cache = snd test_defs
 
 name_gen :: Gen Text
-name_gen = T.pack <$> (listOf1 $ elements nameChar)
-  where
-    nameChar = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9']
+name_gen = do
+  a <- elements $ ['A'..'Z'] ++ ['a'..'z']
+  n <- choose (0,100) :: Gen Int
+  return $ T.cons a (T.pack $ show n)
 
 term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
@@ -91,6 +93,7 @@ term_gen ctx = frequency
   , (100, return Any)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, App <$> term_gen ctx <*> term_gen ctx)
+  , (50, Ann <$> term_gen ctx <*> term_gen ctx)
   , (33, (name_gen >>= \s -> name_gen >>= \n -> 
             All s n <$> arbitrary <*> term_gen ctx <*> term_gen (n:s:ctx)))
   , (33, (name_gen >>= \n -> 

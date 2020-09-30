@@ -382,6 +382,11 @@ termToTree n t index cache =
         f' <- go f ctx 
         a' <- go a ctx
         return $ Ctor "App" 2 [f', a']
+      Ann v t               -> do
+        bump
+        v' <- go v ctx 
+        t' <- go t ctx
+        return $ Ctor "Ann" 2 [v', t']
       Let n u t x b         -> do
         bind n
         bump
@@ -453,6 +458,7 @@ treeToTerm anon meta = do
           bump
           Lam n <$> go b (n:ctx)
         ("App",2,[f,a]) -> bump >> App <$> go f ctx <*> go a ctx
+        ("Ann",2,[v,t]) -> bump >> Ann <$> go v ctx <*> go t ctx
         ("Let",4,[Ctor u 0 [],t,Bind x, Bind b]) -> do
           n <- get >>= name
           u <- uses u ctx

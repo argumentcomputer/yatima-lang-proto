@@ -23,6 +23,7 @@ Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TupleSections #-}
 module Language.Yatima.Parse
   ( ParseErr(..)
   , ParseEnv(..)
@@ -31,7 +32,13 @@ module Language.Yatima.Parse
   , parseM
   , pName
   , pLam
+  , pAll
+  , pAny
+  , pLet
   , pVar
+  , pBinder
+  , pDecl
+  , pHol
   , pTerm
   , pExpr
   , pDef
@@ -155,24 +162,24 @@ pName bind = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
   where
     nameSymbol = if bind then "_'" else "_'/" :: [Char]
 
-    keywords :: Set Text
-    keywords = Set.fromList $
-      [ "let"
-      , "if"
-      , "for"
-      , "var"
-      , "then"
-      , "else"
-      , "where"
-      , "case"
-      , "forall"
-      , "all"
-      , "lam"
-      , "lambda"
-      , "def"
-      , "define"
-      , "*"
-      ]
+keywords :: Set Text
+keywords = Set.fromList $
+  [ "let"
+  , "if"
+  , "for"
+  , "var"
+  , "then"
+  , "else"
+  , "where"
+  , "case"
+  , "forall"
+  , "all"
+  , "lam"
+  , "lambda"
+  , "def"
+  , "define"
+  , "*"
+  ]
 
 
 
@@ -210,46 +217,48 @@ pAny = label "an any: \"*\"" $ do
   string "*"
   return $ Any
 
-pBinder :: (Ord e, Monad m) => Bool -> Bool -> Parser e m [(Name, Maybe (Uses, Term))]
-pBinder annOptional namOptional = choice
+pBinder :: (Ord e, Monad m) => Bool -> Parser e m [(Name,Uses, Term)]
+pBinder namOptional = choice
   [ ann
   , if namOptional then unNam else empty
-  , if annOptional then unAnn else empty
   ]
   where
-    unNam = (\x -> [("", Just (Many, x))]) <$> pTerm
-    unAnn = (\x -> [(x , Nothing       )]) <$> pName True
+    unNam = (\x -> [("", Many, x)]) <$> pTerm
     ann = do
       symbol "("
       uses  <- pUses
       names <- sepEndBy1 (pName True) space
       typ_  <- symbol ":" >> pExpr False
       string ")"
-      return $ (,Just (uses,typ_)) <$> names
+      return $ (,uses,typ_) <$> names
 
 
 -- | Parse a hole: @?name@
 pHol :: (Ord e, Monad m) => Parser e m Term
 pHol = label "a hole: \"?name\"" $ do
   symbol "?"
-  name <- pName False
+  name <- pName True
   return (Hol name)
 
+foldLam:: Term -> [Name] -> Term
+foldLam body bs = foldr (\n x -> Lam n x) body bs
 
 -- | Parse a lambda: @λ x y z => body@
 pLam :: (Ord e, Monad m) => Parser e m Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
-  symbol "λ" <|> symbol "lam" <|> symbol "lambda"
+  symbol "λ" <|> symbol "lambda" <|> symbol "lam"
   vars <- sepEndBy1 (pName True) space
   symbol "=>"
   body <- bind vars (pExpr False)
-  return (foldr Lam body vars)
+  return (foldLam body vars)
 
-foldAll :: Term -> [(Name, Name, Maybe (Uses, Term))] -> Term
-foldAll body bs = foldr (\(s,n,Just (u,t)) x -> All s n u t x) body bs
+foldAll :: Term -> [(Name, Name, Uses, Term)] -> Term
+foldAll body bs = foldr (\(s,n,u,t) x -> All s n u t x) body bs
 
-bindAll :: (Ord e, Monad m) => [(Name,Name,Maybe (Uses,Term))] -> Parser e m a -> Parser e m a
-bindAll bs = bind (foldr (\(s,n,_) ns -> s:n:ns) [] bs)
+bindAll :: (Ord e, Monad m) => [(Name,Name,Uses,Term)] -> Parser e m a -> Parser e m a
+bindAll bs = bind (foldr (\(s,n,_,_) ns -> s:n:ns) [] bs)
+
+fst3 (x,y,z) = x
 
 -- | Parse a forall: @∀ (a: A) (b: B) (c: C) -> body@
 pAll :: (Ord e, Monad m) => Parser e m Term
@@ -260,10 +269,10 @@ pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
   body  <- bindAll binds (pExpr False)
   return $ foldAll body binds
   where
-    binder  = pBinder False True
+    binder  = pBinder True
     binders self = do
-     ((n,ut):ns)  <- binder <* space
-     let b  = ((self,n,ut) : ((\(n,ut) -> ("",n,ut)) <$> ns))
+     ((n,u,t):ns)  <- binder <* space
+     let b  = ((self,n,u,t) : ((\(n,u,t) -> ("",n,u,t)) <$> ns))
      bs <- bindAll b $ ((symbol "->" >> return []) <|> binders "")
      return $ b ++ bs
 
@@ -274,17 +283,17 @@ pDecl shadow = do
   when (not shadow && Set.member nam refs)
     (customFailure $ TopLevelRedefinition nam)
   bs      <- ((symbol ":" >> return []) <|> binders)
-  let ns  = nam:(fst <$> bs)
+  let ns  = nam:(fst3 <$> bs)
   typBody <- bind ns (pExpr False)
-  let typ = foldAll typBody ((\(n,ut) -> ("",n,ut)) <$> bs)
+  let typ = foldAll typBody ((\(n,u,t) -> ("",n,u,t)) <$> bs)
   expBody <- symbol "=" >> bind ns (pExpr False)
-  let exp = foldr Lam expBody (fst <$> bs)
+  let exp = foldLam expBody (fst3 <$> bs)
   return (nam, exp, typ)
   where
-    binder  = pBinder False False
+    binder  = pBinder False
     binders = do
      b  <- binder <* space
-     bs <- bind (fst <$> b) $ ((symbol ":" >> return []) <|> binders)
+     bs <- bind (fst3 <$> b) $ ((symbol ":" >> return []) <|> binders)
      return $ b ++ bs
 
 -- | Parse a local, possibly recursive, definition
@@ -317,7 +326,7 @@ pTerm = do
     , pAll
     , pHol
     , pAny
-    , pExpr True
+    , symbol "(" >> pExpr True <* space <* string ")"
     , pLet
     , pVar
     ]
@@ -325,20 +334,36 @@ pTerm = do
 -- | Parse a sequence of terms as an expression. The `Bool` switches whether or
 -- not the sequence must be wrapped in parentheses.
 pExpr :: (Ord e, Monad m) => Bool -> Parser e m Term
-pExpr parens = do
-  when parens (void $ symbol "(")
+pExpr annotatable = do
   fun  <- pTerm <* space
   args <- args
-  space
-  when parens (void $ string ")")
-  return $ foldl (\t a -> App t a) fun args
+  let tele = foldl (\t a -> App t a) fun args
+  choice
+    [ if annotatable then (Ann tele <$> (symbol "::" >> pExpr False)) else empty
+    , return tele
+    ]
   where
     args = next <|> (return [])
     next = do
-      notFollowedBy (void (symbol "def") <|> (void (symbol "{|")) <|> eof)
+      notFollowedBy terminator
       t  <- pTerm <* space
       ts <- args
       return (t:ts)
+    terminator = choice
+      [ void (string "def") 
+      , void (string "::") 
+      , void (string "{|")
+      , void eof
+      ]
+
+pAnn :: (Ord e, Monad m) => Parser e m Term
+pAnn = do
+  symbol "("
+  val <- pExpr False <* space
+  symbol "::"
+  typ <- pExpr False <* space
+  string ")"
+  return $ Ann val typ
 
 pDoc :: (Ord e, Monad m) => Parser e m Text
 pDoc = do

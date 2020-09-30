@@ -270,9 +270,7 @@ infer :: HashF -> Defs -> PreContext -> Uses -> HOAS
       -> Except (CheckErr e) (Context, HOAS)
 infer hashF defs pre use term = case term of
   VarH nam lvl -> do
-    --traceM ("VarH " ++ show nam ++ " " ++ show lvl)
-    let dep = Ctx.depth pre - lvl - 1
-    case Ctx.adjust dep (toContext pre) (\(_,typ) -> (use,typ)) of
+    case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
       Nothing            -> throwError $ UnboundVariable nam lvl
       Just ((_,typ),ctx) -> return (ctx, typ)
   RefH nam -> do

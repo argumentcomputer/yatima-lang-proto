@@ -41,9 +41,9 @@ find nam (Ctx Empty) = Nothing
 
 -- | Modifies the context at a single place and returns the old value
 adjust :: Int -> Ctx a -> (a -> a) -> Maybe (a, Ctx a)
-adjust idx (Ctx Empty)               f = Nothing
-adjust idx (Ctx ((name, a) :<| ctx)) f
-  | idx == 0 = return $ (a, Ctx ((name, f a) :<| ctx))
+adjust lvl (Ctx Empty)               f = Nothing
+adjust lvl (Ctx (ctx :|> (name, a))) f
+  | lvl == 0 = return $ (a, Ctx (ctx :|> (name, f a)))
   | otherwise = do
-      (a', Ctx ctx') <- adjust (idx - 1) (Ctx ctx) f
-      return (a', Ctx ((name, a) :<| ctx'))
+      (a', Ctx ctx') <- adjust (lvl - 1) (Ctx ctx) f
+      return (a', Ctx (ctx' :|> (name, a)))

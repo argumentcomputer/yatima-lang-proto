@@ -49,6 +49,8 @@ data Term where
   Let :: Name -> Uses -> Term -> Term -> Term -> Term
   -- | The type of types.
   Any :: Term
+  -- | Type annotation
+  Ann :: Term -> Term -> Term
 
 deriving instance Show Term
 deriving instance Eq Term

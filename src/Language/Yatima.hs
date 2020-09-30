@@ -18,7 +18,7 @@ import Language.Yatima.Parse (parseTerm, unsafeParseTerm)
 import qualified Language.Yatima.Parse as Parse
 
 import qualified Language.Yatima.Term as Term
-import Language.Yatima.Term (Term, Name)
+import Language.Yatima.Term (Term(..), Name, Def(..))
 
 import           Control.Monad.Except
 import           Data.IORef
@@ -47,11 +47,18 @@ loadFile root file = do
 -- | Parse and pretty-print a file
 prettyFile :: FilePath -> FilePath -> IO ()
 prettyFile root file = do
-  (_,pack)  <- loadFile root file
+  index <- _index . snd <$> (loadFile root file)
   cache <- readCache
-  case Print.prettyDefs (_index pack) cache of
-    Left e  -> putStrLn $ show e
-    Right t -> putStrLn $ T.unpack t
+  defs  <- catchIPLDErr $ indexToDefs index cache
+  forM_ defs (go index)
+  return ()
+  where
+    go :: Index -> Def -> IO ()
+    go index def = do
+      putStrLn ""
+      putStrLn $ T.unpack $ printCIDBase32 $ index M.! (_name def)
+      putStrLn $ T.unpack $ Print.prettyDef def
+      return ()
 
 -- | simple MurmurHash implementation
 --mix64 :: Word64 -> Word64

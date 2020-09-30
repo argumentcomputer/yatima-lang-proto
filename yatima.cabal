@@ -33,7 +33,6 @@ library
   other-modules:
       Language.Yatima.Ctx
       Language.Yatima.Defs
-      Language.Yatima.HOAS
       Paths_yatima
   hs-source-dirs:
       src
@@ -67,6 +66,8 @@ test-suite spec
   main-is: Spec.hs
   other-modules:
       Spec.IPLD
+      Spec.Parse
+      Spec.Print
   hs-source-dirs:
       test
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
