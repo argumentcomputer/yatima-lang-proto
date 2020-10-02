@@ -136,17 +136,17 @@ parseM p env file txt =
   (fmap (\(x,y,z) -> x)) <$> runParserT (runRWST p env ()) file txt
 
 -- | Parses a source-code to a Term, simplified API
-parseTerm :: forall e. Ord e => Text -> Maybe Term
+parseTerm :: Text -> Maybe Term
 parseTerm code = case (runIdentity $ parseDefault p code) of
   Left err  -> Nothing
   Right trm -> Just trm
   where
-    p :: Parser e Identity Term
+    p :: Parser () Identity Term
     p = pExpr False
 
 -- | Parses a source-code to a Term, simplified API, throws
-unsafeParseTerm :: forall e. Ord e => Text -> Term
-unsafeParseTerm code = case parseTerm @e code of
+unsafeParseTerm :: Text -> Term
+unsafeParseTerm code = case parseTerm code of
   Nothing  -> error "Bad parse."
   Just trm -> trm
 
