@@ -6,10 +6,10 @@ cabal-version: 1.12
 
 name:           yatima
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+description:    Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 homepage:       moonad/yatima
 author:         Gabriel Barreto, John C. Burnham, Victor Maia
-maintainer:     contact@sunshinecybernetics.com
+maintainer:     john@sunshinecybernetics.com
 copyright:      2020 Sunshine Cybernetics
 license:        GPL-3
 license-file:   LICENSE
@@ -21,18 +21,76 @@ extra-source-files:
 library
   exposed-modules:
       Language.Yatima.Term
+      Language.Yatima.IPLD
+      Language.Yatima.CID
+      Language.Yatima.Uses
       Language.Yatima.Print
       Language.Yatima.Parse
-      Language.Yatima.HOAS
+      Language.Yatima.Import
+      Language.Yatima.Core
+      Language.Yatima.IPFS
+      Language.Yatima
   other-modules:
+      Language.Yatima.Ctx
+      Language.Yatima.Defs
       Paths_yatima
   hs-source-dirs:
       src
-  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TupleSections
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , cborg-json
     , containers
+    , cryptonite
+    , directory
+    , http-client
+    , ipfs-api
+    , ipld-cid
     , megaparsec
     , mtl
+    , multibase
+    , multihash-cryptonite
+    , serialise
+    , servant
+    , servant-client
     , text
+    , unsafeperformst
+  default-language: Haskell2010
+
+test-suite spec
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Spec.IPLD
+      Spec.Parse
+      Spec.Print
+  hs-source-dirs:
+      test
+  default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
+  build-depends:
+      QuickCheck
+    , base
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , containers
+    , cryptonite
+    , hspec
+    , ipld-cid
+    , megaparsec
+    , mtl
+    , multibase
+    , multihash-cryptonite
+    , quickcheck-instances
+    , raw-strings-qq
+    , serialise
+    , text
+    , transformers
+    , unsafeperformst
+    , vector
+    , yatima
   default-language: Haskell2010

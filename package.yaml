@@ -2,34 +2,140 @@ name:           yatima
 version:        0.1.0.0
 homepage:       "moonad/yatima"
 author:         "Gabriel Barreto, John C. Burnham, Victor Maia"
-maintainer:     contact@sunshinecybernetics.com
+maintainer:     john@sunshinecybernetics.com
 copyright:      2020 Sunshine Cybernetics
-
 
 extra-source-files:
 - README.md
 - LICENSE
 
-description:         Please see the README on GitHub at <https://github.com/johnchandlerburnham/bishop#readme>
+description:
+  Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 
 library:
   source-dirs: src
   exposed-modules:
     - Language.Yatima.Term
+    - Language.Yatima.IPLD
+    - Language.Yatima.CID
+    - Language.Yatima.Uses
     - Language.Yatima.Print
     - Language.Yatima.Parse
-    - Language.Yatima.HOAS
+    - Language.Yatima.Import
+    - Language.Yatima.Core
+    - Language.Yatima.IPFS
+    - Language.Yatima
 
   dependencies:
     - base >= 4.7 && < 5
     - containers
     - text
-    - megaparsec
     - mtl
+    - megaparsec
+
+    - directory
+
+    - serialise
+    - bytestring
+    - base16-bytestring
+    - multibase
+    - cryptonite
+    - multihash-cryptonite
+    - ipld-cid
+    - cborg
+    - cborg-json
+
+    - unsafeperformst
+
+    - servant
+    - servant-client
+    - http-client
+    - aeson
+    - ipfs-api
+
 
   default-extensions:
     - OverloadedStrings
     - GADTSyntax
     - StandaloneDeriving
     - MultiWayIf
+    - TupleSections
+
+#executables:
+#  yide:
+#    main: Main.hs
+#    source-dirs: yide
+#    dependencies:
+#      - base >= 4.7 && < 5
+#      - containers
+#      - text
+#      - yatima
+#      - mtl
+#      - megaparsec
+#      - haskeline
+#      - process
+#      # - serialise
+#      # - bytestring
+#      # - base16-bytestring
+#      # - multibase
+#      # - cryptonite
+#      # - multihash-cryptonite
+#      # - ipld-cid
+#      # - unsafeperformst
+#      # - aeson
+#      # - servant
+#      # - servant-client
+#      # - http-client
+#      # - cborg
+#      # - ipfs-api
+#    default-extensions:
+#      - OverloadedStrings
+#      - GADTSyntax
+#      - StandaloneDeriving
+#      - MultiWayIf
+#      - TypeApplications
+#      - ScopedTypeVariables
+
+tests:
+  spec:
+    main:                Spec.hs
+    source-dirs:
+      - test
+    #ghc-options:
+    #- -threaded
+    #- -rtsopts
+    #- -with-rtsopts=-N
+    dependencies:
+      - base
+      - yatima
+      - megaparsec
+      - containers
+      - transformers
+      - mtl
+      - text
+      - vector
+      - unsafeperformst
+      - hspec
+      - QuickCheck
+      - quickcheck-instances
+      - raw-strings-qq
+      - bytestring
+      - multibase
+      - ipld-cid
+      - serialise
+      - cborg
+      - cryptonite
+      - multihash-cryptonite
+      - base16-bytestring
+    default-extensions:
+      - OverloadedStrings
+      - GADTSyntax
+      - StandaloneDeriving
+      - MultiWayIf
+      - TypeApplications
+      - ScopedTypeVariables
+    other-modules:
+      - Spec.IPLD
+      - Spec.Parse
+      - Spec.Print
 

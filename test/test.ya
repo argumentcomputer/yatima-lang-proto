@@ -1,1 +1,43 @@
-λ x y z => λ f g => f (g x y) z
+package test where
+
+--let type : Type
+--  = Type;
+--
+--let foo  : Type
+--  = ∀ (0 A B C: Type) (x: A) (y: B) (z: C) -> C;
+--
+--let bar (0 A B C: Type) (x: A) (y: B) (z: C) : C
+--  = z;
+--
+--let idA : ∀ (0 A: Type) (x: A) -> A
+--  = λ (0 A: Type) (x: A) => x;
+--
+--let redex : Type = (idA Type type);
+--
+--let 0 erasedLet : Type = Type;
+--let & affineLet : Type = Type;
+--let 1 linearLet : Type = Type;
+
+
+def id (A: Type) (x: A) : A = x
+def id1 (A: Type) (1 x: A) : A = x
+def idAff (A: Type) (& x: A) : A = x
+
+def fst (A: Type) (x : A) (y: A) : A
+  = x
+
+def id_bad (A: Type) (0 x: A) : A = x
+
+
+def aff_bad' : Type
+  = let f : ∀ (_:Type) -> Type = λ (x : Type) => x;
+    Type
+
+def test (A: Type) (& x: A) (1 y: A) : A
+  = let f (& x : A) (1 y : A) : A = y;
+    f x y
+
+def bad (A: Type) (0 x: A) (1 y: A) : A
+  = let f : ∀ (0 x : A) (1 y : A) -> A = λ x y => y;
+    f x y
+

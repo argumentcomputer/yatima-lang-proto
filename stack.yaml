@@ -1,4 +1,4 @@
-resolver: lts-16.10
+resolver: lts-16.16
 
 packages:
 - .
@@ -7,20 +7,15 @@ packages:
 # These entries can reference officially published versions as well as
 # forks / in-progress versions pinned to a git hash. For example:
 extra-deps:
-#  - unsafeperformst-0.9.2@sha256:de35debea25dd6a500532a57efe82c625e94dd93b8da323a2b93ddb288c7673b,734
-#  - blake3-0.2@sha256:d1146b9a51ccfbb0532780778b6d016a614e3d44c05d8c1923dde9a8be869045,2448
-#  - ipld-cid-0.1.0.0@sha256:cd7869d111925d250d4cdd5bb86e10e31fb8fa6a3061e454e34c87724e8e7a9a,1731
-#  - binary-varint-0.1.0.0@sha256:4637979e3e029d5fcfc41133e9fd3b905d5d0b04d7135503911305c13093c743,1040
-#  - multibase-0.1.1@sha256:75bf29d8c64e2a8fdfb18957f909a385b9c04cd55197d0ceaf9fa25f2eceb13f,1839
-#  - multihash-cryptonite-0.1.0.0@sha256:300a463286f1dae58b383eca4f7acca0f10d77a4cdaf2a7f7aea3b369bf396f4,2215
-#  - base32-z-bytestring-1.0.0.0@sha256:4fc021ad12af01831f8173f83a3dc904171b8329fad22e0858b26d16d94dff2d,2532
-#  - base58-bytestring-0.1.0@sha256:a1da72ee89d5450bac1c792d9fcbe95ed7154ab7246f2172b57bd4fd9b5eab79,1913
-#  - sandi-0.5@sha256:b278d072ca717706ea38f9bd646e023f7f2576a778fb43565b434f93638849aa,3010
-#  - ipfs-api-0.1.0.0@sha256:b6ba437b9671a7983b689fd5ddef23a74c8472c231096d53de47813ed1c16e10,1313
-
-nix:
-  enable: true
-  packages: [zlib]
+  - unsafeperformst-0.9.2@sha256:de35debea25dd6a500532a57efe82c625e94dd93b8da323a2b93ddb288c7673b,734
+  - ipld-cid-0.1.0.0@sha256:cd7869d111925d250d4cdd5bb86e10e31fb8fa6a3061e454e34c87724e8e7a9a,1731
+  - binary-varint-0.1.0.0@sha256:4637979e3e029d5fcfc41133e9fd3b905d5d0b04d7135503911305c13093c743,1040
+  - multibase-0.1.1@sha256:75bf29d8c64e2a8fdfb18957f909a385b9c04cd55197d0ceaf9fa25f2eceb13f,1839
+  - multihash-cryptonite-0.1.0.0@sha256:300a463286f1dae58b383eca4f7acca0f10d77a4cdaf2a7f7aea3b369bf396f4,2215
+  - base32-z-bytestring-1.0.0.0@sha256:4fc021ad12af01831f8173f83a3dc904171b8329fad22e0858b26d16d94dff2d,2532
+  - base58-bytestring-0.1.0@sha256:a1da72ee89d5450bac1c792d9fcbe95ed7154ab7246f2172b57bd4fd9b5eab79,1913
+  - sandi-0.5@sha256:b278d072ca717706ea38f9bd646e023f7f2576a778fb43565b434f93638849aa,3010
+  - ipfs-api-0.1.0.0@sha256:b6ba437b9671a7983b689fd5ddef23a74c8472c231096d53de47813ed1c16e10,1313
 
 
 # Override default flag values for local packages and extra-deps
