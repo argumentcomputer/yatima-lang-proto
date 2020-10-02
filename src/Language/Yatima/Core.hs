@@ -75,6 +75,7 @@ termToHoas ctx t = case t of
   Ref nam                 -> RefH nam
   Lam nam bod             -> LamH nam (bind nam bod)
   App fun arg             -> AppH (go fun) (go arg)
+  Ann val typ             -> AnnH (Ctx.depth ctx) (go val) (go typ)
   Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
   All slf nam use typ bod -> AllH slf nam use (go typ) (bind2 slf nam bod)
   where
@@ -348,22 +349,22 @@ instance Show e => Show (CheckErr e) where
   show e = case e of
     CheckQuantityMismatch ctx a b -> concat
       ["Type checking quantity mismatch: \n"
-      , "- Expected type:  ", T.unpack $ prettyCtxElem a, "\n"
-      , "- Instead found: ", T.unpack $ prettyCtxElem b, "\n"
+      , "- Expected: ", T.unpack $ prettyCtxElem a, "\n"
+      , "- Detected: ", T.unpack $ prettyCtxElem b, "\n"
       , "With context:\n"
       , T.unpack $ prettyCtx ctx
       ]
     InferQuantityMismatch ctx a b -> concat
       ["Type inference quantity mismatch: \n"
-      , "- Expected type: ", T.unpack $ prettyCtxElem a, "\n"
-      , "- But inferred:  ", T.unpack $ prettyCtxElem b, "\n"
+      , "- Expected: ", T.unpack $ prettyCtxElem a, "\n"
+      , "- Inferred: ", T.unpack $ prettyCtxElem b, "\n"
       , "With context:\n"
       , T.unpack $ prettyCtx ctx
       ]
     TypeMismatch ctx a b -> concat
       ["Type Mismatch: \n"
-      , "- Expected type:  ", T.unpack $ prettyPreElem ("",a), "\n"
-      , "- Instead, found: ", T.unpack $ prettyPreElem ("",b), "\n"
+      , "- Expected: ", T.unpack $ prettyPreElem ("",a), "\n"
+      , "- Detected: ", T.unpack $ prettyPreElem ("",b), "\n"
       , "With context:\n"
       , T.unpack $ prettyPre ctx
       ]
