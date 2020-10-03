@@ -10,7 +10,7 @@ import qualified Language.Yatima.Ctx as Ctx
 import           Language.Yatima.Ctx (Ctx, (<|))
 
 import qualified Language.Yatima.Core as Core
-import Language.Yatima.Core (HOAS(..), PreContext, CheckErr, defToHOAS)
+import Language.Yatima.Core (HOAS(..), PreContext, CheckErr, defToHoas)
 
 import Language.Yatima.Print (prettyTerm)
 import qualified Language.Yatima.Print as Print
@@ -61,18 +61,19 @@ prettyFile root file = do
       putStrLn $ T.unpack $ Print.prettyDef def
       return ()
 
-checkFile :: FilePath -> FilePath -> IO ()
+checkFile :: FilePath -> FilePath -> IO (CID,Package)
 checkFile root file = do
-  (_,p) <- loadFile root file
+  (cid,p) <- loadFile root file
   let index = _index p
   cache <- readCache
   forM_ (M.toList $ index) (checkRef index cache)
+  return (cid,p)
   where
     checkRef ::  Index -> Cache -> (Name, CID) -> IO ()
     checkRef index cache (name,cid) = do
       def  <- liftIO $ catchErr $ derefMetaDefCID name cid index cache
       defs <- liftIO $ catchErr $ indexToDefs index cache
-      let (trm,typ) = defToHOAS name def
+      let (trm,typ) = defToHoas def
       case runExcept $ Core.check defs Ctx.empty Once trm typ of
         Left  e -> putStrLn $ T.unpack $ T.concat 
             ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
@@ -96,7 +97,7 @@ normDef name root file = do
   cid   <- catchErr (indexLookup name index)
   def   <- catchErr (derefMetaDefCID name cid index cache)
   defs  <- catchErr (indexToDefs index cache)
-  return $ Core.norm defs (fst $ defToHOAS name def)
+  return $ Core.norm defs (fst $ defToHoas def)
 
 whnf :: Defs -> Term -> Term
 whnf defs =

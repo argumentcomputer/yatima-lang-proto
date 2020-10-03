@@ -75,6 +75,7 @@ quit = outputTxtLn "Goodbye."
 data Command
   = Eval Term
   | Defn Def
+  | Type Name
   | Load FilePath
   | Import CID
   | Quit
@@ -87,12 +88,14 @@ parseLine = do
   space
   command <- choice
     [ (symbol ":help" <|> symbol ":h") >> return Help
-    , (symbol ":quit" <|> symbol ":q") >> return Quit
-    , (symbol ":browse") >> return Browse
-    --, do
-    --    (symbol ":load" <|> symbol ":l")
-    --    nam <- pPackageName
-    --    return $ Load $ (T.unpack nam) ++ ".ya"
+    --, (symbol ":quit" <|> symbol ":q") >> return Quit
+    , (symbol ":browse" <|> symbol ":b") >> return Browse
+    , (symbol ":type" <|> symbol ":t") >> Type <$> (pName False)
+    , do
+        (symbol ":load" <|> symbol ":l")
+        nam <- pPackageName
+        return $ Load $ (T.unpack nam) ++ ".ya"
+    --, (symbol ":with" <|> symbol ":w") >> Import <$> pCID
     , Defn <$> (try $ pDef)
     , Eval <$> pExpr False
     ]
@@ -105,7 +108,7 @@ catchReplErr x = case runExcept x of
     Left  e -> liftIO (putStrLn (show e)) >> abort
 
 process :: Text -> Repl ()
-process line = do
+process line = dontCrash' $ do
   index <- gets _yDefs
   let env = ParseEnv Set.empty (M.keysSet index)
   a <- liftIO $ parseIO parseLine env "" line
@@ -115,12 +118,28 @@ process line = do
     procCommand c = case c of
       Browse -> do
         index <- gets _yDefs
-        liftIO $ print index
+        cache  <- liftIO $ readCache
+        defs  <- catchReplErr $ indexToDefs index cache
+        let go index def = do
+              putStrLn ""
+              putStrLn $ T.unpack $ printCIDBase32 $ index M.! (_name def)
+              putStrLn $ T.unpack $ prettyDef def
+              return ()
+        liftIO $ forM_ defs (go index)
       Help   -> liftIO $ putStrLn "help text fills you with determination "
-      Quit   -> abort
-      Eval t -> dontCrash' $ do
+      -- Quit   -> abort
+      Type n -> do
         index    <- gets _yDefs
-        cache    <- tryAction $ liftIO $ readCache
+        cache    <- liftIO $ readCache
+        def      <- catchReplErr $ deref n index cache
+        defs  <- catchReplErr $ indexToDefs index cache
+        let (trm,typ) = Core.defToHoas def
+        (_,typ) <- catchReplErr (Core.check defs Ctx.empty Once trm typ)
+        liftIO $ print $ typ
+        return ()
+      Eval t -> do
+        index    <- gets _yDefs
+        cache    <- liftIO $ readCache
         t        <- catchReplErr (validateTerm t [] index cache)
         defs     <- catchReplErr (indexToDefs index cache)
         let hterm = Core.termToHoas Ctx.empty t
@@ -128,13 +147,23 @@ process line = do
         --catchReplErr (Core.check defs Ctx.empty Once hterm typ_)
         liftIO $ print $ Core.norm defs hterm
         return ()
-      --Defn d -> do
-      --  index <- gets _yideDefs
-      --  cache <- liftIO $ readCache
-      --  (_,c')   <- liftIO $ catchDerefErr (insertDef d index cache)
-      --  liftIO $ writeCache c'
-      --  return ()
-      --Load file -> do
+      Defn def -> do
+        index  <- gets _yDefs
+        cache  <- liftIO $ readCache
+        defs   <- catchReplErr (indexToDefs index cache)
+        let (trm,typ) = Core.defToHoas def
+        catchReplErr (Core.check defs Ctx.empty Once trm typ)
+        (i',c') <- catchReplErr (insertDefs [def] index cache)
+        modify (\e -> e {_yDefs = i'})
+        liftIO $ writeCache c'
+        return ()
+      Load file -> do
+        root  <- gets _yRoot
+        index <- gets _yDefs
+        (cid,p) <- liftIO $ checkFile root file
+        modify (\e -> e {_yDefs = M.union index (_index p)})
+        return ()
+
 
 
 prefixes :: [String] -> String -> Bool
@@ -143,11 +172,11 @@ prefixes [] x = False
 
 complete :: CompletionFunc (StateT YideState IO)
 complete (ante, post)
-  | prefixes [":q ", ":quit ", ":h ", ":help "] p = noCompletion (ante, post)
+  | prefixes [":h ", ":help "] p = noCompletion (ante, post)
   | otherwise = do
-     --ns <- gets (M.keys . Core._names . _fideModule)
-     let ks = [":quit", ":help", ":browse"]
-     let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks)
+     ns <- gets (M.keys . _yDefs)
+     let ks = [":help", ":browse"]
+     let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks ++ ns)
      completeWord Nothing " " (pure . (map simpleCompletion) . f)  (ante, post)
   where
     p = reverse ante
@@ -155,5 +184,6 @@ complete (ante, post)
 yide :: StateT YideState IO ()
 yide = repl prompt quit process complete ini
   where
-    ini = liftIO $ putStrLn
-      "Welcome to yide, the Yatima interactive development environment!"
+    ini = liftIO $ putStrLn $
+      "Welcome to yide, the Yatima interactive development environment!\n"++
+      "press Ctrl-d to quit"

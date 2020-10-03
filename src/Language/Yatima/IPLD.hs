@@ -333,12 +333,10 @@ makeLink n index cache = do
   metaDef <- deserial @MetaDef cid cache
   return (cid, _anonDef metaDef)
 
-deref :: Name -> CID -> Index -> Cache -> Except IPLDErr Def
-deref name cid index cache = do
+deref :: Name -> Index -> Cache -> Except IPLDErr Def
+deref name index cache = do
   mdCID   <- indexLookup name index
   metaDef <- deserial @MetaDef mdCID cache
-  let anonCID = _anonDef metaDef
-  --when (cid /= anonCID) (throwError $ CIDMismatch name cid anonCID)
   def <- derefMetaDef metaDef cache
   when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
   return def
@@ -555,7 +553,7 @@ indexToDefs index cache = M.traverseWithKey go index
   where
     go :: Name -> CID -> Except IPLDErr Def
     go n cid = do
-     (Def name doc term typ_) <- deref n cid index cache
+     (Def name doc term typ_) <- deref n index cache
      term' <- validateTerm term [n] index cache
      typ_' <- validateTerm typ_ [n] index cache
      return $ Def name doc term' typ_'
