@@ -33,7 +33,7 @@ module Language.Yatima.Parse
   , pName
   , pLam
   , pAll
-  , pAny
+  , pTyp
   , pLet
   , pVar
   , pBinder
@@ -53,7 +53,7 @@ module Language.Yatima.Parse
 
 import           Control.Monad.Except
 import           Control.Monad.Identity
-import           Control.Monad.RWS.Lazy     hiding (All, Any)
+import           Control.Monad.RWS.Lazy     hiding (All, Typ)
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -212,10 +212,10 @@ pUsesAnnotation = choice
   ]
 
 -- | Parse an any: @*@
-pAny :: (Ord e, Monad m) => Parser e m Term
-pAny = label "an any: \"*\"" $ do
+pTyp :: (Ord e, Monad m) => Parser e m Term
+pTyp = label "an any: \"*\"" $ do
   string "*"
-  return $ Any
+  return $ Typ
 
 pBinder :: (Ord e, Monad m) => Bool -> Parser e m [(Name,Uses, Term)]
 pBinder namOptional = choice
@@ -325,7 +325,7 @@ pTerm = do
     [ pLam
     , pAll
     , pHol
-    , pAny
+    , pTyp
     , symbol "(" >> pExpr True <* space <* string ")"
     , pLet
     , pVar

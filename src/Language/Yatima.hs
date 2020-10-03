@@ -50,7 +50,7 @@ prettyFile :: FilePath -> FilePath -> IO ()
 prettyFile root file = do
   index <- _index . snd <$> (loadFile root file)
   cache <- readCache
-  defs  <- catchIPLDErr $ indexToDefs index cache
+  defs  <- catchErr $ indexToDefs index cache
   forM_ defs (go index)
   return ()
   where
@@ -61,36 +61,31 @@ prettyFile root file = do
       putStrLn $ T.unpack $ Print.prettyDef def
       return ()
 
-checkRef :: Name -> CID -> Index -> Cache -> Except (CheckErr IPLDErr) HOAS
-checkRef name cid index cache = do
-  let mapE = mapExcept (either (\e -> throwError $ Core.CheckEnvironmentError name e) pure)
-  def  <- mapE $ derefMetaDefCID name cid index cache
-  defs <- mapE $ indexToDefs index cache
-  let (trm,typ) = defToHOAS name def
-  Core.check defs Ctx.empty Once trm typ
-  return typ
-
 checkFile :: FilePath -> FilePath -> IO ()
 checkFile root file = do
   (_,p) <- loadFile root file
   let index = _index p
   cache <- readCache
-  let func :: (Name, CID) -> IO ()
-      func (name, cid) = do
-        case runExcept $ checkRef name cid index cache of
-          Left  e -> putStrLn $ T.unpack $ T.concat 
+  forM_ (M.toList $ index) (checkRef index cache)
+  where
+    checkRef ::  Index -> Cache -> (Name, CID) -> IO ()
+    checkRef index cache (name,cid) = do
+      def  <- liftIO $ catchErr $ derefMetaDefCID name cid index cache
+      defs <- liftIO $ catchErr $ indexToDefs index cache
+      let (trm,typ) = defToHOAS name def
+      case runExcept $ Core.check defs Ctx.empty Once trm typ of
+        Left  e -> putStrLn $ T.unpack $ T.concat 
             ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
             , printCIDBase32 cid, "\n"
             , T.pack $ show e]
-          Right t -> putStrLn $ T.unpack $ T.concat
+        Right (_,t) -> putStrLn $ T.unpack $ T.concat
             ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
-  forM_ (M.toList $ index) func
 
-catchIPLDErr :: Except IPLDErr a -> IO a
-catchIPLDErr x = do
+catchErr:: Show e => Except e a -> IO a
+catchErr x = do
   case runExcept x of
     Right x -> return x
-    Left  e -> error $ "Runtime DerefErr: " ++ show e
+    Left  e -> putStrLn (show e) >> fail ""
 
 -- | Evaluate a `HOAS` from a file
 normDef :: Name -> FilePath -> FilePath -> IO HOAS
@@ -98,9 +93,9 @@ normDef name root file = do
   (_,p) <- loadFile root file
   let index = _index p
   cache <- readCache
-  cid   <- catchIPLDErr (indexLookup name index)
-  def   <- catchIPLDErr (derefMetaDefCID name cid index cache)
-  defs  <- catchIPLDErr (indexToDefs index cache)
+  cid   <- catchErr (indexLookup name index)
+  def   <- catchErr (derefMetaDefCID name cid index cache)
+  defs  <- catchErr (indexToDefs index cache)
   return $ Core.norm defs (fst $ defToHOAS name def)
 
 whnf :: Defs -> Term -> Term
@@ -108,17 +103,17 @@ whnf defs =
   Core.hoasToTerm Ctx.empty . Core.whnf defs . Core.termToHoas Ctx.empty
 
 norm :: Defs -> Term -> Term
-norm defs = 
+norm defs =
   Core.hoasToTerm Ctx.empty . Core.norm defs . Core.termToHoas Ctx.empty
 
-infer :: Defs -> Term -> Either (CheckErr e) Term
+infer :: Defs -> Term -> Either CheckErr Term
 infer defs term =
   let hTerm = Core.termToHoas Ctx.empty term in
   case runExcept (Core.infer defs Ctx.empty Once hTerm) of
     Left err -> Left err
     Right (_,ty) -> Right (Core.hoasToTerm Ctx.empty ty)
 
-check :: Defs -> Term -> Term -> Either (CheckErr e) Term
+check :: Defs -> Term -> Term -> Either CheckErr Term
 check defs term typ_ =
   let hTerm = Core.termToHoas Ctx.empty term in
   let hType = Core.termToHoas Ctx.empty typ_ in
@@ -126,7 +121,7 @@ check defs term typ_ =
     Left err     -> Left err
     Right (_,ty) -> Right (Core.hoasToTerm Ctx.empty ty)
 
-synth :: Defs -> Term -> Term -> Either (CheckErr e) (Term, Term)
+synth :: Defs -> Term -> Term -> Either CheckErr (Term, Term)
 synth defs term typ_ =
   let hTerm = Core.termToHoas Ctx.empty term in
   let hType = Core.termToHoas Ctx.empty typ_ in
@@ -136,17 +131,17 @@ synth defs term typ_ =
 
 prettyInfer :: Defs -> Term -> Text
 prettyInfer defs term = case infer defs term of
-  Left err -> Core.prettyError (err :: CheckErr ())
+  Left err -> Core.prettyError err
   Right ty -> Print.prettyTerm ty
 
 prettyCheck :: Defs -> Term -> Term -> Text
 prettyCheck defs term typ_ = case check defs term typ_ of
-  Left err -> Core.prettyError (err :: CheckErr ())
+  Left err -> Core.prettyError err
   Right ty -> Print.prettyTerm ty
 
 prettySynth :: Defs -> Term -> Term -> Text
 prettySynth defs term typ_ = case synth defs term typ_ of
-  Left err -> Core.prettyError (err :: CheckErr ())
+  Left err -> Core.prettyError err
   Right (ty,tr) -> T.concat [Print.prettyTerm tr, " :: ", Print.prettyTerm ty]
 
 testSynth :: Defs -> Text -> Text -> IO ()
@@ -156,7 +151,7 @@ testSynth defs termCode typeCode = do
   putStrLn ("input-term: " ++ T.unpack (prettyTerm term))
   putStrLn ("input-type: " ++ T.unpack (prettyTerm typ_))
   case synth defs term typ_ of
-    Left err -> print (T.unpack (Core.prettyError (err :: CheckErr ())))
+    Left err -> print (T.unpack (Core.prettyError err))
     Right (sTerm, sTipo) -> do
       putStrLn ("synth-term: " ++ T.unpack (prettyTerm sTerm))
       putStrLn ("synth-type: " ++ T.unpack (prettyTerm sTipo))

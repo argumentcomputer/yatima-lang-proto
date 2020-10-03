@@ -26,17 +26,20 @@ import           System.Console.Haskeline.MonadException
 
 import           HaskelineT
 
-import           Language.Yatima.Defs
-import           Language.Yatima.HOAS
+import qualified Language.Yatima.Ctx as Ctx
+import           Language.Yatima.Term
+import qualified Language.Yatima.Core as Core
 import           Language.Yatima.Parse
 import           Language.Yatima.Print
-import           Language.Yatima.Term
+import           Language.Yatima.Import
+import           Language.Yatima.IPLD
+import           Language.Yatima
 
 
 data YideState = YideState
-  { _yideDefs :: Index
+  { _yDefs :: Index
+  , _yRoot :: FilePath
   }
-
 
 type Repl = HaskelineT (StateT YideState IO)
 
@@ -63,8 +66,6 @@ repl prompt quit process complete initial = runHaskelineT set (initial >> loop)
       , H.autoAddHistory = True
       }
 
-zhangFeiStyleName = "翼德"
-
 prompt :: Repl Text
 prompt = pure "yide> "
 
@@ -74,51 +75,66 @@ quit = outputTxtLn "Goodbye."
 data Command
   = Eval Term
   | Defn Def
-  -- | Load FilePath
+  | Load FilePath
+  | Import CID
   | Quit
   | Help
   | Browse
   deriving Show
 
-parseLine :: Parser Command
+parseLine :: ParserIO Command
 parseLine = do
   space
   command <- choice
     [ (symbol ":help" <|> symbol ":h") >> return Help
     , (symbol ":quit" <|> symbol ":q") >> return Quit
     , (symbol ":browse") >> return Browse
+    --, do
+    --    (symbol ":load" <|> symbol ":l")
+    --    nam <- pPackageName
+    --    return $ Load $ (T.unpack nam) ++ ".ya"
     , Defn <$> (try $ pDef)
     , Eval <$> pExpr False
     ]
   eof
   return command
 
+catchReplErr:: Show e => Except e a -> Repl a
+catchReplErr x = case runExcept x of
+    Right x -> return x
+    Left  e -> liftIO (putStrLn (show e)) >> abort
+
 process :: Text -> Repl ()
 process line = do
-  index <- gets _yideDefs
-  procCommand <$> liftIO (parseIO parseLine (ParseEnv Set.empty index) "" line)
-  return ()
+  index <- gets _yDefs
+  let env = ParseEnv Set.empty (M.keysSet index)
+  a <- liftIO $ parseIO parseLine env "" line
+  procCommand a
   where
     procCommand :: Command -> Repl ()
     procCommand c = case c of
       Browse -> do
-        index <- gets _yideDefs
+        index <- gets _yDefs
         liftIO $ print index
       Help   -> liftIO $ putStrLn "help text fills you with determination "
       Quit   -> abort
-      Eval t -> do
-        index <- gets _yideDefs
-        cache <- liftIO $ readCache
-        t  <- liftIO $ catchDerefErr (toLOAS t [""] index cache)
-        let t' = norm (toHOAS t [] 0) index cache
-        liftIO $ putStrLn $ T.unpack $ printHOAS t'
+      Eval t -> dontCrash' $ do
+        index    <- gets _yDefs
+        cache    <- tryAction $ liftIO $ readCache
+        t        <- catchReplErr (validateTerm t [] index cache)
+        defs     <- catchReplErr (indexToDefs index cache)
+        let hterm = Core.termToHoas Ctx.empty t
+        --(_,typ_) <- catchReplErr (Core.infer defs Ctx.empty Once hterm)
+        --catchReplErr (Core.check defs Ctx.empty Once hterm typ_)
+        liftIO $ print $ Core.norm defs hterm
         return ()
-      Defn d -> do
-        index <- gets _yideDefs
-        cache <- liftIO $ readCache
-        (_,c')   <- liftIO $ catchDerefErr (insertDef d index cache)
-        liftIO $ writeCache c'
-        return ()
+      --Defn d -> do
+      --  index <- gets _yideDefs
+      --  cache <- liftIO $ readCache
+      --  (_,c')   <- liftIO $ catchDerefErr (insertDef d index cache)
+      --  liftIO $ writeCache c'
+      --  return ()
+      --Load file -> do
 
 
 prefixes :: [String] -> String -> Bool

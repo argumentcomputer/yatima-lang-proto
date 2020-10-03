@@ -9,6 +9,7 @@ module Language.Yatima.IPLD
   , TreeDef(..)
   , MetaDef(..)
   , IPLDErr(..)
+  , File(..)
   , Index
   , Cache
   , makeLink
@@ -26,6 +27,7 @@ module Language.Yatima.IPLD
   , insertPackage
   , indexToDefs
   , usesToTree
+  , validateTerm
   ) where
 
 import           Data.IntMap                (IntMap)
@@ -79,9 +81,15 @@ data MetaDef = MetaDef
 type Index = Map Name CID
 type Cache = Map CID BS.ByteString
 
+data File = File
+  { _filepath :: FilePath
+  , _contents :: Text
+  }
+
 data Package = Package
   { _title   :: Name
   , _descrip :: Text
+  , _source  :: CID     -- link to generating file
   , _imports :: Set CID -- links to packages
   , _index   :: Index   -- links to MetaDefs
   } deriving (Show, Eq)
@@ -210,21 +218,42 @@ decodeIndex = do
   size  <- decodeMapLen
   M.fromList <$> replicateM size ((,) <$> decodeString <*> decodeCID)
 
+encodeFile :: File -> Encoding
+encodeFile file = encodeListLen 3
+  <> (encodeString  ("File" :: Text))
+  <> (encodeString  (T.pack $ _filepath file))
+  <> (encodeString  (_contents file))
+
+decodeFile :: Decoder s File
+decodeFile = do
+  size <- decodeListLen
+  when (size /= 3) (fail $ "invalid File list size: " ++ show size)
+  tag <- decodeString
+  when (tag /= "File") (fail $ "invalid File tag: " ++ show tag)
+  path <- T.unpack <$> decodeString
+  File path <$> decodeString
+
+instance Serialise File where
+  encode = encodeFile
+  decode = decodeFile
+
 encodePackage :: Package -> Encoding
-encodePackage package = encodeListLen 5
+encodePackage package = encodeListLen 6
   <> (encodeString  ("Package" :: Text))
   <> (encodeString  (_title   package))
   <> (encodeString  (_descrip package))
+  <> (encodeCID     (_source package))
   <> (encodeImports (_imports package))
   <> (encodeIndex   (_index   package))
 
 decodePackage :: Decoder s Package
 decodePackage = do
   size     <- decodeListLen
-  when (size /= 5) (fail $ "invalid Package list size: " ++ show size)
+  when (size /= 6) (fail $ "invalid Package list size: " ++ show size)
   tag <- decodeString
   when (tag /= "Package") (fail $ "invalid Package tag: " ++ show tag)
-  Package <$> decodeString <*> decodeString <*> decodeImports <*> decodeIndex
+  Package <$> decodeString <*> decodeString <*> decodeCID
+  <*> decodeImports <*> decodeIndex
 
 instance Serialise Package where
   encode = encodePackage
@@ -394,7 +423,7 @@ termToTree n t index cache =
         x' <- go x (n:ctx)
         b' <- go b (n:ctx)
         return $ Ctor "Let" 4 [usesToTree u, t', Bind x', Bind b']
-      Any                   -> bump >> return (Ctor "Any" 0 [])
+      Typ                   -> bump >> return (Ctor "Typ" 0 [])
       All s n u t b         -> do
         bind s >> bump
         bind n >> bump
@@ -464,7 +493,7 @@ treeToTerm anon meta = do
           u <- uses u ctx
           bump
           Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
-        ("Any",0,[]) -> bump >> return Any
+        ("Typ",0,[]) -> bump >> return Typ
         ("All",3,[Ctor u 0 [], t, Bind (Bind b)]) -> do
           u <- uses u ctx
           s <- get >>= name
@@ -501,9 +530,6 @@ insertDefs (d:ds) index cache = do
   (cid,cache') <- insertDef d index cache
   insertDefs ds (M.insert (_name d) cid index) cache'
 
-emptyPackage :: Name -> Package
-emptyPackage n = Package n "" Set.empty M.empty
-
 -- | Checks that all Refs in a term correspond to valid MetaDef cache entries
 -- and that the term has no free variables
 validateTerm :: Term -> [Name] -> Index -> Cache -> Except IPLDErr Term
@@ -516,8 +542,9 @@ validateTerm trm ctx index cache = case trm of
   App fun arg             -> App <$> go fun <*> go arg
   Let nam use typ exp bod ->
     Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
-  Any                     -> return Any
+  Typ                     -> return Typ
   All slf nam use typ bod -> All slf nam use <$> go typ <*> bind2 slf nam bod
+  Ann trm typ             -> Ann <$> go trm <*> go typ
   where
     go t        = validateTerm t ctx index cache
     bind    n t = validateTerm t (n:ctx) index cache
