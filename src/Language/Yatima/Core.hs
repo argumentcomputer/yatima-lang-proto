@@ -45,7 +45,8 @@ data HOAS where
   LetH :: Name -> Uses -> HOAS -> HOAS -> (HOAS -> HOAS) -> HOAS
   AllH :: Name -> Name -> Uses -> HOAS -> (HOAS -> HOAS -> HOAS) -> HOAS
   FixH :: Name -> (HOAS -> HOAS) -> HOAS
-  AnnH :: Int  -> HOAS -> HOAS -> HOAS
+  AnnH :: HOAS -> HOAS -> HOAS
+  UnrH :: Int  -> HOAS -> HOAS -> HOAS
   TypH :: HOAS
   HolH :: Name -> HOAS
 
@@ -75,7 +76,7 @@ termToHoas ctx t = case t of
   Ref nam                 -> RefH nam
   Lam nam bod             -> LamH nam (bind nam bod)
   App fun arg             -> AppH (go fun) (go arg)
-  Ann val typ             -> AnnH (Ctx.depth ctx) (go val) (go typ)
+  Ann val typ             -> AnnH (go val) (go typ)
   Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
   All slf nam use typ bod -> AllH slf nam use (go typ) (bind2 slf nam bod)
   where
@@ -96,7 +97,8 @@ hoasToTerm ctx t = case t of
   LetH nam use typ exp bod -> Let nam use (go typ) (go exp) (bind nam bod)
   AllH slf nam use typ bod -> All slf nam use (go typ) (bind2 slf nam bod)
   FixH nam bod             -> bind nam bod
-  AnnH _   trm _           -> go trm
+  AnnH trm typ             -> Ann (go trm) (go typ)
+  UnrH _   trm _           -> go trm
   where
     dep          = Ctx.depth ctx
     go t         = hoasToTerm ctx t
@@ -125,7 +127,8 @@ whnf defs trm = case trm of
   AppH fun arg       -> case go fun of
     LamH _ bod -> go (bod arg)
     x          -> AppH fun arg
-  AnnH _ a _   -> go a
+  AnnH a _     -> go a
+  UnrH _ a _   -> go a
   LetH _ _ _ exp bod -> go (bod exp)
   x                  -> x
   where
@@ -178,7 +181,8 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
         <> go (bod (VarH nam lvl)) (lvl+1) ini
       FixH nam bod             ->
         "%" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
-      AnnH _ trm _             -> go trm lvl ini
+      AnnH trm _               -> go trm lvl ini
+      UnrH _ trm _             -> go trm lvl ini
       HolH nam                 -> "?" <> name nam
 
 equal :: Defs -> HOAS -> HOAS -> Int -> Either Hole Bool
@@ -225,7 +229,6 @@ data CheckErr
   | InferQuantityMismatch Context (Name,Uses,HOAS) (Name,Uses,HOAS)
   | TypeMismatch PreContext HOAS HOAS
   | UnboundVariable Name Int
-  | UnboundAnnotation Int HOAS HOAS
   | FoundHole Hole
   | EmptyContext
   | UntypedLambda
@@ -284,7 +287,7 @@ check defs pre use term typ = case term of
           throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked))
         return $ (mulCtx use (addCtx exprCtx (Ctx bodyCtx')), typ)
   FixH name body -> do
-    let unroll = body (AnnH (Ctx.depth pre) (FixH name body) typ)
+    let unroll = body (UnrH (Ctx.depth pre) (FixH name body) typ)
     (bodyCtx,_) <- check defs ((name,typ) <| pre) use unroll typ
     case _ctx bodyCtx of
      Empty -> throwError $ EmptyContext
@@ -339,10 +342,12 @@ infer defs pre use term = case term of
         return (mulCtx use (addCtx exprCtx (Ctx bodyCtx')), typ)
   -- Hole
   TypH           -> return (toContext pre, TypH)
-  AnnH lvl val typ -> do
+  UnrH lvl val typ -> do
     case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
-      Nothing -> throwError $ UnboundAnnotation lvl val typ
+      Nothing -> throwError $ EmptyContext
       Just ((_,typ),ctx) -> return (ctx, typ)
+  AnnH val typ -> do
+    check defs pre use val typ
   (HolH name) -> return (toContext pre, TypH)
   _ -> throwError $ CustomErr pre "can't infer type"
 
@@ -406,11 +411,6 @@ prettyError e = case e of
       ]
     UnboundVariable nam idx -> T.concat
       ["Unbound free variable: ", T.pack $ show nam, " at level ", T.pack $ show idx]
-    UnboundAnnotation lvl val typ -> T.concat
-      ["Unbound annotation level: " , T.pack $ show lvl
-      , " in annotation ", printHOAS val
-      , " : ", printHOAS typ
-      ]
     UntypedLambda -> "Can't infer the type of a lambda"
     FoundHole (name,term) -> T.concat
       ["Can't fill hole: ?", T.pack $ show name, " : ", printHOAS term]
