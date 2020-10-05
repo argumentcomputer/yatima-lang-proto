@@ -45,8 +45,9 @@ data HOAS where
   LetH :: Name -> Uses -> HOAS -> HOAS -> (HOAS -> HOAS) -> HOAS
   AllH :: Name -> Name -> Uses -> HOAS -> (HOAS -> HOAS -> HOAS) -> HOAS
   FixH :: Name -> (HOAS -> HOAS) -> HOAS
-  AnnH :: Int  -> HOAS -> HOAS -> HOAS
-  AnyH :: HOAS
+  AnnH :: HOAS -> HOAS -> HOAS
+  UnrH :: Int  -> HOAS -> HOAS -> HOAS
+  TypH :: HOAS
   HolH :: Name -> HOAS
 
 type PreContext = Ctx HOAS
@@ -69,13 +70,13 @@ type Hole = (Name, HOAS)
 -- | Convert a lower-order `Term` to a GHC higher-order one
 termToHoas :: PreContext -> Term -> HOAS
 termToHoas ctx t = case t of
-  Any                     -> AnyH
+  Typ                     -> TypH
   Hol nam                 -> HolH nam
   Var nam                 -> maybe (VarH nam 0) id (Ctx.find nam ctx)
   Ref nam                 -> RefH nam
   Lam nam bod             -> LamH nam (bind nam bod)
   App fun arg             -> AppH (go fun) (go arg)
-  Ann val typ             -> AnnH (Ctx.depth ctx) (go val) (go typ)
+  Ann val typ             -> AnnH (go val) (go typ)
   Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
   All slf nam use typ bod -> AllH slf nam use (go typ) (bind2 slf nam bod)
   where
@@ -87,7 +88,7 @@ termToHoas ctx t = case t of
 -- | Convert a GHC higher-order representation to a lower-order one
 hoasToTerm :: PreContext -> HOAS -> Term
 hoasToTerm ctx t = case t of
-  AnyH                     -> Any
+  TypH                     -> Typ
   HolH nam                 -> Hol nam
   RefH nam                 -> Ref nam
   VarH nam idx             -> Var nam
@@ -96,13 +97,14 @@ hoasToTerm ctx t = case t of
   LetH nam use typ exp bod -> Let nam use (go typ) (go exp) (bind nam bod)
   AllH slf nam use typ bod -> All slf nam use (go typ) (bind2 slf nam bod)
   FixH nam bod             -> bind nam bod
-  AnnH _   trm _           -> go trm
+  AnnH trm typ             -> Ann (go trm) (go typ)
+  UnrH _   trm _           -> go trm
   where
     dep          = Ctx.depth ctx
     go t         = hoasToTerm ctx t
-    bind n b     = hoasToTerm ((n,AnyH)<|ctx) (b (VarH n dep))
+    bind n b     = hoasToTerm ((n,TypH)<|ctx) (b (VarH n dep))
     bind2 s n b  =
-      hoasToTerm ((n,AnyH)<|(s,AnyH)<|ctx) (b (VarH s dep) (VarH n (dep+1)))
+      hoasToTerm ((n,TypH)<|(s,TypH)<|ctx) (b (VarH s dep) (VarH n (dep+1)))
 
 printHOAS :: HOAS -> Text
 printHOAS = prettyTerm . (hoasToTerm Ctx.empty)
@@ -110,22 +112,23 @@ printHOAS = prettyTerm . (hoasToTerm Ctx.empty)
 instance Show HOAS where
  show t = T.unpack $ printHOAS t
 
-defToHOAS :: Name -> Def -> (HOAS,HOAS)
-defToHOAS name def =
-  ( FixH name (\s -> termToHoas (Ctx.singleton (name,s)) (_term def))
-  , FixH name (\s -> termToHoas (Ctx.singleton (name,s)) (_type def))
+defToHoas :: Def -> (HOAS,HOAS)
+defToHoas (Def name _ term typ_) =
+  ( FixH name (\s -> termToHoas (Ctx.singleton (name,s)) term)
+  , FixH name (\s -> termToHoas (Ctx.singleton (name,s)) typ_)
   )
 
 whnf :: Defs -> HOAS -> HOAS
 whnf defs trm = case trm of
   RefH nam       -> case defs M.!? nam of
-    Just d  -> go $ fst (defToHOAS nam d)
+    Just d  -> go $ fst (defToHoas d)
     Nothing -> RefH nam
   FixH nam bod       -> go (bod trm)
   AppH fun arg       -> case go fun of
     LamH _ bod -> go (bod arg)
     x          -> AppH fun arg
-  AnnH _ a _   -> go a
+  AnnH a _     -> go a
+  UnrH _ a _   -> go a
   LetH _ _ _ exp bod -> go (bod exp)
   x                  -> x
   where
@@ -159,7 +162,7 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
 
     go :: HOAS -> Int -> Int -> TB.Builder
     go term lvl ini = case term of
-      AnyH                     -> "*"
+      TypH                     -> "*"
       VarH _ idx               ->
         if idx >= ini
         then "^" <> TB.decimal (lvl-idx-1) 
@@ -178,7 +181,8 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
         <> go (bod (VarH nam lvl)) (lvl+1) ini
       FixH nam bod             ->
         "%" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
-      AnnH _ trm _             -> go trm lvl ini
+      AnnH trm _               -> go trm lvl ini
+      UnrH _ trm _             -> go trm lvl ini
       HolH nam                 -> "?" <> name nam
 
 equal :: Defs -> HOAS -> HOAS -> Int -> Either Hole Bool
@@ -216,27 +220,25 @@ equal defs a b lvl = go a b lvl Set.empty
         return $ funEq && argEq
       (HolH name, b) -> Left (name, b)
       (a, HolH name) -> Left (name, a)
---      (AnyH, b) -> return True
---      (a, AnyH) -> return True
+--      (TypH, b) -> return True
+--      (a, TypH) -> return True
       _         -> return False
 
-data CheckErr e
+data CheckErr
   = CheckQuantityMismatch Context (Name,Uses,HOAS) (Name,Uses,HOAS)
   | InferQuantityMismatch Context (Name,Uses,HOAS) (Name,Uses,HOAS)
   | TypeMismatch PreContext HOAS HOAS
   | UnboundVariable Name Int
-  | UnboundAnnotation Int HOAS HOAS
   | FoundHole Hole
   | EmptyContext
   | UntypedLambda
   | UndefinedReference Name
   | LambdaNonFunctionType PreContext HOAS HOAS HOAS
   | NonFunctionApplication Context HOAS HOAS HOAS
-  | CheckEnvironmentError Name e
   | CustomErr PreContext Text
 
 -- | Fills holes of a term until it is complete
-synth :: Defs -> HOAS -> HOAS -> Except (CheckErr e) (HOAS, HOAS)
+synth :: Defs -> HOAS -> HOAS -> Except CheckErr (HOAS, HOAS)
 synth defs term typ_ = do
   case runExcept (check  defs Ctx.empty Once term typ_) of
     Left (FoundHole hole) -> synth  defs (fill hole term) (fill hole typ_)
@@ -245,7 +247,7 @@ synth defs term typ_ = do
 
 fill :: Hole -> HOAS -> HOAS
 fill hole term = case term of
-  AnyH                     -> AnyH
+  TypH                     -> TypH
   VarH nam idx             -> VarH nam idx
   LamH nam bod             -> LamH nam (\x -> go (bod x))
   AllH slf nam use typ bod -> AllH slf nam use (go typ) (\s x -> go (bod s x))
@@ -256,7 +258,7 @@ fill hole term = case term of
 
 -- * Type System
 check :: Defs -> PreContext -> Uses -> HOAS -> HOAS
-      -> Except (CheckErr e) (Context, HOAS)
+      -> Except CheckErr (Context, HOAS)
 check defs pre use term typ = case term of
   LamH name body -> case whnf defs typ of
     AllH self bindName bindUse bind typeBody -> do
@@ -285,7 +287,7 @@ check defs pre use term typ = case term of
           throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked))
         return $ (mulCtx use (addCtx exprCtx (Ctx bodyCtx')), typ)
   FixH name body -> do
-    let unroll = body (AnnH (Ctx.depth pre) (FixH name body) typ)
+    let unroll = body (UnrH (Ctx.depth pre) (FixH name body) typ)
     (bodyCtx,_) <- check defs ((name,typ) <| pre) use unroll typ
     case _ctx bodyCtx of
      Empty -> throwError $ EmptyContext
@@ -300,7 +302,7 @@ check defs pre use term typ = case term of
 
 -- | Infers the type of a term
 infer :: Defs -> PreContext -> Uses -> HOAS
-      -> Except (CheckErr e) (Context, HOAS)
+      -> Except CheckErr (Context, HOAS)
 infer defs pre use term = case term of
   VarH nam lvl -> do
     case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
@@ -310,7 +312,7 @@ infer defs pre use term = case term of
     --traceM ("RefH " ++ show nam)
     let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
     def         <- mapMaybe (defs M.!? nam)
-    let (_,typ) = (defToHOAS nam def)
+    let (_,typ) = (defToHoas def)
     return (toContext pre,typ)
   LamH name body -> throwError $ UntypedLambda
   AppH func argm -> do
@@ -323,9 +325,9 @@ infer defs pre use term = case term of
   AllH self name bindUse bind body -> do
     let selfVar = VarH self $ Ctx.depth pre
     let nameVar = VarH name $ Ctx.depth pre + 1
-    check defs pre None bind AnyH
-    check defs ((name,bind)<|(self,term)<|pre) None (body selfVar nameVar) AnyH
-    return (toContext pre, AnyH)
+    check defs pre None bind TypH
+    check defs ((name,bind)<|(self,term)<|pre) None (body selfVar nameVar) TypH
+    return (toContext pre, TypH)
   LetH name exprUse exprTyp expr body -> do
     (exprCtx,_)    <- check defs pre exprUse expr exprTyp
     let var = VarH name (Ctx.depth pre)
@@ -339,12 +341,14 @@ infer defs pre use term = case term of
           throwError (InferQuantityMismatch (Ctx bodyCtx') original inferred))
         return (mulCtx use (addCtx exprCtx (Ctx bodyCtx')), typ)
   -- Hole
-  AnyH           -> return (toContext pre, AnyH)
-  AnnH lvl val typ -> do
+  TypH           -> return (toContext pre, TypH)
+  UnrH lvl val typ -> do
     case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
-      Nothing -> throwError $ UnboundAnnotation lvl val typ
+      Nothing -> throwError $ EmptyContext
       Just ((_,typ),ctx) -> return (ctx, typ)
-  (HolH name) -> return (toContext pre, AnyH)
+  AnnH val typ -> do
+    check defs pre use val typ
+  (HolH name) -> return (toContext pre, TypH)
   _ -> throwError $ CustomErr pre "can't infer type"
 
 ---- * Pretty Printing Errors
@@ -374,7 +378,7 @@ prettyPreElem :: (Name,HOAS) -> Text
 prettyPreElem ("",t) = T.concat [" _: ", printHOAS t]
 prettyPreElem (n,t)  = T.concat [" ", n, ": ", printHOAS t]
 
-prettyError :: Show e => CheckErr e -> Text
+prettyError :: CheckErr -> Text
 prettyError e = case e of
     CheckQuantityMismatch ctx a b -> T.concat
       ["Type checking quantity mismatch: \n"
@@ -407,11 +411,6 @@ prettyError e = case e of
       ]
     UnboundVariable nam idx -> T.concat
       ["Unbound free variable: ", T.pack $ show nam, " at level ", T.pack $ show idx]
-    UnboundAnnotation lvl val typ -> T.concat
-      ["Unbound annotation level: " , T.pack $ show lvl
-      , " in annotation", printHOAS val
-      , " : ", printHOAS typ
-      ]
     UntypedLambda -> "Can't infer the type of a lambda"
     FoundHole (name,term) -> T.concat
       ["Can't fill hole: ?", T.pack $ show name, " : ", printHOAS term]
@@ -424,11 +423,6 @@ prettyError e = case e of
       , prettyCtx ctx
       ]
     EmptyContext -> "Empty Context"
-    CheckEnvironmentError name e -> T.concat
-      ["Environment error: \n"
-      , "Name: ", T.pack $ show name, "\n"
-      , T.pack $ show e, "\n"
-      ]
     UndefinedReference name -> T.concat
       ["UndefinedReference error: \n"
       , "Name: ", T.pack $ show name, "\n"
@@ -440,6 +434,6 @@ prettyError e = case e of
       , prettyPre ctx
       ]
 
-instance Show e => Show (CheckErr e) where
+instance Show CheckErr where
   show e = T.unpack $ prettyError e
 

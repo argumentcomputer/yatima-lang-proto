@@ -67,6 +67,9 @@ tryAction (HaskelineT f) = HaskelineT (H.withInterrupt loop)
 dontCrash :: (MonadIO m, H.MonadException m) => m () -> m ()
 dontCrash m = H.catch m ( \ e@SomeException{} -> liftIO ( putStrLn ( show e ) ) )
 
+dontCrash' :: (MonadIO m, H.MonadException m) => m () -> m ()
+dontCrash' m = H.catch m ( \ e@SomeException{} -> return () )
+
 -- | Abort the current REPL loop, and continue.
 abort :: MonadIO m => HaskelineT m a
 abort = throwIO H.Interrupt
