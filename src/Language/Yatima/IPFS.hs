@@ -3,28 +3,38 @@
 {-# LANGUAGE TypeOperators #-}
 module Language.Yatima.IPFS where
 
-import           Data.Aeson
-import           Data.Proxy
-import           Network.HTTP.Client      (defaultManagerSettings, newManager)
+import           Control.Monad
+import           Control.Monad.Except
 
+import           Data.Aeson
+
+import           Data.Proxy
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Lazy     as BSL
 import           Data.Text                (Text)
 import qualified Data.Text                as T
+import qualified Data.Text.IO             as TIO
+
+import           Network.HTTP.Client hiding (Proxy)
+import           Network.HTTP.Client.TLS
+import           Network.HTTP.Types.Header
+import           Network.HTTP.Types.Status (statusCode)
+import           Network.IPFS.API
+
 import           Servant.API
 import           Servant.Client
 import qualified Servant.Client.Streaming as S
 import           Servant.Types.SourceT
 
 import           System.Directory
-import           Control.Monad
 
 import           Codec.Serialise
+
 import           Language.Yatima.IPLD
+import           Language.Yatima.DagJSON
 import           Language.Yatima.Import
 import           Language.Yatima.Term
 
-import           Network.IPFS.API
 
 apiCommands :: Proxy ApiV0Commands
 apiCommands = Proxy
@@ -58,13 +68,27 @@ runDagPut tree = do
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
 
-runDagGet :: Text -> IO ()
+runDagGet :: Text -> IO BS.ByteString
 runDagGet cid_txt = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
-  S.withClientM (dagGet cid_txt) env $ \e -> case e of
-    Left err -> putStrLn $ "Error: " ++ show err
-    Right rs -> foreach fail print rs
+  S.withClientM (dagGet cid_txt) env go
+  where
+    go :: Either ClientError (SourceIO BS.ByteString) -> IO BS.ByteString
+    go e = case e of
+      Left err -> putStrLn ("Error: " ++ show err) >> fail ""
+      Right rs -> do
+        resp <- runExceptT (runSourceT rs)
+        case resp of
+          Left err -> putStrLn ("Error: " ++ show err) >> fail ""
+          Right bs -> return (BS.concat bs)
+
+runDagGetPackage :: Text -> IO Package
+runDagGetPackage cid_txt = do
+  bs <- runDagGet cid_txt
+  case eitherDecode' (BSL.fromStrict bs) of
+    Left err -> putStrLn ("JSON Parse Error: " ++ show err) >> fail ""
+    Right v  -> return $ (deserialise (serialise (v :: DagJSON)) :: Package)
 
 runBlockGet :: Text -> IO ()
 runBlockGet cid_txt = do
@@ -72,7 +96,7 @@ runBlockGet cid_txt = do
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
   S.withClientM (blockGet cid_txt) env $ \e -> case e of
     Left err -> putStrLn $ "Error: " ++ show err
-    Right rs -> foreach fail print rs
+    Right rs -> foreach fail BS.putStr rs
 
 runDagPutFile :: FilePath -> FilePath -> IO (Either ClientError Value)
 runDagPutFile root file = do
@@ -115,4 +139,39 @@ runDagPutCache' root = do
             Left e  -> print e >> return ()
             Right v -> print v >> return ()
 
+swarmConnect :: Text -> ClientM Value
+swarmConnect = client (Proxy :: Proxy ApiV0SwarmConnect)
+
+runSwarmConnect :: Text -> IO ()
+runSwarmConnect text = do
+  manager' <- newManager defaultManagerSettings
+  let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
+  res <- runClientM (swarmConnect text) env
+  case res of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right val -> print val
+
+runConnectEternum :: IO ()
+runConnectEternum = runSwarmConnect "/dns4/door.eternum.io/tcp/4001/ipfs/QmVBxJ5GekATHi89H8jbXjaU6CosCnteomjNR5xar2aH3q"
+
+runEternumPinFile :: FilePath -> FilePath -> IO ()
+runEternumPinFile root file = do
+  unless (root == "") (setCurrentDirectory root)
+  manager' <- newTlsManager
+  cache  <- readCache
+  token  <- BS.readFile (root <> ".yatima/token")
+  initReq <- parseRequest "https://www.eternum.io/api/pin/"
+  let reqObj = object ["hash" .= ((T.pack file) :: Text)]
+  let req = initReq
+        { method = "POST"
+        , requestHeaders = 
+          [ (hContentType, "application/json")
+          , (hAuthorization, "Token " <> token)
+          ]
+        , requestBody = RequestBodyLBS $ Data.Aeson.encode reqObj
+        }
+  resp <- httpLbs req manager'
+  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
+  print $ Network.HTTP.Client.responseBody resp
+  return ()
 

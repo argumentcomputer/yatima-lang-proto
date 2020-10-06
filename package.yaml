@@ -21,6 +21,7 @@ library:
     - Language.Yatima.Uses
     - Language.Yatima.Print
     - Language.Yatima.Parse
+    - Language.Yatima.DagJSON
     - Language.Yatima.Import
     - Language.Yatima.Core
     - Language.Yatima.Ctx
@@ -44,13 +45,17 @@ library:
     - multihash-cryptonite
     - ipld-cid
     - cborg
-    - cborg-json
+    - vector
+    - scientific
+    - unordered-containers
 
     - unsafeperformst
 
     - servant
     - servant-client
     - http-client
+    - http-client-tls
+    - http-types
     - aeson
     - ipfs-api
 
