@@ -64,7 +64,8 @@ instance Arbitrary Index where
   arbitrary = Index <$> arbitrary <*> arbitrary
 
 instance Arbitrary Package where
-  arbitrary = Package <$> name_gen <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = Package <$> name_gen 
+    <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 prop_serial :: (Eq a, Serialise a) => a -> Bool
 prop_serial x = let s = serialise x in 
@@ -75,7 +76,7 @@ prop_serial x = let s = serialise x in
 test_defs :: (Index,Cache)
 test_defs =
   let trm = Lam "A" (Lam "x" (Var "x"))
-      typ = All "" "A" Many Any (All "" "x" Many (Var "A") (Var "A"))
+      typ = All "" "A" Many Typ (All "" "x" Many (Var "A") (Var "A"))
       def = Def "" trm typ
       Right (cid, cache) = runExcept (insertDef "id" def emptyIndex M.empty)
    in (Index (M.singleton "id" cid) (M.singleton cid "id"), cache)
@@ -93,7 +94,7 @@ term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
   [ (100,Var <$> elements ctx)
   , (100,Ref <$> elements (M.keys (_byName test_index)))
-  , (100, return Any)
+  , (100, return Typ)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, App <$> term_gen ctx <*> term_gen ctx)
   , (50, Ann <$> term_gen ctx <*> term_gen ctx)

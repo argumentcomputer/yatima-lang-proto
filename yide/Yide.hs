@@ -26,17 +26,22 @@ import           System.Console.Haskeline.MonadException
 
 import           HaskelineT
 
-import           Language.Yatima.Defs
-import           Language.Yatima.HOAS
+import qualified Language.Yatima.Ctx as Ctx
+import           Language.Yatima.Term
+import qualified Language.Yatima.Core as Core
 import           Language.Yatima.Parse
 import           Language.Yatima.Print
-import           Language.Yatima.Term
+import           Language.Yatima.Import
+import           Language.Yatima.IPLD
+import           Language.Yatima
 
 
 data YideState = YideState
-  { _yideDefs :: Index
+  { _yDefs :: Index
+  , _yRoot :: FilePath
   }
 
+emptyYideState root = YideState emptyIndex root
 
 type Repl = HaskelineT (StateT YideState IO)
 
@@ -63,8 +68,6 @@ repl prompt quit process complete initial = runHaskelineT set (initial >> loop)
       , H.autoAddHistory = True
       }
 
-zhangFeiStyleName = "翼德"
-
 prompt :: Repl Text
 prompt = pure "yide> "
 
@@ -73,52 +76,97 @@ quit = outputTxtLn "Goodbye."
 
 data Command
   = Eval Term
-  | Defn Def
-  -- | Load FilePath
+  | Defn Name Def
+  | Type Name
+  | Load FilePath
+  | Import CID
   | Quit
   | Help
   | Browse
   deriving Show
 
-parseLine :: Parser Command
+parseLine :: ParserIO Command
 parseLine = do
   space
   command <- choice
     [ (symbol ":help" <|> symbol ":h") >> return Help
-    , (symbol ":quit" <|> symbol ":q") >> return Quit
-    , (symbol ":browse") >> return Browse
-    , Defn <$> (try $ pDef)
+    --, (symbol ":quit" <|> symbol ":q") >> return Quit
+    , (symbol ":browse" <|> symbol ":b") >> return Browse
+    , (symbol ":type" <|> symbol ":t") >> Type <$> (pName False)
+    , do
+        (symbol ":load" <|> symbol ":l")
+        nam <- pPackageName
+        return $ Load $ (T.unpack nam) ++ ".ya"
+    --, (symbol ":with" <|> symbol ":w") >> Import <$> pCID
+    , try pDef >>= (\(n,d) -> return $ Defn n d)
     , Eval <$> pExpr False
     ]
   eof
   return command
 
+catchReplErr:: Show e => Except e a -> Repl a
+catchReplErr x = case runExcept x of
+    Right x -> return x
+    Left  e -> liftIO (putStrLn (show e)) >> abort
+
 process :: Text -> Repl ()
-process line = do
-  index <- gets _yideDefs
-  procCommand <$> liftIO (parseIO parseLine (ParseEnv Set.empty index) "" line)
-  return ()
+process line = dontCrash' $ do
+  index <- gets _yDefs
+  let env = ParseEnv Set.empty (M.keysSet (_byName index))
+  a <- liftIO $ parseIO parseLine env "" line
+  procCommand a
   where
     procCommand :: Command -> Repl ()
     procCommand c = case c of
       Browse -> do
-        index <- gets _yideDefs
-        liftIO $ print index
-      Help   -> liftIO $ putStrLn "help text fills you with determination "
-      Quit   -> abort
-      Eval t -> do
-        index <- gets _yideDefs
-        cache <- liftIO $ readCache
-        t  <- liftIO $ catchDerefErr (toLOAS t [""] index cache)
-        let t' = norm (toHOAS t [] 0) index cache
-        liftIO $ putStrLn $ T.unpack $ printHOAS t'
+        index <- gets _yDefs
+        cache  <- liftIO $ readCache
+        defs  <- catchReplErr $ indexToDefs index cache
+        let go cids nam def = do
+              putStrLn ""
+              putStrLn $ T.unpack $ printCIDBase32 $ cids M.! nam
+              putStrLn $ T.unpack $ prettyDef nam def
+              return ()
+        liftIO $ M.traverseWithKey (go (_byName index)) defs
         return ()
-      Defn d -> do
-        index <- gets _yideDefs
+      Help   -> liftIO $ putStrLn "help text fills you with determination "
+      -- Quit   -> abort
+      Type n -> do
+        index <- gets _yDefs
         cache <- liftIO $ readCache
-        (_,c')   <- liftIO $ catchDerefErr (insertDef d index cache)
+        def   <- catchReplErr $ deref n index cache
+        defs  <- catchReplErr $ indexToDefs index cache
+        let (trm,typ) = Core.defToHoas "^" def
+        (_,typ) <- catchReplErr (Core.check defs Ctx.empty Once trm typ)
+        liftIO $ print $ typ
+        return ()
+      Eval t -> do
+        index    <- gets _yDefs
+        cache    <- liftIO $ readCache
+        t        <- catchReplErr (validateTerm t [] index cache)
+        defs     <- catchReplErr (indexToDefs index cache)
+        let hterm = Core.termToHoas Ctx.empty t
+        --(_,typ_) <- catchReplErr (Core.infer defs Ctx.empty Once hterm)
+        --catchReplErr (Core.check defs Ctx.empty Once hterm typ_)
+        liftIO $ print $ Core.norm defs hterm
+        return ()
+      Defn nam def -> do
+        index  <- gets _yDefs
+        cache  <- liftIO $ readCache
+        defs   <- catchReplErr (indexToDefs index cache)
+        let (trm,typ) = Core.defToHoas nam def
+        catchReplErr (Core.check defs Ctx.empty Once trm typ)
+        (i',c') <- catchReplErr (insertDefs [(nam,def)] index cache)
+        modify (\e -> e {_yDefs = i'})
         liftIO $ writeCache c'
         return ()
+      Load file -> do
+        root  <- gets _yRoot
+        index <- gets _yDefs
+        (cid,p) <- liftIO $ checkFile root file
+        modify (\e -> e {_yDefs = mergeIndex index (_index p)})
+        return ()
+
 
 
 prefixes :: [String] -> String -> Bool
@@ -127,11 +175,11 @@ prefixes [] x = False
 
 complete :: CompletionFunc (StateT YideState IO)
 complete (ante, post)
-  | prefixes [":q ", ":quit ", ":h ", ":help "] p = noCompletion (ante, post)
+  | prefixes [":h ", ":help "] p = noCompletion (ante, post)
   | otherwise = do
-     --ns <- gets (M.keys . Core._names . _fideModule)
-     let ks = [":quit", ":help", ":browse"]
-     let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks)
+     ns <- gets (M.keys . _byName . _yDefs)
+     let ks = [":help", ":browse"]
+     let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks ++ ns)
      completeWord Nothing " " (pure . (map simpleCompletion) . f)  (ante, post)
   where
     p = reverse ante
@@ -139,5 +187,6 @@ complete (ante, post)
 yide :: StateT YideState IO ()
 yide = repl prompt quit process complete ini
   where
-    ini = liftIO $ putStrLn
-      "Welcome to yide, the Yatima interactive development environment!"
+    ini = liftIO $ putStrLn $
+      "Welcome to yide, the Yatima interactive development environment!\n"++
+      "press Ctrl-d to quit"

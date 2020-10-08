@@ -10,6 +10,7 @@ module Language.Yatima.IPLD
   , MetaDef(..)
   , IPLDErr(..)
   , Index(..)
+  , File(..)
   , Cache
   , Imports
   , makeLink
@@ -22,6 +23,7 @@ module Language.Yatima.IPLD
   , derefMetaDefCID
   , emptyPackage
   , emptyIndex
+  , mergeIndex
   , indexLookup
   , cacheLookup
   , insertDef
@@ -29,6 +31,7 @@ module Language.Yatima.IPLD
   , insertPackage
   , indexToDefs
   , usesToAST
+  , validateTerm
   ) where
 
 import           Data.IntMap                (IntMap)
@@ -86,12 +89,21 @@ data Index = Index
 
 emptyIndex = Index M.empty M.empty
 
+mergeIndex :: Index -> Index -> Index
+mergeIndex (Index a b) (Index c d) = Index (M.union a c) (M.union b d)
+
 type Cache   = Map CID BS.ByteString
 type Imports = Map CID Text
+
+data File = File
+  { _filepath :: FilePath
+  , _contents :: Text
+  }
 
 data Package = Package
   { _title   :: Name
   , _descrip :: Text
+  , _source  :: CID     -- link to generating file
   , _imports :: Imports
   , _index   :: Index
   } deriving (Show, Eq)
@@ -241,21 +253,42 @@ instance Serialise Index where
   encode = encodeIndex
   decode = decodeIndex
 
+encodeFile :: File -> Encoding
+encodeFile file = encodeListLen 3
+  <> (encodeString  ("File" :: Text))
+  <> (encodeString  (T.pack $ _filepath file))
+  <> (encodeString  (_contents file))
+
+decodeFile :: Decoder s File
+decodeFile = do
+  size <- decodeListLen
+  when (size /= 3) (fail $ "invalid File list size: " ++ show size)
+  tag <- decodeString
+  when (tag /= "File") (fail $ "invalid File tag: " ++ show tag)
+  path <- T.unpack <$> decodeString
+  File path <$> decodeString
+
+instance Serialise File where
+  encode = encodeFile
+  decode = decodeFile
+
 encodePackage :: Package -> Encoding
-encodePackage package = encodeListLen 5
+encodePackage package = encodeListLen 6
   <> (encodeString  ("Package" :: Text))
   <> (encodeString  (_title   package))
   <> (encodeString  (_descrip package))
+  <> (encodeCID     (_source package))
   <> (encodeImports (_imports package))
   <> (encodeIndex   (_index   package))
 
 decodePackage :: Decoder s Package
 decodePackage = do
   size     <- decodeListLen
-  when (size /= 5) (fail $ "invalid Package list size: " ++ show size)
+  when (size /= 6) (fail $ "invalid Package list size: " ++ show size)
   tag <- decodeString
   when (tag /= "Package") (fail $ "invalid Package tag: " ++ show tag)
-  Package <$> decodeString <*> decodeString <*> decodeImports <*> decodeIndex
+  Package <$> decodeString <*> decodeString <*> decodeCID
+  <*> decodeImports <*> decodeIndex
 
 instance Serialise Package where
   encode = encodePackage
@@ -340,12 +373,10 @@ makeLink n index cache = do
   metaDef <- deserial @MetaDef cid cache
   return (cid, _astDef metaDef)
 
-deref :: Monad m => Name -> CID -> Index -> Cache -> ExceptT IPLDErr m Def
-deref name cid index cache = do
+deref :: Monad m => Name -> Index -> Cache -> ExceptT IPLDErr m Def
+deref name index cache = do
   mdCID   <- indexLookup name index
   metaDef <- deserial @MetaDef mdCID cache
-  let astCID = _astDef metaDef
-  --when (cid /= anonCID) (throwError $ CIDMismatch name cid anonCID)
   def <- derefMetaDef name index metaDef cache
   return def
 
@@ -427,7 +458,7 @@ termToAST n t index cache =
         x' <- go x (n:ctx)
         b' <- go b (n:ctx)
         return $ Ctor "Let" [usesToAST u, t', Bind x', Bind b']
-      Any                   -> bump >> return (Ctor "Any" [])
+      Typ                   -> bump >> return (Ctor "Typ" [])
       All s n u t b         -> do
         bind s >> bump
         bind n >> bump
@@ -498,7 +529,7 @@ astToTerm n index anon meta = do
           u <- uses u ctx
           bump
           Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
-        ("Any",[]) -> bump >> return Any
+        ("Typ",[]) -> bump >> return Typ
         ("All",[Ctor u [], t, Bind (Bind b)]) -> do
           u <- uses u ctx
           s <- get >>= name
@@ -540,7 +571,7 @@ insertDefs ((n,d):ds) index cache = do
   insertDefs ds (Index ns cs) cache'
 
 emptyPackage :: Name -> Package
-emptyPackage n = Package n "" M.empty (Index M.empty M.empty)
+emptyPackage n = Package n "" (makeCID BSL.empty) M.empty emptyIndex
 
 -- | Checks that all Refs in a term correspond to valid MetaDef cache entries
 -- and that the term has no free variables
@@ -555,8 +586,9 @@ validateTerm trm ctx index cache = case trm of
   App fun arg             -> App <$> go fun <*> go arg
   Let nam use typ exp bod ->
     Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
-  Any                     -> return Any
+  Typ                     -> return Typ
   All slf nam use typ bod -> All slf nam use <$> go typ <*> bind2 slf nam bod
+  Ann trm typ             -> Ann <$> go trm <*> go typ
   where
     go t        = validateTerm t ctx index cache
     bind    n t = validateTerm t (n:ctx) index cache
@@ -565,8 +597,8 @@ validateTerm trm ctx index cache = case trm of
 indexToDefs :: Monad m => Index -> Cache -> ExceptT IPLDErr m (Map Name Def)
 indexToDefs index cache = M.traverseWithKey go (_byName index)
   where
-    go n cid = do
-     (Def doc term typ_) <- deref n cid index cache
+    go n _ = do
+     (Def doc term typ_) <- deref n index cache
      term' <- validateTerm term [n] index cache
      typ_' <- validateTerm typ_ [n] index cache
      return $ Def doc term' typ_'

@@ -83,15 +83,14 @@ parseIO p env file txt = do
 parseDefault :: Show a => ParserIO a -> Text -> IO a
 parseDefault p s = parseIO p defaultParseEnv "" s
 
-pCid :: ParserIO CID
-pCid = do
-  space
+pCID :: Monad m => Parser ImportErr m CID
+pCID = do
   txt <- T.pack <$> (many alphaNumChar)
   case cidFromText txt of
-    Left  err  -> customIOFailure $ InvalidCID err txt
+    Left  err  -> customFailure $ ParseEnvironmentError $ InvalidCID err txt
     Right cid  -> return $ cid
 
-pPackageName :: ParserIO Text
+pPackageName :: (Ord e, Monad m) => Parser e m Text
 pPackageName = label "a package name" $ do
   n  <- letterChar
   ns <- many (alphaNumChar <|> oneOf ("-" :: [Char]))
@@ -154,15 +153,14 @@ pImports env imp ind@(Index ns cs) = next <|> (return (imp,ind))
       (nam,ali,cid,p) <- pImport env <* space
       let Index ns' cs' = _index p
       let prefix x = if ali == "" then x else ali <> "/" <> x
-      let ns'' = M.mapKeys prefix ns'
-      let cs'' = prefix <$> cs'
-      let conflict = M.intersection ns ns''
+      let ind' = Index (M.mapKeys prefix ns') (prefix <$> cs')
+      let conflict = M.intersection ns (_byName ind')
       unless (conflict == M.empty)
         (customIOFailure $ ConflictingImportNames nam cid (M.keys conflict))
-      pImports env (M.insert cid ali imp) (Index (M.union ns ns'') (M.union cs cs''))
+      pImports env (M.insert cid ali imp) (mergeIndex ind ind')
 
-pPackage :: IORef PackageEnv -> FilePath -> ParserIO (CID,Package)
-pPackage env file = do
+pPackage :: IORef PackageEnv -> CID -> FilePath -> ParserIO (CID,Package)
+pPackage env cid file = do
   space
   doc     <- maybe "" id <$> (optional $ pDoc)
   title   <- maybe "" id <$> (optional $ symbol "package" >> pPackageName)
@@ -176,7 +174,7 @@ pPackage env file = do
   (index, cache) <- case runExcept (insertDefs defs index cache) of
     Left e              -> customIOFailure $ CorruptDefs e
     Right (index,cache) -> return (index,cache)
-  let pack = Package title doc imports index
+  let pack = Package title doc cid imports index
   let (cid,cache')   = insertPackage pack cache
   liftIO $ writeCache cache'
   return $ (cid, pack)
@@ -186,7 +184,11 @@ pFile :: IORef PackageEnv -> FilePath -> IO (CID,Package)
 pFile env file = do
   modifyIORef' env (\e -> e { _open = Set.insert file (_open e)})
   txt   <- TIO.readFile file
-  (cid,pack)  <- parseIO (pPackage env file) defaultParseEnv file txt
+  cache <- readCache
+  let fileBytes = serialise (File file txt)
+  let fileCID   = makeCID (File file txt)
+  writeCache $ M.insert fileCID (BSL.toStrict fileBytes) cache
+  (cid,pack)  <- parseIO (pPackage env fileCID file) defaultParseEnv file txt
   modifyIORef' env (\e -> e { _open = Set.delete file (_open e)})
   modifyIORef' env (\e -> e { _done = Set.insert file (_done e)})
 
@@ -194,7 +196,6 @@ pFile env file = do
     [ "parsed: ", (T.unpack $ _title pack), " "
     , (T.unpack $ printCIDBase32 cid)
     ]
-
   return (cid,pack)
 
 readCache :: IO Cache
