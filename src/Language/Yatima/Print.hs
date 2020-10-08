@@ -82,15 +82,15 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       (Let _ _ _ _ _)   -> fun f <> " " <> pars (go a)
       _                 -> fun f <> " " <> go a
 
-prettyDef :: Def -> Text
-prettyDef (Def name doc term typ_) = T.concat 
+prettyDef :: Name -> Def -> Text
+prettyDef name (Def doc term typ_) = T.concat 
   [ if doc == "" then "" else T.concat [doc,"\n"]
   , name,": ", prettyTerm $ typ_, "\n"
   , "  = ", prettyTerm $ term
   ]
 
 prettyDefs :: Map Name Def -> Text
-prettyDefs defs = M.foldr go "" defs
+prettyDefs defs = M.foldrWithKey go "" defs
   where
-    go :: Def -> Text -> Text
-    go d txt = T.concat [prettyDef d, "\n" , txt]
+    go :: Name -> Def -> Text -> Text
+    go n d txt = T.concat [prettyDef n d, "\n" , txt]

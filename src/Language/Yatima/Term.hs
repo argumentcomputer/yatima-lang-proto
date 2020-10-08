@@ -57,8 +57,7 @@ deriving instance Eq Term
 
 -- | A type annotated definition
 data Def = Def
-  { _name :: Name
-  , _doc  :: Text
+  { _doc  :: Text
   , _term :: Term
   , _type :: Term
   } deriving Show

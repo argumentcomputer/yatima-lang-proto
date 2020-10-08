@@ -51,14 +51,14 @@ prettyFile root file = do
   index <- _index . snd <$> (loadFile root file)
   cache <- readCache
   defs  <- catchIPLDErr $ indexToDefs index cache
-  forM_ defs (go index)
+  M.traverseWithKey (go index) defs
   return ()
   where
-    go :: Index -> Def -> IO ()
-    go index def = do
+    go :: Index -> Name -> Def -> IO ()
+    go index nam def = do
       putStrLn ""
-      putStrLn $ T.unpack $ printCIDBase32 $ index M.! (_name def)
-      putStrLn $ T.unpack $ Print.prettyDef def
+      putStrLn $ T.unpack $ printCIDBase32 $ (_byName index) M.! nam
+      putStrLn $ T.unpack $ Print.prettyDef nam def
       return ()
 
 checkRef :: Name -> CID -> Index -> Cache -> Except (CheckErr IPLDErr) HOAS
@@ -84,7 +84,7 @@ checkFile root file = do
             , T.pack $ show e]
           Right t -> putStrLn $ T.unpack $ T.concat
             ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
-  forM_ (M.toList $ index) func
+  forM_ (M.toList $ (_byName index)) func
 
 catchIPLDErr :: Except IPLDErr a -> IO a
 catchIPLDErr x = do

@@ -1,0 +1,7 @@
+package Array
+  with Nat
+  with Unit as U
+  with Pair as P
+  where
+
+def foo: * = *

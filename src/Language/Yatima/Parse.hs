@@ -371,18 +371,18 @@ pDoc = do
   return $ maybe "" id d
 
 -- | Parse a definition
-pDef :: (Ord e, Monad m) => Parser e m Def
+pDef :: (Ord e, Monad m) => Parser e m (Name, Def)
 pDef = label "a definition" $ do
   doc <- pDoc
   symbol "def"
   (nam,exp,typ) <- pDecl False
-  return $ Def nam "" exp typ
+  return $ (nam, Def doc exp typ)
 
 -- | Parse a sequence of definitions, e.g. in a file
-pDefs :: (Ord e, Monad m) => Parser e m [Def]
+pDefs :: (Ord e, Monad m) => Parser e m [(Name,Def)]
 pDefs = (space >> next) <|> (space >> eof >> (return []))
   where
   next = do
-    def  <- pDef
-    ds   <- local (\e -> e { _refs = Set.insert (_name def) (_refs e) }) pDefs
-    return $ def:ds
+    (n,d) <- pDef
+    ds    <- local (\e -> e { _refs = Set.insert n (_refs e) }) pDefs
+    return $ (n,d):ds

@@ -98,7 +98,7 @@ pPackageName = label "a package name" $ do
   let nam = T.pack (n : ns)
   return nam
 
-pInsertDefs :: [Def] -> Index -> ParserIO Index
+pInsertDefs :: [(Name,Def)] -> Index -> ParserIO Index
 pInsertDefs defs index = do
   cache <- liftIO $ readCache
   case runExcept (insertDefs defs index cache) of
@@ -108,8 +108,8 @@ pInsertDefs defs index = do
       return $ index
 
 data Import
-  = IPFS  Name (Maybe Name) CID
-  | Local Name (Maybe Name)
+  = IPFS  Name Text CID
+  | Local Name Text
 
 pDeserial :: forall a. Serialise a => CID -> ParserIO a
 pDeserial cid = do
@@ -124,43 +124,42 @@ data PackageEnv = PackageEnv
   , _done :: Set FilePath
   }
 
-pImport :: IORef PackageEnv -> ParserIO (Name,CID,Index)
+pImport :: IORef PackageEnv -> ParserIO (Name,Text,CID,Package)
 pImport env = label "an import" $ do
   symbol "with"
-  nam <- pPackageName
-  ali <- optional $ try $ (space >> symbol "as" >> pName False)
-  imp <- choice
-    [ try $ (space >> symbol "from" >> IPFS nam ali <$> pCid)
-    , return $ Local nam ali
-    ]
+  nam <- pPackageName <* space
+  ali <- (symbol "as" >> pName False) <|> (return "")
+  imp <- return $ Local nam ali
+    -- try $ (space >> symbol "from" >> IPFS nam ali <$> pCid)
   case imp of
-    IPFS nam ali cid -> do
-      p <- pDeserial @Package cid
-      unless (nam == (_title p))
-        (customIOFailure $ MisnamedPackageImport nam (_title p) cid)
-      let pre = maybe "" (\x -> T.append x "/") ali
-      return (nam,cid, M.mapKeys (T.append pre) (_index p))
+    --IPFS nam ali cid -> do
+    --  p <- pDeserial @Package cid
+    --  unless (nam == (_title p))
+    --    (customIOFailure $ MisnamedPackageImport nam (_title p) cid)
+    --  let pre = maybe "" (\x -> T.append x "/") ali
+    --  return (nam,cid, M.mapKeys (T.append pre) (_index p))
     Local nam ali -> do
       open  <- _open <$> (liftIO $ readIORef env)
       let file = (T.unpack nam ++ ".ya")
       when (Set.member file open) (customIOFailure $ LocalImportCycle file)
       (cid,p) <- liftIO $ pFile env (T.unpack nam ++ ".ya")
-
       unless (nam == (_title p))
         (customIOFailure $ MisnamedPackageImport nam (_title p) cid)
-      let pre = maybe "" (\x -> T.append x "/") ali
-      return (nam,cid, M.mapKeys (T.append pre) (_index p))
+      return (nam,ali,cid,p)
 
-pImports :: IORef PackageEnv -> Index -> ParserIO ([CID], Index)
-pImports env index = next <|> (([],) <$> (return index))
+pImports :: IORef PackageEnv -> Imports -> Index -> ParserIO (Imports, Index)
+pImports env imp ind@(Index ns cs) = next <|> (return (imp,ind))
   where
     next = do
-      (nam,cid,index') <- pImport env <* space
-      let conflict = M.keys $ M.intersection index' index
-      unless (conflict == [])
-        (customIOFailure $ ConflictingImportNames nam cid conflict)
-      (cs,ind) <- pImports env (M.union index' index)
-      return (cid:cs, ind)
+      (nam,ali,cid,p) <- pImport env <* space
+      let Index ns' cs' = _index p
+      let prefix x = if ali == "" then x else ali <> "/" <> x
+      let ns'' = M.mapKeys prefix ns'
+      let cs'' = prefix <$> cs'
+      let conflict = M.intersection ns ns''
+      unless (conflict == M.empty)
+        (customIOFailure $ ConflictingImportNames nam cid (M.keys conflict))
+      pImports env (M.insert cid ali imp) (Index (M.union ns ns'') (M.union cs cs''))
 
 pPackage :: IORef PackageEnv -> FilePath -> ParserIO (CID,Package)
 pPackage env file = do
@@ -170,14 +169,14 @@ pPackage env file = do
   when (title /= "" && ((T.unpack title) ++ ".ya") /= file)
     (customIOFailure $ MisnamedPackageFile file title)
   space
-  (imports, index) <- pImports env M.empty <* space
+  (imports, index) <- pImports env M.empty (Index M.empty M.empty)
   when (title /= "") (void $ symbol "where")
-  defs  <- local (\e -> e { _refs = M.keysSet index }) pDefs
+  defs  <- local (\e -> e { _refs = M.keysSet (_byName index) }) pDefs
   cache <- liftIO $ readCache
   (index, cache) <- case runExcept (insertDefs defs index cache) of
     Left e              -> customIOFailure $ CorruptDefs e
     Right (index,cache) -> return (index,cache)
-  let pack = Package title doc (Set.fromList imports) index
+  let pack = Package title doc imports index
   let (cid,cache')   = insertPackage pack cache
   liftIO $ writeCache cache'
   return $ (cid, pack)

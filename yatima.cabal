@@ -32,7 +32,6 @@ library
       Language.Yatima
   other-modules:
       Language.Yatima.Ctx
-      Language.Yatima.Defs
       Paths_yatima
   hs-source-dirs:
       src

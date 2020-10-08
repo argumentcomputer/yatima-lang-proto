@@ -36,9 +36,9 @@ dagPut :: BSL.ByteString -> Maybe Text -> Maybe Text -> Maybe Bool -> Maybe Text
        -> ClientM Value
 dagPut = client (Proxy :: Proxy ApiV0DagPut)
 
-dagPutTree :: Maybe Bool -> Tree -> ClientM Value
-dagPutTree pin tree =
-  dagPut (serialise tree) (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
+dagPutAST :: Maybe Bool -> AST -> ClientM Value
+dagPutAST pin ast =
+  dagPut (serialise ast) (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
 
 dagPutBytes :: Maybe Bool -> BSL.ByteString -> ClientM Value
 dagPutBytes pin bs = dagPut bs (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
@@ -49,11 +49,11 @@ dagGet = S.client (Proxy :: Proxy ApiV0DagGet)
 blockGet :: Text -> S.ClientM (SourceIO BS.ByteString)
 blockGet = S.client (Proxy :: Proxy ApiV0BlockGet)
 
-runDagPut :: Tree -> IO ()
-runDagPut tree = do
+runDagPutAST :: AST -> IO ()
+runDagPutAST ast = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
-  res <- runClientM (dagPutTree (Just True) tree) env
+  res <- runClientM (dagPutAST (Just True) ast) env
   case res of
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
