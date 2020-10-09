@@ -1,21 +1,12 @@
-{| Package: Nat
-   Authors: John C. Burnham
-|}
 package Nat where
 
-{| The type of natural numbers |}
 def Nat : * =
-  @self
-  ∀ (0 P : ∀ (_:Nat) -> *)
-    (& zero : P (λ P z s => z))
-    (& succ : ∀ (pred: Nat) -> (P (λ P z s => s pred)))
+  @self all
+    (0 P : all Nat -> *)
+    (& zero : (P (lam P z s => z)))
+    (& succ : all (pred : Nat) -> (P (lam P z s => s pred)))
     -> P self
 
-def zero : Nat
-  = λ P z s => z
-
-def succ (n : Nat) : Nat
-  = λ P z s => s n
-
-def one : Nat = succ zero
+def zero : Nat = lam P z s => z
+def succ (x : Nat) : Nat = lam P z s => s x
 

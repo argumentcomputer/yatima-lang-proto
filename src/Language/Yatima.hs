@@ -51,14 +51,14 @@ prettyFile root file = do
   index <- _index . snd <$> (loadFile root file)
   cache <- readCache
   defs  <- catchErr $ indexToDefs index cache
-  forM_ defs (go index)
+  M.traverseWithKey (go index) defs
   return ()
   where
-    go :: Index -> Def -> IO ()
-    go index def = do
+    go :: Index -> Name -> Def -> IO ()
+    go index nam def = do
       putStrLn ""
-      putStrLn $ T.unpack $ printCIDBase32 $ index M.! (_name def)
-      putStrLn $ T.unpack $ Print.prettyDef def
+      putStrLn $ T.unpack $ printCIDBase32 $ (_byName index) M.! nam
+      putStrLn $ T.unpack $ Print.prettyDef nam def
       return ()
 
 checkFile :: FilePath -> FilePath -> IO (CID,Package)
@@ -66,21 +66,21 @@ checkFile root file = do
   (cid,p) <- loadFile root file
   let index = _index p
   cache <- readCache
-  forM_ (M.toList $ index) (checkRef index cache)
+  forM_ (M.toList $ (_byName index)) (checkRef index cache)
   return (cid,p)
-  where
-    checkRef ::  Index -> Cache -> (Name, CID) -> IO ()
-    checkRef index cache (name,cid) = do
-      def  <- liftIO $ catchErr $ derefMetaDefCID name cid index cache
-      defs <- liftIO $ catchErr $ indexToDefs index cache
-      let (trm,typ) = defToHoas def
-      case runExcept $ Core.check defs Ctx.empty Once trm typ of
-        Left  e -> putStrLn $ T.unpack $ T.concat 
-            ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
-            , printCIDBase32 cid, "\n"
-            , T.pack $ show e]
-        Right (_,t) -> putStrLn $ T.unpack $ T.concat
-            ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
+
+checkRef ::  Index -> Cache -> (Name, CID) -> IO ()
+checkRef index cache (name,cid) = do
+  def  <- liftIO $ catchErr $ derefMetaDefCID name cid index cache
+  defs <- liftIO $ catchErr $ indexToDefs index cache
+  let (trm,typ) = defToHoas name def
+  case runExcept $ Core.check defs Ctx.empty Once trm typ of
+    Left  e -> putStrLn $ T.unpack $ T.concat 
+        ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
+        , printCIDBase32 cid, "\n"
+        , T.pack $ show e]
+    Right (_,t) -> putStrLn $ T.unpack $ T.concat
+        ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
 
 catchErr:: Show e => Except e a -> IO a
 catchErr x = do
@@ -97,7 +97,7 @@ normDef name root file = do
   cid   <- catchErr (indexLookup name index)
   def   <- catchErr (derefMetaDefCID name cid index cache)
   defs  <- catchErr (indexToDefs index cache)
-  return $ Core.norm defs (fst $ defToHoas def)
+  return $ Core.norm defs (fst $ defToHoas name def)
 
 whnf :: Defs -> Term -> Term
 whnf defs =

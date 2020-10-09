@@ -41,6 +41,8 @@ data YideState = YideState
   , _yRoot :: FilePath
   }
 
+emptyYideState root = YideState emptyIndex root
+
 type Repl = HaskelineT (StateT YideState IO)
 
 repl :: (Functor m, MonadException m)      -- Terminal monad ( often IO ).
@@ -74,7 +76,7 @@ quit = outputTxtLn "Goodbye."
 
 data Command
   = Eval Term
-  | Defn Def
+  | Defn Name Def
   | Type Name
   | Load FilePath
   | Import CID
@@ -96,7 +98,7 @@ parseLine = do
         nam <- pPackageName
         return $ Load $ (T.unpack nam) ++ ".ya"
     --, (symbol ":with" <|> symbol ":w") >> Import <$> pCID
-    , Defn <$> (try $ pDef)
+    , try pDef >>= (\(n,d) -> return $ Defn n d)
     , Eval <$> pExpr False
     ]
   eof
@@ -110,7 +112,7 @@ catchReplErr x = case runExcept x of
 process :: Text -> Repl ()
 process line = dontCrash' $ do
   index <- gets _yDefs
-  let env = ParseEnv Set.empty (M.keysSet index)
+  let env = ParseEnv Set.empty (M.keysSet (_byName index))
   a <- liftIO $ parseIO parseLine env "" line
   procCommand a
   where
@@ -120,20 +122,21 @@ process line = dontCrash' $ do
         index <- gets _yDefs
         cache  <- liftIO $ readCache
         defs  <- catchReplErr $ indexToDefs index cache
-        let go index def = do
+        let go cids nam def = do
               putStrLn ""
-              putStrLn $ T.unpack $ printCIDBase32 $ index M.! (_name def)
-              putStrLn $ T.unpack $ prettyDef def
+              putStrLn $ T.unpack $ printCIDBase32 $ cids M.! nam
+              putStrLn $ T.unpack $ prettyDef nam def
               return ()
-        liftIO $ forM_ defs (go index)
+        liftIO $ M.traverseWithKey (go (_byName index)) defs
+        return ()
       Help   -> liftIO $ putStrLn "help text fills you with determination "
       -- Quit   -> abort
       Type n -> do
-        index    <- gets _yDefs
-        cache    <- liftIO $ readCache
-        def      <- catchReplErr $ deref n index cache
+        index <- gets _yDefs
+        cache <- liftIO $ readCache
+        def   <- catchReplErr $ deref n index cache
         defs  <- catchReplErr $ indexToDefs index cache
-        let (trm,typ) = Core.defToHoas def
+        let (trm,typ) = Core.defToHoas "^" def
         (_,typ) <- catchReplErr (Core.check defs Ctx.empty Once trm typ)
         liftIO $ print $ typ
         return ()
@@ -147,13 +150,13 @@ process line = dontCrash' $ do
         --catchReplErr (Core.check defs Ctx.empty Once hterm typ_)
         liftIO $ print $ Core.norm defs hterm
         return ()
-      Defn def -> do
+      Defn nam def -> do
         index  <- gets _yDefs
         cache  <- liftIO $ readCache
         defs   <- catchReplErr (indexToDefs index cache)
-        let (trm,typ) = Core.defToHoas def
+        let (trm,typ) = Core.defToHoas nam def
         catchReplErr (Core.check defs Ctx.empty Once trm typ)
-        (i',c') <- catchReplErr (insertDefs [def] index cache)
+        (i',c') <- catchReplErr (insertDefs [(nam,def)] index cache)
         modify (\e -> e {_yDefs = i'})
         liftIO $ writeCache c'
         return ()
@@ -161,7 +164,7 @@ process line = dontCrash' $ do
         root  <- gets _yRoot
         index <- gets _yDefs
         (cid,p) <- liftIO $ checkFile root file
-        modify (\e -> e {_yDefs = M.union index (_index p)})
+        modify (\e -> e {_yDefs = mergeIndex index (_index p)})
         return ()
 
 
@@ -174,7 +177,7 @@ complete :: CompletionFunc (StateT YideState IO)
 complete (ante, post)
   | prefixes [":h ", ":help "] p = noCompletion (ante, post)
   | otherwise = do
-     ns <- gets (M.keys . _yDefs)
+     ns <- gets (M.keys . _byName . _yDefs)
      let ks = [":help", ":browse"]
      let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks ++ ns)
      completeWord Nothing " " (pure . (map simpleCompletion) . f)  (ante, post)

@@ -112,8 +112,8 @@ printHOAS = prettyTerm . (hoasToTerm Ctx.empty)
 instance Show HOAS where
  show t = T.unpack $ printHOAS t
 
-defToHoas :: Def -> (HOAS,HOAS)
-defToHoas (Def name _ term typ_) =
+defToHoas :: Name -> Def -> (HOAS,HOAS)
+defToHoas name (Def _ term typ_) =
   ( FixH name (\s -> termToHoas (Ctx.singleton (name,s)) term)
   , FixH name (\s -> termToHoas (Ctx.singleton (name,s)) typ_)
   )
@@ -121,7 +121,7 @@ defToHoas (Def name _ term typ_) =
 whnf :: Defs -> HOAS -> HOAS
 whnf defs trm = case trm of
   RefH nam       -> case defs M.!? nam of
-    Just d  -> go $ fst (defToHoas d)
+    Just d  -> go $ fst (defToHoas nam d)
     Nothing -> RefH nam
   FixH nam bod       -> go (bod trm)
   AppH fun arg       -> case go fun of
@@ -312,7 +312,7 @@ infer defs pre use term = case term of
     --traceM ("RefH " ++ show nam)
     let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
     def         <- mapMaybe (defs M.!? nam)
-    let (_,typ) = (defToHoas def)
+    let (_,typ) = (defToHoas nam def)
     return (toContext pre,typ)
   LamH name body -> throwError $ UntypedLambda
   AppH func argm -> do
