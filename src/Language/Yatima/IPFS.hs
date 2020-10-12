@@ -159,7 +159,7 @@ runEternumPinFile root file = do
   unless (root == "") (setCurrentDirectory root)
   manager' <- newTlsManager
   cache  <- readCache
-  token  <- BS.readFile (root <> ".yatima/token")
+  token  <- BS.readFile (root <> ".yatima/eternum_token")
   initReq <- parseRequest "https://www.eternum.io/api/pin/"
   let reqObj = object ["hash" .= ((T.pack file) :: Text)]
   let req = initReq
@@ -174,4 +174,69 @@ runEternumPinFile root file = do
   putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
   print $ Network.HTTP.Client.responseBody resp
   return ()
+
+runPinataPinFile :: FilePath -> FilePath -> IO ()
+runPinataPinFile root file = do
+  unless (root == "") (setCurrentDirectory root)
+  manager' <- newTlsManager
+  cache  <- readCache
+  pub  <- BS.readFile (root <> ".yatima/pinata_pub_key")
+  key  <- BS.readFile (root <> ".yatima/pinata_secret_key")
+  initReq <- parseRequest "https://api.pinata.cloud/pinning/pinByHash"
+  let opts   = object ["hostNodes" .= ["/dns4/door.eternum.io/tcp/4001/ipfs/QmVBxJ5GekATHi89H8jbXjaU6CosCnteomjNR5xar2aH3q" :: Text]]
+  let reqObj = object ["hashToPin" .= ((T.pack file) :: Text)
+                      ,"pinataOptions" .= opts
+                      ]
+  let req = initReq
+        { method = "POST"
+        , requestHeaders = 
+          [ (hContentType, "application/json")
+          , ("pinata_api_key",pub)
+          , ("pinata_secret_api_key",key)
+          ]
+        , requestBody = RequestBodyLBS $ Data.Aeson.encode reqObj
+        }
+  resp <- httpLbs req manager'
+  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
+  print $ Network.HTTP.Client.responseBody resp
+  return ()
+
+--runInfuraPinFile :: FilePath -> FilePath -> IO ()
+--runInfuraPinFile root file = do
+--  unless (root == "") (setCurrentDirectory root)
+--  manager' <- newTlsManager
+--  cache  <- readCache
+--  initReq <- parseRequest "https://ipfs.infura.io:5001/api/v0/dag/put?format=cbor&input-enc=cbor&hash=blake2b-256&pin=true"
+--  let reqObj = object ["hashToPin" .= ((T.pack file) :: Text)
+--                      ]
+--  let req = initReq
+--        { method = "POST"
+--        , requestHeaders = 
+--          [ (hContentType, "application/json")
+--          , ("pinata_api_key",pub)
+--          , ("pinata_secret_api_key",key)
+--          ]
+--        , requestBody = RequestBodyLBS $ Data.Aeson.encode reqObj
+--        }
+--  resp <- httpLbs req manager'
+--  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
+--  print $ Network.HTTP.Client.responseBody resp
+--  return ()
+
+runEternumPinCache :: FilePath -> IO ()
+runEternumPinCache root = do
+  unless (root == "") (setCurrentDirectory root)
+  ns <- listDirectory ".yatima/cache"
+  traverse go ns
+  return ()
+  where
+    go :: FilePath -> IO ()
+    go f = do
+      bs <- BS.readFile (root ++ ".yatima/cache/" ++ f)
+      case cidFromText (T.pack f) of
+        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ f ++ ", " ++ e
+        Right c -> do
+          putStrLn $ (T.unpack $ printCIDBase32 c)
+          runEternumPinFile root f
+          return ()
 

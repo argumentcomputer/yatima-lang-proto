@@ -1,12 +1,19 @@
 package Nat where
 
 def Nat : * =
-  @self all
-    (0 P : all Nat -> *)
-    (& zero : (P (lam P z s => z)))
-    (& succ : all (pred : Nat) -> (P (lam P z s => s pred)))
+  ∀.self
+    (0 P : ∀ Nat -> *)
+    (& zero : (P (\ P z s => z)))
+    (& succ : ∀ (pred : Nat) -> (P (\ P z s => s pred)))
     -> P self
 
-def zero : Nat = lam P z s => z
-def succ (x : Nat) : Nat = lam P z s => s x
+def zero : Nat
+  = \ P z s => z
 
+def succ (x : Nat) : Nat
+  = \ P z s => s x
+
+def pred (x: Nat) : Nat
+  = x (\ _ => Nat)
+   zero
+   (\ p => p)

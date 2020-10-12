@@ -1,22 +1,22 @@
 package datatypes where
 
-def Nat : * =
-  @self all
-    (0 P : all Nat -> *)
-    (& zero : (P (lam P z s => z)))
-    (& succ : all (pred : Nat) -> (P (lam P z s => s pred)))
-    -> P self
+def Nat : * 
+  = ∀.self
+  (0 P : ∀ Nat -> *)
+  (& zero : (P (λ P z s => z)))
+  (& succ : ∀ (pred : Nat) -> (P (λ P z s => s pred)))
+  -> P self
 
-def zero : Nat = lam P z s => z
-def succ (n : Nat) : Nat = lam P z s => s n
+def zero : Nat = λ P z s => z
+def succ (n : Nat) : Nat = λ P z s => s n
 
-def Ref (A : *) : * =
-  @self all
-    (0 P : all (x : Ref A) -> *)
-    (& box : all (val : A) -> (P (lam P t => t val)))
-    -> P self
+def Ref (A : *) : *
+  = ∀.self
+  (0 P : ∀ (x : Ref A) -> *)
+  (& box : ∀ (val : A) -> (P (λ P t => t val)))
+  -> P self
 
-def box (0 A : *) (val : A) : (Ref A) = lam P t => t val
+def box (0 A : *) (val : A) : (Ref A) = λ P t => t val
 
-def update (0 A : *) (1 x : (Ref A)) (f : all A -> A) : (Ref A) =
-  (x (lam x => Ref A) (lam val => (box A (f val))))
+def update (0 A : *) (1 x : (Ref A)) (f : ∀ A -> A) : (Ref A) =
+  (x (λ x => Ref A) (λ val => (box A (f val))))

@@ -64,8 +64,8 @@ instance Arbitrary Index where
   arbitrary = Index <$> arbitrary <*> arbitrary
 
 instance Arbitrary Package where
-  arbitrary = Package <$> name_gen 
-    <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary =
+    Package <$> name_gen <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 prop_serial :: (Eq a, Serialise a) => a -> Bool
 prop_serial x = let s = serialise x in 

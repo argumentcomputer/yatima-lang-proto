@@ -172,10 +172,6 @@ keywords = Set.fromList $
   , "else"
   , "where"
   , "case"
-  , "forall"
-  , "all"
-  , "lam"
-  , "lambda"
   , "def"
   , "define"
   , "*"
@@ -183,11 +179,14 @@ keywords = Set.fromList $
 
 
 
-
 -- | Consume whitespace, while skipping comments. Yatima line comments begin
 -- with @--@, and block comments are bracketed by @{-@ and @-}@ symbols.
 space :: (Ord e, Monad m) => Parser e m ()
 space = L.space space1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
+
+
+space' :: (Ord e, Monad m) => Parser e m ()
+space' = space1 >> space
 
 -- | A symbol is a string which can be followed by whitespace. The @sc@ argument
 -- is for parsing indentation sensitive whitespace
@@ -246,7 +245,7 @@ foldLam body bs = foldr (\n x -> Lam n x) body bs
 -- | Parse a lambda: @λ x y z => body@
 pLam :: (Ord e, Monad m) => Parser e m Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
-  symbol "λ" <|> symbol "lambda" <|> symbol "lam"
+  symbol "λ" <|> symbol "\\" <|> symbol "lambda"
   vars <- sepEndBy1 (pName True) space
   symbol "=>"
   body <- bind vars (pExpr False)
@@ -260,11 +259,11 @@ bindAll bs = bind (foldr (\(s,n,_,_) ns -> s:n:ns) [] bs)
 
 fst3 (x,y,z) = x
 
--- | Parse a forall: @∀ (a: A) (b: B) (c: C) -> body@
+-- | Parse a forall: ∀.self (a: A) (b: B) (c: C) -> body@
 pAll :: (Ord e, Monad m) => Parser e m Term
 pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
-  self <- (symbol "@" >> (pName True) <* space) <|> return ""
-  symbol "∀" <|> symbol "all" <|> symbol "forall"
+  string "@" <|> string "∀" <|> string "forall"
+  self <- (string "." >> (pName True) <* space) <|> (space >> return "")
   binds <- binders self <* space
   body  <- bindAll binds (pExpr False)
   return $ foldAll body binds

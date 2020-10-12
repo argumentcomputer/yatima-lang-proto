@@ -59,7 +59,6 @@ library:
     - aeson
     - ipfs-api
 
-
   default-extensions:
     - OverloadedStrings
     - GADTSyntax

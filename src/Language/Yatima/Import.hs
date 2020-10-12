@@ -221,3 +221,22 @@ writeCache c = void $ M.traverseWithKey go c
       exists <- doesFileExist file
       unless exists (BS.writeFile file bs)
 
+--readPackages :: IO (Map Name CID)
+--readPackages = do
+--  createDirectoryIfMissing True ".yatima/packages"
+--  ns <- listDirectory ".yatima/packages"
+--  M.fromList <$> traverse go ns
+--  where
+--    go :: FilePath -> IO (Name,CID)
+--    go f = do
+--      txt <- TIO.readFile (".yatima/packages/" ++ f)
+--      case cidFromText txt of
+--        Left e  -> error $ "CORRUPT PACKAGE INDEX ENTRY: " ++ f ++ ", " ++ e
+--        Right c -> return (T.pack f, c)
+--
+--writePackage :: Name -> CID -> IO ()
+--writePackage title cid = do
+--  createDirectoryIfMissing True ".yatima/packages"
+--  let file = (".yatima/packages/" ++ (T.unpack $ title))
+--  TIO.writeFile file (printCIDBase32 cid)
+
