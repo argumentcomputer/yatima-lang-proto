@@ -4,29 +4,33 @@ module Language.Yatima.IPLD
   ( -- | IPFS content-identifiers
     module Language.Yatima.CID
   , Package(..)
-  , Tree(..)
+  , AST(..)
   , Meta(..)
-  , TreeDef(..)
+  , ASTDef(..)
   , MetaDef(..)
   , IPLDErr(..)
+  , Index(..)
   , File(..)
-  , Index
   , Cache
+  , Imports
   , makeLink
-  , termToTree
-  , treeToTerm
+  , termToAST
+  , astToTerm
   , find
   , deserial
   , deref
   , derefMetaDef
   , derefMetaDefCID
+  , emptyPackage
+  , emptyIndex
+  , mergeIndex
   , indexLookup
   , cacheLookup
   , insertDef
   , insertDefs
   , insertPackage
   , indexToDefs
-  , usesToTree
+  , usesToAST
   , validateTerm
   ) where
 
@@ -55,31 +59,41 @@ import           Language.Yatima.CID
 import           Language.Yatima.Term
 
 -- | An anonymous Abstract Syntax Tree of a λ-like language
-data Tree
-  = Ctor Name Word [Tree]
-  | Bind Tree
+data AST
+  = Ctor Name [AST]
+  | Bind AST
   | Vari Int
   | Link CID
   deriving (Eq,Show,Ord)
 
-data Meta = Meta { _entries :: IntMap (Name, Maybe CID) } deriving (Show,Eq)
+data Meta = Meta { _entries :: IntMap (Either Name CID) } deriving (Show,Eq)
 
 -- | An anonymized `Def`
-data TreeDef = TreeDef
-  { _termTree :: CID
-  , _typeTree :: CID
+data ASTDef = ASTDef
+  { _termAST :: CID
+  , _typeAST :: CID
   } deriving Show
 
 -- | The metadata from a `Def`
 data MetaDef = MetaDef
-  { _anonDef   :: CID
+  { _astDef    :: CID
   , _document  :: Text
   , _termMeta  :: Meta
   , _typeMeta  :: Meta
   } deriving Show
 
-type Index = Map Name CID
-type Cache = Map CID BS.ByteString
+data Index = Index 
+  { _byName :: Map Name CID
+  , _byCID  :: Map CID Name
+  } deriving (Eq,Show)
+
+emptyIndex = Index M.empty M.empty
+
+mergeIndex :: Index -> Index -> Index
+mergeIndex (Index a b) (Index c d) = Index (M.union a c) (M.union b d)
+
+type Cache   = Map CID BS.ByteString
+type Imports = Map CID Text
 
 data File = File
   { _filepath :: FilePath
@@ -90,45 +104,48 @@ data Package = Package
   { _title   :: Name
   , _descrip :: Text
   , _source  :: CID     -- link to generating file
-  , _imports :: Set CID -- links to packages
-  , _index   :: Index   -- links to MetaDefs
+  , _imports :: Imports
+  , _index   :: Index
   } deriving (Show, Eq)
 
-encodeTree :: Tree -> Encoding
-encodeTree term = case term of
-  Ctor n i ts -> encodeListLen 3 <> encodeInt 0 <> encodeString n <>
-    encodeListLen i <> foldr (\v r -> encodeTree v <> r) mempty ts
-  Bind t    -> encodeListLen 2 <> encodeInt 1 <> encodeTree t
+encodeAST :: AST -> Encoding
+encodeAST term = case term of
+  Ctor n ts -> encodeListLen 3 
+    <> encodeInt 0
+    <> encodeString n
+    <> encodeListLen (fromIntegral $ length ts)
+       <> foldr (\v r -> encodeAST v <> r) mempty ts
+  Bind t    -> encodeListLen 2 <> encodeInt 1 <> encodeAST t
   Vari idx  -> encodeListLen 2 <> encodeInt 2 <> encodeInt idx
   Link cid  -> encodeListLen 2 <> encodeInt 3 <> encodeCID cid
 
-decodeTree :: Decoder s Tree
-decodeTree = do
+decodeAST :: Decoder s AST
+decodeAST = do
   size <- decodeListLen
   tag  <- decodeInt
   case (size,tag) of
     (3,0) -> do
       ctor  <- decodeString
       arity <- decodeListLen
-      args  <- replicateM arity decodeTree
-      return $ Ctor ctor (fromIntegral arity) args
-    (2,1) -> Bind <$> decodeTree
+      args  <- replicateM arity decodeAST
+      return $ Ctor ctor args
+    (2,1) -> Bind <$> decodeAST
     (2,2) -> Vari <$> decodeInt
     (2,3) -> Link <$> decodeCID
     _     -> fail $ concat
-      ["invalid Tree with size: ", show size, " and tag: ", show tag]
+      ["invalid AST with size: ", show size, " and tag: ", show tag]
 
-instance Serialise Tree where
-  encode = encodeTree
-  decode = decodeTree
+instance Serialise AST where
+  encode = encodeAST
+  decode = decodeAST
 
 encodeMeta :: Meta -> Encoding
 encodeMeta (Meta m) = encodeMapLen (fromIntegral (IM.size m))
   <> IM.foldrWithKey go mempty m
   where
     go = (\k v r -> encodeString (T.pack $ show k) <> encodeEntry v <> r)
-    encodeEntry (n,Nothing) = encodeListLen 1 <> encodeString n
-    encodeEntry (n,Just c)  = encodeListLen 2 <> encodeString n <> encodeCID c
+    encodeEntry (Left n)  = encodeInt 0 <> encodeString n
+    encodeEntry (Right c) = encodeInt 1 <> encodeCID c
 
 decodeMeta :: Decoder s Meta
 decodeMeta = do
@@ -138,41 +155,40 @@ decodeMeta = do
     decodeEntry = do
       keyString <- decodeString
       let  key = (read (T.unpack keyString) :: Int)
-      len <- decodeListLen
-      case len of
+      tag <- decodeInt
+      case tag of
+        0 -> do
+          n <- decodeString
+          return (key,Left n)
         1 -> do
-          n <- decodeString
-          return (key,(n,Nothing))
-        2 -> do
-          n <- decodeString
           c <- decodeCID
-          return (key,(n,Just c))
+          return (key,Right c)
         _ -> fail "invalid Meta map entry"
 
 instance Serialise Meta where
   encode = encodeMeta
   decode = decodeMeta
 
-encodeTreeDef :: TreeDef -> Encoding
-encodeTreeDef (TreeDef term typ_) = encodeListLen 3
-  <> (encodeString "TreeDef")
+encodeASTDef :: ASTDef -> Encoding
+encodeASTDef (ASTDef term typ_) = encodeListLen 3
+  <> (encodeString "ASTDef")
   <> (encodeCID term)
   <> (encodeCID typ_)
 
-decodeTreeDef :: Decoder s TreeDef
-decodeTreeDef = do
+decodeASTDef :: Decoder s ASTDef
+decodeASTDef = do
   size     <- decodeListLen
-  when (size /= 3) (fail $ "invalid TreeDef list size: " ++ show size)
+  when (size /= 3) (fail $ "invalid ASTDef list size: " ++ show size)
   tag <- decodeString
-  when (tag /= "TreeDef") (fail $ "invalid TreeDef tag: " ++ show tag)
-  TreeDef <$> decodeCID <*> decodeCID
+  when (tag /= "ASTDef") (fail $ "invalid ASTDef tag: " ++ show tag)
+  ASTDef <$> decodeCID <*> decodeCID
 
-instance Serialise TreeDef where
-  encode = encodeTreeDef
-  decode = decodeTreeDef
+instance Serialise ASTDef where
+  encode = encodeASTDef
+  decode = decodeASTDef
 
 encodeMetaDef :: MetaDef -> Encoding
-encodeMetaDef (MetaDef anonDef doc termMeta typeMeta ) = encodeListLen 5
+encodeMetaDef (MetaDef anonDef doc termMeta typeMeta) = encodeListLen 5
   <> (encodeString "MetaDef")
   <> (encodeCID   anonDef)
   <> (encodeString doc)
@@ -191,21 +207,29 @@ instance Serialise MetaDef where
   encode = encodeMetaDef
   decode = decodeMetaDef
 
-encodeImports :: Set CID -> Encoding
-encodeImports is = encodeListLen (fromIntegral $ Set.size is)
-  <> foldr (\v r -> encodeCID v <> r) mempty is
+encodeImports :: Imports -> Encoding
+encodeImports is = encodeMapLen (fromIntegral $ M.size is ) <> go is
+  where
+    f (k,v) r = encodeCID k <> encodeString v <> r
+    go is = foldr f mempty (sortBy cmp (M.toList is))
+    cmp (k1,_) (k2,_)   = cborCanonicalOrder (serialise k1) (serialise k2)
 
-decodeImports :: Decoder s (Set CID)
+decodeImports :: Decoder s Imports
 decodeImports = do
-  size <- decodeListLen
-  Set.fromList <$> replicateM size decodeCID
+  n      <- decodeMapLen
+  M.fromList <$> replicateM n ((,) <$> decodeCID <*> decodeString)
 
 encodeIndex :: Index -> Encoding
-encodeIndex i = encodeMapLen (fromIntegral $ M.size i) <> foldr go mempty i'
+encodeIndex (Index byName byCID) = encodeListLen 3
+  <> (encodeString  ("Index" :: Text))
+  <> (encodeMapLen (fromIntegral $ M.size byName) <> encodeByName byName)
+  <> (encodeMapLen (fromIntegral $ M.size byCID ) <> encodeByCID  byCID)
   where
-    i' = sortBy cmp (M.toList i)
-    go = (\(k,v) r -> encodeString k <> encodeCID v <> r)
-    cmp  (k1,_) (k2,_) = cborCanonicalOrder (serialise k1) (serialise k2)
+    f (k,v) r = encodeString k <> encodeCID v <> r
+    g (k,v) r = encodeCID k <> encodeString v <> r
+    encodeByName byName = foldr f mempty (sortBy cmp (M.toList byName))
+    encodeByCID byCID   = foldr g mempty (sortBy cmp (M.toList byCID))
+    cmp (k1,_) (k2,_)   = cborCanonicalOrder (serialise k1) (serialise k2)
 
 cborCanonicalOrder :: BSL.ByteString -> BSL.ByteString -> Ordering
 cborCanonicalOrder x y
@@ -215,8 +239,19 @@ cborCanonicalOrder x y
 
 decodeIndex :: Decoder s Index
 decodeIndex = do
-  size  <- decodeMapLen
-  M.fromList <$> replicateM size ((,) <$> decodeString <*> decodeCID)
+  size     <- decodeListLen
+  when (size /= 3) (fail $ "invalid Index list size: " ++ show size)
+  tag    <- decodeString
+  when (tag /= "Index") (fail $ "invalid Index tag: " ++ show tag)
+  n      <- decodeMapLen
+  byName <- M.fromList <$> replicateM n ((,) <$> decodeString <*> decodeCID)
+  c      <- decodeMapLen
+  byCID  <- M.fromList <$> replicateM c ((,) <$> decodeCID <*> decodeString)
+  return $ Index byName byCID
+
+instance Serialise Index where
+  encode = encodeIndex
+  decode = decodeIndex
 
 encodeFile :: File -> Encoding
 encodeFile file = encodeListLen 3
@@ -269,8 +304,9 @@ data IPLDErr
   | FreeVariable Name [Name]
   | MergeFreeVariableAt Int [Name] Int
   | MergeMissingNameAt Int
-  | UnexpectedCtor Name Word [Tree] [Name] Int
-  | UnexpectedBind Tree [Name] Int
+  | MergeMissingCIDAt Int
+  | UnexpectedCtor Name [AST] [Name] Int
+  | UnexpectedBind AST [Name] Int
   deriving Eq
 
 instance Show IPLDErr where
@@ -292,8 +328,8 @@ instance Show IPLDErr where
     ]
   show (MergeMissingNameAt i)        = concat
     ["Missing Name entry while merging Tree and Meta: ", show i]
-  show (UnexpectedCtor n w ts ctx i) = concat
-    ["UnexpectedCtor: ", show n, " arity ", show w, " with args ", show ts
+  show (UnexpectedCtor n ts ctx i) = concat
+    ["UnexpectedCtor: ", show n, " with args ", show ts
     , "\ncontext: ", show ctx
     , "\nterm index: ", show i
     ]
@@ -316,78 +352,79 @@ find n cs = go n cs 0
       | otherwise = go n cs (i+1)
     go _ [] _     = Nothing
 
-indexLookup :: Name -> Index -> Except IPLDErr CID
-indexLookup n d = maybe (throwError $ NotInIndex n) pure (d M.!? n)
+indexLookup :: Monad m => Name -> Index -> ExceptT IPLDErr m CID
+indexLookup n d = maybe (throwError $ NotInIndex n) pure ((_byName d) M.!? n)
 
-cacheLookup :: CID -> Cache -> Except IPLDErr BS.ByteString
+indexLookup' :: Monad m => CID -> Index -> ExceptT IPLDErr m Name
+indexLookup' n d =
+  maybe (throwError $ NotInIndex (printCIDBase32 n)) pure ((_byCID d) M.!? n)
+
+cacheLookup :: Monad m => CID -> Cache -> ExceptT IPLDErr m BS.ByteString
 cacheLookup c d = maybe (throwError $ NotInCache c) pure (d M.!? c)
 
-deserial :: Serialise a => CID -> Cache -> Except IPLDErr a
+deserial :: (Serialise a, Monad m) => CID -> Cache -> ExceptT IPLDErr m a
 deserial cid cache = do
   bytes <- cacheLookup cid cache
   either (throwError . NoDeserial) return (deserialiseOrFail $ BSL.fromStrict bytes)
 
-makeLink :: Name -> Index -> Cache -> Except IPLDErr (CID,CID)
+makeLink :: Monad m => Name -> Index -> Cache -> ExceptT IPLDErr m (CID,CID)
 makeLink n index cache = do
   cid     <- indexLookup n index
   metaDef <- deserial @MetaDef cid cache
-  return (cid, _anonDef metaDef)
+  return (cid, _astDef metaDef)
 
-deref :: Name -> Index -> Cache -> Except IPLDErr Def
+deref :: Monad m => Name -> Index -> Cache -> ExceptT IPLDErr m Def
 deref name index cache = do
   mdCID   <- indexLookup name index
   metaDef <- deserial @MetaDef mdCID cache
-  def <- derefMetaDef metaDef cache
-  when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
+  def <- derefMetaDef name index metaDef cache
   return def
 
-derefMetaDef :: MetaDef -> Cache -> Except IPLDErr Def
-derefMetaDef metaDef cache = do
-  let termNames = fst <$> (_entries . _termMeta $ metaDef)
-  termName <- maybe (throwError $ MergeMissingNameAt 0) pure (termNames IM.!? 0)
-  let typeNames = fst <$> ( _entries . _typeMeta $ metaDef)
-  typeName <- maybe (throwError $ MergeMissingNameAt 0) pure (typeNames IM.!? 0)
-  when (not $ termName == typeName) (throwError $ NameMismatch termName typeName)
-  anonDef  <- deserial @TreeDef (_anonDef metaDef) cache
-  termTree <- deserial @Tree (_termTree anonDef) cache
-  term     <- treeToTerm termTree (_termMeta metaDef)
-  typeTree <- deserial @Tree (_typeTree anonDef) cache
-  typ_     <- treeToTerm typeTree (_typeMeta metaDef)
-  return $ Def termName (_document metaDef) term typ_
+derefMetaDef :: Monad m => Name -> Index -> MetaDef -> Cache
+             -> ExceptT IPLDErr m Def
+derefMetaDef name index metaDef cache = do
+  astDef  <- deserial @ASTDef (_astDef metaDef) cache
+  termAST <- deserial @AST (_termAST astDef) cache
+  term    <- astToTerm name index termAST (_termMeta metaDef)
+  typeAST <- deserial @AST (_typeAST astDef) cache
+  typ_    <- astToTerm name index typeAST (_typeMeta metaDef)
+  return $ Def (_document metaDef) term typ_
 
-derefMetaDefCID :: Name -> CID -> Index -> Cache -> Except IPLDErr Def
+derefMetaDefCID :: Monad m => Name -> CID -> Index -> Cache 
+                -> ExceptT IPLDErr m Def
 derefMetaDefCID name cid index cache = do
   mdCID   <- indexLookup name index
   metaDef <- deserial @MetaDef mdCID cache
   when (cid /= mdCID) (throwError $ CIDMismatch name cid mdCID)
-  def <- derefMetaDef metaDef cache
-  when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
+  def <- derefMetaDef name index metaDef cache
+  --when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
   return $ def
 
-usesToTree :: Uses -> Tree
-usesToTree None = Ctor "None" 0 []
-usesToTree Affi = Ctor "Affi" 0 []
-usesToTree Once = Ctor "Once" 0 []
-usesToTree Many = Ctor "Many" 0 []
+usesToAST :: Uses -> AST
+usesToAST None = Ctor "None" []
+usesToAST Affi = Ctor "Affi" []
+usesToAST Once = Ctor "Once" []
+usesToAST Many = Ctor "Many" []
 
-termToTree :: Name -> Term -> Index -> Cache -> Except IPLDErr (Tree, Meta)
-termToTree n t index cache =
+termToAST :: Monad m => Name -> Term -> Index -> Cache 
+          -> ExceptT IPLDErr m (AST, Meta)
+termToAST n t index cache =
   case runState (runExceptT (go t [n])) meta  of
     (Left  err,_)   -> throwError err
     (Right a,(m,_)) -> return (a,m)
   where
-    meta = (Meta (IM.singleton 0 (n,Nothing)), 1)
+    meta = (Meta IM.empty, 1)
 
-    entry :: (Name,Maybe CID) -> ExceptT IPLDErr (State (Meta,Int)) ()
+    entry :: (Either Name CID) -> ExceptT IPLDErr (State (Meta,Int)) ()
     entry e = modify (\(Meta es,i) -> (Meta (IM.insert i e es), i))
 
     bind :: Name -> ExceptT IPLDErr (State (Meta,Int)) ()
-    bind n = entry (n,Nothing)
+    bind n = entry (Left n)
 
     bump :: ExceptT IPLDErr (State (Meta,Int)) ()
     bump = modify (\(m,i) -> (m, i+1))
 
-    go :: Term -> [Name] -> ExceptT IPLDErr (State (Meta,Int)) Tree
+    go :: Term -> [Name] -> ExceptT IPLDErr (State (Meta,Int)) AST
     go t ctx = case t of
       Var n                 -> do
         bump
@@ -396,38 +433,38 @@ termToTree n t index cache =
           _      -> throwError $ FreeVariable n ctx
       Ref n                 -> do
         (metaCID, anonCID) <- liftEither . runExcept $ makeLink n index cache
-        entry (n,Just metaCID)
+        entry (Right metaCID)
         bump
         return (Link anonCID)
       Lam n b               -> do
         bind n
         bump
         b' <- go b (n:ctx)
-        return $ Ctor "Lam" 1 [Bind b']
+        return $ Ctor "Lam" [Bind b']
       App f a               -> do
         bump
         f' <- go f ctx 
         a' <- go a ctx
-        return $ Ctor "App" 2 [f', a']
+        return $ Ctor "App" [f', a']
       Ann v t               -> do
         bump
         v' <- go v ctx 
         t' <- go t ctx
-        return $ Ctor "Ann" 2 [v', t']
+        return $ Ctor "Ann" [v', t']
       Let n u t x b         -> do
         bind n
         bump
         t' <- go t ctx
         x' <- go x (n:ctx)
         b' <- go b (n:ctx)
-        return $ Ctor "Let" 4 [usesToTree u, t', Bind x', Bind b']
-      Typ                   -> bump >> return (Ctor "Typ" 0 [])
+        return $ Ctor "Let" [usesToAST u, t', Bind x', Bind b']
+      Typ                   -> bump >> return (Ctor "Typ" [])
       All s n u t b         -> do
         bind s >> bump
         bind n >> bump
         t' <- go t ctx
         b' <- go b (n:s:ctx)
-        return $ Ctor "All" 3 [usesToTree u, t', Bind (Bind b')]
+        return $ Ctor "All" [usesToAST u, t', Bind (Bind b')]
 
 -- | Find a name in the binding context and return its index
 lookupNameCtx :: Int -> [Name] -> Maybe Name
@@ -437,17 +474,9 @@ lookupNameCtx i (x:xs)
   | i == 0    = Just x
   | otherwise = lookupNameCtx (i - 1) xs
 
-lookupNameMeta :: Int -> Meta -> Except IPLDErr Name
-lookupNameMeta i meta = do
- let entry = (_entries meta IM.!? i)
- (n,_) <- maybe (throwError $ MergeMissingNameAt i) pure entry
- return n
-
-treeToTerm :: Tree -> Meta -> Except IPLDErr Term
-treeToTerm anon meta = do
-  defName <- lookupNameMeta 0 meta
-  liftEither (evalState (runExceptT (go anon [defName])) 1)
-
+astToTerm :: Monad m => Name -> Index -> AST -> Meta -> ExceptT IPLDErr m Term
+astToTerm n index anon meta = do
+  liftEither (evalState (runExceptT (go anon [n])) 1)
   where
     bump :: ExceptT IPLDErr (State Int) ()
     bump = modify (+1)
@@ -455,8 +484,17 @@ treeToTerm anon meta = do
     name :: Int -> ExceptT IPLDErr (State Int) Name
     name i = do
      let entry = (_entries meta IM.!? i)
-     (n,_) <- maybe (throwError $ MergeMissingNameAt i) pure entry
-     return n
+     let err = (throwError $ MergeMissingNameAt i)
+     n <- maybe err pure entry
+     either return (const err) n
+
+    link :: Int -> ExceptT IPLDErr (State Int) Name
+    link i = do
+     let entry = (_entries meta IM.!? i)
+     let err = (throwError $ MergeMissingCIDAt i)
+     n   <- maybe err pure entry
+     cid <- either (const err) return n
+     indexLookup' cid index
 
     uses :: Name -> [Name] -> ExceptT IPLDErr (State Int) Uses
     uses n ctx = case n of
@@ -464,9 +502,9 @@ treeToTerm anon meta = do
       "Affi" -> return Affi
       "Once" -> return Once
       "Many" -> return Many
-      n      -> get >>= \i -> throwError $ UnexpectedCtor n 0 [] ctx i
+      n      -> get >>= \i -> throwError $ UnexpectedCtor n [] ctx i
 
-    go :: Tree -> [Name] -> ExceptT IPLDErr (State Int) Term
+    go :: AST -> [Name] -> ExceptT IPLDErr (State Int) Term
     go t ctx = case t of
       Vari idx -> do
         i <- get
@@ -475,39 +513,40 @@ treeToTerm anon meta = do
           Nothing -> throwError $ MergeFreeVariableAt i ctx idx
           Just n  -> return $ Var n
       Link cid -> do
-        n <- get >>= name
+        n <- get >>= link
         bump
         return $ Ref n
       Bind b    -> get >>= \i -> throwError $ UnexpectedBind b ctx i
-      Ctor nam ari args -> case (nam,ari,args) of
-        ("Lam",1,[Bind b]) -> do
+      Ctor nam args -> case (nam,args) of
+        ("Lam",[Bind b]) -> do
           n <- get >>= name
           bump
           Lam n <$> go b (n:ctx)
-        ("App",2,[f,a]) -> bump >> App <$> go f ctx <*> go a ctx
-        ("Ann",2,[v,t]) -> bump >> Ann <$> go v ctx <*> go t ctx
-        ("Let",4,[Ctor u 0 [],t,Bind x, Bind b]) -> do
+        ("App",[f,a]) -> bump >> App <$> go f ctx <*> go a ctx
+        ("Ann",[v,t]) -> bump >> Ann <$> go v ctx <*> go t ctx
+        ("Let",[Ctor u [],t,Bind x, Bind b]) -> do
           n <- get >>= name
           u <- uses u ctx
           bump
           Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
-        ("Typ",0,[]) -> bump >> return Typ
-        ("All",3,[Ctor u 0 [], t, Bind (Bind b)]) -> do
+        ("Typ",[]) -> bump >> return Typ
+        ("All",[Ctor u [], t, Bind (Bind b)]) -> do
           u <- uses u ctx
           s <- get >>= name
           bump
           n <- get >>= name
           bump
           All s n u <$> go t ctx <*> go b (n:s:ctx)
-        (c, a, b) -> get >>= \i -> throwError $ UnexpectedCtor c a b ctx i
+        (c, b) -> get >>= \i -> throwError $ UnexpectedCtor c b ctx i
 
-insertDef :: Def -> Index -> Cache -> Except IPLDErr (CID,Cache)
-insertDef (Def name doc term typ_) index cache = do
-  (termAnon, termMeta) <- termToTree name term index cache
-  (typeAnon, typeMeta) <- termToTree name typ_ index cache
+insertDef :: Monad m => Name -> Def -> Index -> Cache
+          -> ExceptT IPLDErr m (CID,Cache)
+insertDef name (Def doc term typ_) index cache = do
+  (termAnon, termMeta) <- termToAST name term index cache
+  (typeAnon, typeMeta) <- termToAST name typ_ index cache
   let termAnonCID = makeCID termAnon :: CID
   let typeAnonCID = makeCID typeAnon :: CID
-  let anonDef     = TreeDef termAnonCID typeAnonCID
+  let anonDef     = ASTDef termAnonCID typeAnonCID
   let anonDefCID  = makeCID anonDef :: CID
   let metaDef     = MetaDef anonDefCID doc termMeta typeMeta
   let metaDefCID  = makeCID metaDef :: CID
@@ -522,15 +561,22 @@ insertPackage :: Package -> Cache -> (CID,Cache)
 insertPackage p cache = let pCID = makeCID p in
   (pCID, M.insert pCID (BSL.toStrict $ serialise p) cache)
 
-insertDefs :: [Def] -> Index -> Cache -> Except IPLDErr (Index,Cache)
+insertDefs :: Monad m => [(Name,Def)] -> Index -> Cache
+           -> ExceptT IPLDErr m (Index,Cache)
 insertDefs [] index cache = return (index,cache)
-insertDefs (d:ds) index cache = do
-  (cid,cache') <- insertDef d index cache
-  insertDefs ds (M.insert (_name d) cid index) cache'
+insertDefs ((n,d):ds) index cache = do
+  (cid,cache') <- insertDef n d index cache
+  let ns = M.insert n cid (_byName index)
+  let cs = M.insert cid n (_byCID index)
+  insertDefs ds (Index ns cs) cache'
+
+emptyPackage :: Name -> Package
+emptyPackage n = Package n "" (makeCID BSL.empty) M.empty emptyIndex
 
 -- | Checks that all Refs in a term correspond to valid MetaDef cache entries
 -- and that the term has no free variables
-validateTerm :: Term -> [Name] -> Index -> Cache -> Except IPLDErr Term
+validateTerm :: Monad m => Term -> [Name] -> Index -> Cache 
+             -> ExceptT IPLDErr m Term
 validateTerm trm ctx index cache = case trm of
   Var nam                 -> case find nam ctx of
     Just idx -> return $ Var nam
@@ -548,12 +594,11 @@ validateTerm trm ctx index cache = case trm of
     bind    n t = validateTerm t (n:ctx) index cache
     bind2 s n t = validateTerm t (n:s:ctx) index cache
 
-indexToDefs :: Index -> Cache -> Except IPLDErr (Map Name Def)
-indexToDefs index cache = M.traverseWithKey go index
+indexToDefs :: Monad m => Index -> Cache -> ExceptT IPLDErr m (Map Name Def)
+indexToDefs index cache = M.traverseWithKey go (_byName index)
   where
-    go :: Name -> CID -> Except IPLDErr Def
-    go n cid = do
-     (Def name doc term typ_) <- deref n index cache
+    go n _ = do
+     (Def doc term typ_) <- deref n index cache
      term' <- validateTerm term [n] index cache
      typ_' <- validateTerm typ_ [n] index cache
-     return $ Def name doc term' typ_'
+     return $ Def doc term' typ_'

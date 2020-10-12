@@ -34,7 +34,7 @@ deriving instance Bounded Uses
 instance Arbitrary Uses where
   arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary Tree where
+instance Arbitrary AST where
   arbitrary = oneof
     [ Vari <$> arbitrary
     , Link <$> arbitrary
@@ -44,25 +44,28 @@ instance Arbitrary Tree where
         i <- choose (0,n)
         c <- name_gen
         ts <- resize n $ vector i
-        return $ Ctor c (fromIntegral i) ts
+        return $ Ctor c ts
     ]
 
 instance Arbitrary Meta where
   arbitrary = Meta <$> arbitrary
 
-instance Arbitrary TreeDef where
-  arbitrary = TreeDef <$> arbitrary <*> arbitrary
+instance Arbitrary ASTDef where
+  arbitrary = ASTDef <$> arbitrary <*> arbitrary
 
-deriving instance Eq TreeDef
+deriving instance Eq ASTDef
 
 instance Arbitrary MetaDef where
   arbitrary = MetaDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 deriving instance Eq MetaDef
 
+instance Arbitrary Index where
+  arbitrary = Index <$> arbitrary <*> arbitrary
+
 instance Arbitrary Package where
-  arbitrary = Package
-    <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = Package <$> name_gen 
+    <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 prop_serial :: (Eq a, Serialise a) => a -> Bool
 prop_serial x = let s = serialise x in 
@@ -74,9 +77,9 @@ test_defs :: (Index,Cache)
 test_defs =
   let trm = Lam "A" (Lam "x" (Var "x"))
       typ = All "" "A" Many Typ (All "" "x" Many (Var "A") (Var "A"))
-      def = Def "id" "" trm typ
-      Right (cid, cache) = runExcept (insertDef def M.empty M.empty)
-   in (M.singleton "id" cid, cache)
+      def = Def "" trm typ
+      Right (cid, cache) = runExcept (insertDef "id" def emptyIndex M.empty)
+   in (Index (M.singleton "id" cid) (M.singleton cid "id"), cache)
 
 test_index = fst test_defs
 test_cache = snd test_defs
@@ -90,7 +93,7 @@ name_gen = do
 term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
   [ (100,Var <$> elements ctx)
-  , (100,Ref <$> elements (M.keys test_index))
+  , (100,Ref <$> elements (M.keys (_byName test_index)))
   , (100, return Typ)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, App <$> term_gen ctx <*> term_gen ctx)
@@ -106,23 +109,25 @@ instance Arbitrary Term where
   arbitrary = term_gen ["test"]
 
 prop_separate :: Term -> Bool
-prop_separate t = either (const False) id (runExcept $ go t)
+prop_separate t = either (const False) id (runExcept $ prop_separate_go t)
   where
-    go :: Term -> Except IPLDErr Bool
-    go term = do
-      (tree,meta) <- termToTree "test" term test_index test_cache
-      term'    <- treeToTerm tree meta
-      (tree',meta') <- termToTree "test" term' test_index test_cache
-      return $ term == term' && tree == tree' && meta == meta'
+
+prop_separate_go :: Term -> Except IPLDErr Bool
+prop_separate_go term = do
+  (ast,meta)   <- termToAST "test" term test_index test_cache
+  term'        <- astToTerm "test" test_index ast meta
+  (ast',meta') <- termToAST "test" term' test_index test_cache
+  return $ term == term' && ast == ast' && meta == meta'
 
 spec :: SpecWith ()
 spec = do
   describe "Checking serialisation correctness: `x == deserialise (serialise x)`" $ do
     it "Cid"  $ property $ prop_serial @CID
     it "Meta" $ property $ prop_serial @Meta
-    it "Anon" $ property $ prop_serial @Tree
-    it "TreeDef" $ property $ prop_serial @TreeDef
+    it "Anon" $ property $ prop_serial @AST
+    it "ASTDef" $ property $ prop_serial @ASTDef
     it "MetaDef" $ property $ prop_serial @MetaDef
+    it "Package" $ property $ prop_serial @Index
     it "Package" $ property $ prop_serial @Package
   describe "Checking metadata separation correctness" $
     it "x == merge (separate x)" $ property prop_separate
