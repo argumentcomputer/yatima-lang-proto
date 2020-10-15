@@ -1,55 +1,86 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeApplications #-}
 module Language.Yatima where
 
-import Language.Yatima.Import
-import Language.Yatima.IPFS
-import Language.Yatima.IPLD
-import Language.Yatima.Uses
-
-import qualified Language.Yatima.Ctx as Ctx
-import           Language.Yatima.Ctx (Ctx, (<|))
-
-import qualified Language.Yatima.Core as Core
-import Language.Yatima.Core (HOAS(..), PreContext, CheckErr, defToHoas)
-
-import Language.Yatima.Print (prettyTerm)
-import qualified Language.Yatima.Print as Print
-
-import Language.Yatima.Parse (parseTerm, unsafeParseTerm)
-import qualified Language.Yatima.Parse as Parse
-
-import qualified Language.Yatima.Term as Term
-import Language.Yatima.Term (Term(..), Name, Def(..), Defs)
+import           Language.Yatima.CID
+import           Language.Yatima.Package
+import           Language.Yatima.Import
+--import           Language.Yatima.IPFS
+import           Language.Yatima.IPLD
+import           Language.Yatima.Uses
+import           Language.Yatima.Ctx    (Ctx, (<|))
+import qualified Language.Yatima.Ctx    as Ctx
+import           Language.Yatima.Core   (CheckErr,HOAS (..),PreContext,defToHoas)
+import qualified Language.Yatima.Core   as Core
+import           Language.Yatima.Print  (prettyTerm)
+import qualified Language.Yatima.Print  as Print
+import           Language.Yatima.Parse  (parseTerm, unsafeParseTerm)
+import qualified Language.Yatima.Parse  as Parse
+import           Language.Yatima.Term   (Def (..), Defs, Name, Term (..))
+import qualified Language.Yatima.Term   as Term
 
 import           Control.Monad.Except
+import           Control.Monad.Catch
+
+import           Data.ByteString        (ByteString)
+import qualified Data.ByteString        as BS
 import           Data.IORef
-import           Data.Set                   (Set)
-import qualified Data.Set                   as Set
-import           Data.Map                   (Map)
-import qualified Data.Map                   as M
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import           Data.Sequence (Seq(..))
-import qualified Data.Sequence as Seq
+import           Data.Map               (Map)
+import qualified Data.Map               as M
+import           Data.Sequence          (Seq (..))
+import qualified Data.Sequence          as Seq
+import           Data.Set               (Set)
+import qualified Data.Set               as Set
+import           Data.Text              (Text)
+import qualified Data.Text              as T
 
-import           System.Directory
+import           Debug.Trace
 
-loadFile :: FilePath -> FilePath -> IO (CID,Package)
-loadFile root file = do
-  unless (root == "") (setCurrentDirectory root)
-  cwd <- getCurrentDirectory
-  putStrLn $ concat ["Loading ", file, " from ", cwd]
-  createDirectoryIfMissing True ".yatima/cache"
-  env   <- newIORef (PackageEnv root Set.empty Set.empty)
-  pFile env file
+import           Path
+import           Path.IO
+
+findYatimaRoot :: Path a Dir -> IO (Path Abs Dir)
+findYatimaRoot dir = makeAbsolute dir >>= go
+  where
+    go :: Path Abs Dir -> IO (Path Abs Dir)
+    go dir = do
+      (ds,_) <- listDir dir
+      let yati = dir </> [reldir|.yatima|]
+      if | elem yati ds      -> return dir
+         | parent dir == dir -> fail $
+             "Could not find .yatima project root for: " ++ (toFilePath dir)
+         | otherwise          -> go (parent dir)
+
+initYatimaRoot :: Path a Dir -> IO ()
+initYatimaRoot dir = do
+  ensureDir (dir </> [reldir|.yatima/cache|])
+  return ()
+
+parseFilePath :: FilePath -> IO (Path Abs File)
+parseFilePath file =
+  catch @IO @PathException (parseAbsFile file) $ \e ->
+  catch @IO @PathException (parseRelFile file >>= makeAbsolute) $ \ e ->
+  fail ("Invalid File name: " ++ file)
+
+loadFile :: FilePath -> IO (Path Abs Dir,CID,Package)
+loadFile file = do
+  path    <- parseFilePath file
+  root    <- findYatimaRoot (parent path)
+  putStrLn $ concat ["Loading ", file, " from root ", (toFilePath root)]
+  env     <- newIORef (PackageEnv root Set.empty M.empty)
+  relPath <- makeRelative root path
+  (c,p)   <- withCurrentDir root (pFile env relPath)
+  return (root,c,p)
 
 -- | Parse and pretty-print a file
-prettyFile :: FilePath -> FilePath -> IO ()
-prettyFile root file = do
-  index <- _index . snd <$> (loadFile root file)
-  cache <- readCache
+prettyFile :: FilePath -> IO ()
+prettyFile file = do
+  (r,c,p) <- loadFile file
+  let index = _index p
+  cache <- readCache r
   defs  <- catchErr $ indexToDefs index cache
   M.traverseWithKey (go index) defs
   return ()
@@ -61,17 +92,17 @@ prettyFile root file = do
       putStrLn $ T.unpack $ Print.prettyDef nam def
       return ()
 
-checkFile :: FilePath -> FilePath -> IO (CID,Package)
-checkFile root file = do
-  (cid,p) <- loadFile root file
+checkFile :: FilePath -> IO (CID,Package)
+checkFile file = do
+  (r,c,p) <- loadFile file
   let index = _index p
-  cache <- readCache
+  cache <- readCache r
   forM_ (M.toList $ (_byName index)) (checkRef index cache)
-  return (cid,p)
+  return (c,p)
 
 checkRef ::  Index -> Cache -> (Name, CID) -> IO ()
 checkRef index cache (name,cid) = do
-  def  <- liftIO $ catchErr $ derefMetaDefCID name cid index cache
+  def  <- liftIO $ catchErr $ derefDagDefCID name cid index cache
   defs <- liftIO $ catchErr $ indexToDefs index cache
   let (trm,typ) = defToHoas name def
   case runExcept $ Core.check defs Ctx.empty Once trm typ of
@@ -82,20 +113,14 @@ checkRef index cache (name,cid) = do
     Right (_,t) -> putStrLn $ T.unpack $ T.concat
         ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
 
-catchErr:: Show e => Except e a -> IO a
-catchErr x = do
-  case runExcept x of
-    Right x -> return x
-    Left  e -> putStrLn (show e) >> fail ""
-
 -- | Evaluate a `HOAS` from a file
 normDef :: Name -> FilePath -> FilePath -> IO HOAS
-normDef name root file = do
-  (_,p) <- loadFile root file
+normDef name dir file = do
+  (r,c,p) <- loadFile file
   let index = _index p
-  cache <- readCache
+  cache <- readCache r
   cid   <- catchErr (indexLookup name index)
-  def   <- catchErr (derefMetaDefCID name cid index cache)
+  def   <- catchErr (derefDagDefCID name cid index cache)
   defs  <- catchErr (indexToDefs index cache)
   return $ Core.norm defs (fst $ defToHoas name def)
 
@@ -128,7 +153,8 @@ synth defs term typ_ =
   let hType = Core.termToHoas Ctx.empty typ_ in
   case runExcept (Core.synth defs hTerm hType) of
     Left err -> Left err
-    Right tt -> Right (Core.hoasToTerm Ctx.empty (fst tt), Core.hoasToTerm Ctx.empty (snd tt))
+    Right tt -> Right $
+      (Core.hoasToTerm Ctx.empty (fst tt), Core.hoasToTerm Ctx.empty (snd tt))
 
 prettyInfer :: Defs -> Term -> Text
 prettyInfer defs term = case infer defs term of

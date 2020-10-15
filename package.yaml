@@ -22,6 +22,8 @@ library:
     - Language.Yatima.Print
     - Language.Yatima.Parse
     - Language.Yatima.DagJSON
+    - Language.Yatima.DagAST
+    - Language.Yatima.Package
     - Language.Yatima.Import
     - Language.Yatima.Core
     - Language.Yatima.Ctx
@@ -35,7 +37,9 @@ library:
     - mtl
     - megaparsec
 
-    - directory
+    - path
+    - path-io
+    - exceptions
 
     - serialise
     - bytestring
@@ -79,6 +83,8 @@ executables:
       - megaparsec
       - haskeline
       - process
+      - path
+      - path-io
       # - serialise
       # - bytestring
       # - base16-bytestring

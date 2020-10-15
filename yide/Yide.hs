@@ -8,6 +8,7 @@ import           Control.Monad.Trans
 import           Control.Monad.Except
 
 import           Text.Megaparsec                         hiding (State)
+import           Text.Megaparsec                         hiding (State)
 
 import           Data.List                               (isPrefixOf)
 import           Data.Map.Strict                         (Map)
@@ -17,6 +18,7 @@ import           Data.Set                                (Set)
 import qualified Data.Set                                as Set
 import           Data.Text                               (Text)
 import qualified Data.Text                               as T
+import           Data.Char
 
 import           System.Process                          (callCommand)
 
@@ -24,8 +26,13 @@ import qualified System.Console.Haskeline                as H
 import           System.Console.Haskeline.Completion
 import           System.Console.Haskeline.MonadException
 
+import           Path
+import           Path.IO
+
 import           HaskelineT
 
+import           Language.Yatima.CID
+import           Language.Yatima.Package
 import qualified Language.Yatima.Ctx as Ctx
 import           Language.Yatima.Term
 import qualified Language.Yatima.Core as Core
@@ -38,7 +45,7 @@ import           Language.Yatima
 
 data YideState = YideState
   { _yDefs :: Index
-  , _yRoot :: FilePath
+  , _yRoot :: Path Abs Dir
   }
 
 emptyYideState root = YideState emptyIndex root
@@ -78,7 +85,7 @@ data Command
   = Eval Term
   | Defn Name Def
   | Type Name
-  | Load FilePath
+  | Load (Path Abs File)
   | Import CID
   | Quit
   | Help
@@ -95,8 +102,9 @@ parseLine = do
     , (symbol ":type" <|> symbol ":t") >> Type <$> (pName False)
     , do
         (symbol ":load" <|> symbol ":l")
-        nam <- pPackageName
-        return $ Load $ (T.unpack nam) ++ ".ya"
+        nam  <- takeWhile1P Nothing (not . isSpace)
+        path <- liftIO $ parseFilePath (T.unpack nam)
+        return $ Load path
     --, (symbol ":with" <|> symbol ":w") >> Import <$> pCID
     , try pDef >>= (\(n,d) -> return $ Defn n d)
     , Eval <$> pExpr False
@@ -120,7 +128,8 @@ process line = dontCrash' $ do
     procCommand c = case c of
       Browse -> do
         index <- gets _yDefs
-        cache  <- liftIO $ readCache
+        root  <- gets _yRoot
+        cache  <- liftIO $ readCache root
         defs  <- catchReplErr $ indexToDefs index cache
         let go cids nam def = do
               putStrLn ""
@@ -133,7 +142,8 @@ process line = dontCrash' $ do
       -- Quit   -> abort
       Type n -> do
         index <- gets _yDefs
-        cache <- liftIO $ readCache
+        root  <- gets _yRoot
+        cache <- liftIO $ readCache root
         def   <- catchReplErr $ deref n index cache
         defs  <- catchReplErr $ indexToDefs index cache
         let (trm,typ) = Core.defToHoas "^" def
@@ -142,7 +152,8 @@ process line = dontCrash' $ do
         return ()
       Eval t -> do
         index    <- gets _yDefs
-        cache    <- liftIO $ readCache
+        root     <- gets _yRoot
+        cache    <- liftIO $ readCache root
         t        <- catchReplErr (validateTerm t [] index cache)
         defs     <- catchReplErr (indexToDefs index cache)
         let hterm = Core.termToHoas Ctx.empty t
@@ -152,20 +163,26 @@ process line = dontCrash' $ do
         return ()
       Defn nam def -> do
         index  <- gets _yDefs
-        cache  <- liftIO $ readCache
+        root   <- gets _yRoot
+        cache  <- liftIO $ readCache root
         defs   <- catchReplErr (indexToDefs index cache)
         let (trm,typ) = Core.defToHoas nam def
         catchReplErr (Core.check defs Ctx.empty Once trm typ)
         (i',c') <- catchReplErr (insertDefs [(nam,def)] index cache)
         modify (\e -> e {_yDefs = i'})
-        liftIO $ writeCache c'
+        liftIO $ writeCache root c'
         return ()
       Load file -> do
-        root  <- gets _yRoot
         index <- gets _yDefs
-        (cid,p) <- liftIO $ checkFile root file
-        modify (\e -> e {_yDefs = mergeIndex index (_index p)})
-        return ()
+        (cid,p) <- liftIO $ checkFile (toFilePath file)
+        case mergeIndex index (_index p) of
+          Left (n1,c1,n2,c2) -> do
+            let err = ConflictingImportNames (_title p) cid (n1,c1) (n2,c2)
+            liftIO $ putStrLn (show err)
+            return ()
+          Right index -> do
+            modify (\e -> e {_yDefs = index})
+            return ()
 
 
 

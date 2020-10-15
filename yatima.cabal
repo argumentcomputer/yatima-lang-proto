@@ -27,6 +27,8 @@ library
       Language.Yatima.Print
       Language.Yatima.Parse
       Language.Yatima.DagJSON
+      Language.Yatima.DagAST
+      Language.Yatima.Package
       Language.Yatima.Import
       Language.Yatima.Core
       Language.Yatima.Ctx
@@ -45,7 +47,7 @@ library
     , cborg
     , containers
     , cryptonite
-    , directory
+    , exceptions
     , http-client
     , http-client-tls
     , http-types
@@ -55,6 +57,8 @@ library
     , mtl
     , multibase
     , multihash-cryptonite
+    , path
+    , path-io
     , scientific
     , serialise
     , servant
@@ -80,6 +84,8 @@ executable yide
     , haskeline
     , megaparsec
     , mtl
+    , path
+    , path-io
     , process
     , text
     , yatima

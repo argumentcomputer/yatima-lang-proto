@@ -45,7 +45,9 @@ module Language.Yatima.Parse
   , pDefs
   , pDoc
   , symbol
+  , symbol'
   , space
+  , space'
   , defaultParseEnv
   , parseTerm
   , unsafeParseTerm
@@ -93,8 +95,8 @@ data ParseErr e
   = UndefinedReference Name
   | TopLevelRedefinition Name
   | ReservedKeyword Name
+  | ReservedLeadingChar Char Name
   | LeadingDigit Name
-  | LeadingApostrophe Name
   | ParseEnvironmentError e
   deriving (Eq, Ord,Show)
 
@@ -107,8 +109,8 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
     "Reserved keyword: " ++ T.unpack nam
   showErrorComponent (LeadingDigit nam) = 
     "illegal leading digit in name: " ++ T.unpack nam
-  showErrorComponent (LeadingApostrophe nam) =
-    "illegal leading apostrophe in name: " ++ T.unpack nam
+  showErrorComponent (ReservedLeadingChar c nam) =
+    "illegal leading character " ++ ['"',c,'"'] ++ " in name: " ++ T.unpack nam
   showErrorComponent (ParseEnvironmentError e) = showErrorComponent e
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
@@ -156,25 +158,21 @@ pName bind = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
   ns <- many (alphaNumChar <|> oneOf nameSymbol)
   let nam = T.pack (n : ns)
   if | isDigit n                 -> customFailure $ LeadingDigit nam
-     | n == '\''                 -> customFailure $ LeadingApostrophe nam
+     | isReservedLead n          -> customFailure $ ReservedLeadingChar n nam
      | nam `Set.member` keywords -> customFailure $ ReservedKeyword nam
      | otherwise -> return nam
   where
-    nameSymbol = if bind then "_'" else "_'/" :: [Char]
+    isReservedLead n = n `elem` ("'-" :: [Char])
+    syms             = "_'-" :: [Char]
+    nameSymbol       = if bind then syms else syms ++ "/"
 
 keywords :: Set Text
 keywords = Set.fromList $
   [ "let"
   , "if"
-  , "for"
-  , "var"
-  , "then"
-  , "else"
   , "where"
-  , "case"
   , "def"
-  , "define"
-  , "*"
+  , "Type"
   ]
 
 
@@ -193,6 +191,9 @@ space' = space1 >> space
 symbol :: (Ord e, Monad m) => Text -> Parser e m Text
 symbol txt = L.symbol space txt
 
+symbol' :: (Ord e, Monad m) => Text -> Parser e m Text
+symbol' txt = L.symbol space' txt
+
 -- | Add a list of names to the binding context
 bind :: (Ord e, Monad m) => [Name] -> Parser e m a -> Parser e m a
 bind bs p =
@@ -210,15 +211,15 @@ pUsesAnnotation = choice
   , symbol "1"       >> return Once
   ]
 
--- | Parse an any: @*@
+-- | Parse the type of types: @Type@
 pTyp :: (Ord e, Monad m) => Parser e m Term
-pTyp = label "an any: \"*\"" $ do
-  string "*"
+pTyp = label "a type: \"Type\"" $ do
+  string "Type"
   return $ Typ
 
 pBinder :: (Ord e, Monad m) => Bool -> Parser e m [(Name,Uses, Term)]
 pBinder namOptional = choice
-  [ ann
+  [ try $ ann
   , if namOptional then unNam else empty
   ]
   where

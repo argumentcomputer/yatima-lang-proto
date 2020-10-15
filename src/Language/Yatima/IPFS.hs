@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Language.Yatima.IPFS where
 
 import           Control.Monad
@@ -26,12 +27,16 @@ import           Servant.Client
 import qualified Servant.Client.Streaming as S
 import           Servant.Types.SourceT
 
-import           System.Directory
+import           Path
+import           Path.IO
 
 import           Codec.Serialise
 
+import           Language.Yatima.CID
 import           Language.Yatima.IPLD
 import           Language.Yatima.DagJSON
+import           Language.Yatima.DagAST
+import           Language.Yatima.Package
 import           Language.Yatima.Import
 import           Language.Yatima.Term
 
@@ -46,7 +51,7 @@ dagPut :: BSL.ByteString -> Maybe Text -> Maybe Text -> Maybe Bool -> Maybe Text
        -> ClientM Value
 dagPut = client (Proxy :: Proxy ApiV0DagPut)
 
-dagPutAST :: Maybe Bool -> AST -> ClientM Value
+dagPutAST :: Maybe Bool -> AnonAST -> ClientM Value
 dagPutAST pin ast =
   dagPut (serialise ast) (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
 
@@ -59,7 +64,7 @@ dagGet = S.client (Proxy :: Proxy ApiV0DagGet)
 blockGet :: Text -> S.ClientM (SourceIO BS.ByteString)
 blockGet = S.client (Proxy :: Proxy ApiV0BlockGet)
 
-runDagPutAST :: AST -> IO ()
+runDagPutAST :: AnonAST -> IO ()
 runDagPutAST ast = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
@@ -98,21 +103,18 @@ runBlockGet cid_txt = do
     Left err -> putStrLn $ "Error: " ++ show err
     Right rs -> foreach fail BS.putStr rs
 
-runDagPutFile :: FilePath -> FilePath -> IO (Either ClientError Value)
-runDagPutFile root file = do
-  unless (root == "") (setCurrentDirectory root)
-  putStrLn file
+runDagPutFile :: Path Abs File -> IO (Either ClientError Value)
+runDagPutFile file = do
   manager' <- newManager defaultManagerSettings
-  bs <- BS.readFile (root ++ ".yatima/cache/" ++ file)
+  bs <- BS.readFile (toFilePath file)
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
   let client = (dagPutBytes (Just True) . BSL.fromStrict) bs
   runClientM client env
 
-runDagPutCache :: FilePath -> IO ()
+runDagPutCache :: Path Abs Dir -> IO ()
 runDagPutCache root = do
-  unless (root == "") (setCurrentDirectory root)
   manager' <- newManager defaultManagerSettings
-  cache  <- readCache
+  Cache cache    <- readCache root
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
   let client = traverse (dagPutBytes (Just True) . BSL.fromStrict) cache
   res <- runClientM client env
@@ -120,21 +122,20 @@ runDagPutCache root = do
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
 
-runDagPutCache' :: FilePath -> IO ()
+runDagPutCache' :: Path Abs Dir -> IO ()
 runDagPutCache' root = do
-  unless (root == "") (setCurrentDirectory root)
-  ns <- listDirectory ".yatima/cache"
+  (_,ns) <- listDir (cacheDir root)
   traverse go ns
   return ()
   where
-    go :: FilePath -> IO ()
+    go :: Path Abs File -> IO ()
     go f = do
-      bs <- BS.readFile (root ++ ".yatima/cache/" ++ f)
-      case cidFromText (T.pack f) of
-        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ f ++ ", " ++ e
+      bs <- BS.readFile (toFilePath f)
+      case cidFromText (T.pack $ toFilePath f) of
+        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ (toFilePath f) ++ ", " ++ e
         Right c -> do
           putStrLn $ (T.unpack $ printCIDBase32 c)
-          e <- runDagPutFile root f
+          e <- runDagPutFile f
           case e of
             Left e  -> print e >> return ()
             Right v -> print v >> return ()
@@ -154,14 +155,13 @@ runSwarmConnect text = do
 runConnectEternum :: IO ()
 runConnectEternum = runSwarmConnect "/dns4/door.eternum.io/tcp/4001/ipfs/QmVBxJ5GekATHi89H8jbXjaU6CosCnteomjNR5xar2aH3q"
 
-runEternumPinFile :: FilePath -> FilePath -> IO ()
-runEternumPinFile root file = do
-  unless (root == "") (setCurrentDirectory root)
+runEternumPinHash :: Path Abs Dir -> Text -> IO ()
+runEternumPinHash root hash = do
   manager' <- newTlsManager
-  cache  <- readCache
-  token  <- BS.readFile (root <> ".yatima/eternum_token")
+  cache  <- readCache (cacheDir root)
+  token  <- BS.readFile (toFilePath $ root </> [reldir|.yatima/eternum_token|])
   initReq <- parseRequest "https://www.eternum.io/api/pin/"
-  let reqObj = object ["hash" .= ((T.pack file) :: Text)]
+  let reqObj = object ["hash" .= hash]
   let req = initReq
         { method = "POST"
         , requestHeaders = 
@@ -175,31 +175,30 @@ runEternumPinFile root file = do
   print $ Network.HTTP.Client.responseBody resp
   return ()
 
-runPinataPinFile :: FilePath -> FilePath -> IO ()
-runPinataPinFile root file = do
-  unless (root == "") (setCurrentDirectory root)
-  manager' <- newTlsManager
-  cache  <- readCache
-  pub  <- BS.readFile (root <> ".yatima/pinata_pub_key")
-  key  <- BS.readFile (root <> ".yatima/pinata_secret_key")
-  initReq <- parseRequest "https://api.pinata.cloud/pinning/pinByHash"
-  let opts   = object ["hostNodes" .= ["/dns4/door.eternum.io/tcp/4001/ipfs/QmVBxJ5GekATHi89H8jbXjaU6CosCnteomjNR5xar2aH3q" :: Text]]
-  let reqObj = object ["hashToPin" .= ((T.pack file) :: Text)
-                      ,"pinataOptions" .= opts
-                      ]
-  let req = initReq
-        { method = "POST"
-        , requestHeaders = 
-          [ (hContentType, "application/json")
-          , ("pinata_api_key",pub)
-          , ("pinata_secret_api_key",key)
-          ]
-        , requestBody = RequestBodyLBS $ Data.Aeson.encode reqObj
-        }
-  resp <- httpLbs req manager'
-  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
-  print $ Network.HTTP.Client.responseBody resp
-  return ()
+--runPinataPinFile :: FilePath -> FilePath -> IO ()
+--runPinataPinFile cacheDir file = do
+--  manager' <- newTlsManager
+--  cache    <- readCache cacheDir
+--  pub  <- BS.readFile (cacheDir </> ".yatima/pinata_pub_key")
+--  key  <- BS.readFile (cacheDir </> ".yatima/pinata_secret_key")
+--  initReq <- parseRequest "https://api.pinata.cloud/pinning/pinByHash"
+--  let opts   = object ["hostNodes" .= ["/dns4/door.eternum.io/tcp/4001/ipfs/QmVBxJ5GekATHi89H8jbXjaU6CosCnteomjNR5xar2aH3q" :: Text]]
+--  let reqObj = object ["hashToPin" .= ((T.pack file) :: Text)
+--                      ,"pinataOptions" .= opts
+--                      ]
+--  let req = initReq
+--        { method = "POST"
+--        , requestHeaders = 
+--          [ (hContentType, "application/json")
+--          , ("pinata_api_key",pub)
+--          , ("pinata_secret_api_key",key)
+--          ]
+--        , requestBody = RequestBodyLBS $ Data.Aeson.encode reqObj
+--        }
+--  resp <- httpLbs req manager'
+--  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
+--  print $ Network.HTTP.Client.responseBody resp
+--  return ()
 
 --runInfuraPinFile :: FilePath -> FilePath -> IO ()
 --runInfuraPinFile root file = do
@@ -223,20 +222,19 @@ runPinataPinFile root file = do
 --  print $ Network.HTTP.Client.responseBody resp
 --  return ()
 
-runEternumPinCache :: FilePath -> IO ()
-runEternumPinCache root = do
-  unless (root == "") (setCurrentDirectory root)
-  ns <- listDirectory ".yatima/cache"
-  traverse go ns
-  return ()
-  where
-    go :: FilePath -> IO ()
-    go f = do
-      bs <- BS.readFile (root ++ ".yatima/cache/" ++ f)
-      case cidFromText (T.pack f) of
-        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ f ++ ", " ++ e
-        Right c -> do
-          putStrLn $ (T.unpack $ printCIDBase32 c)
-          runEternumPinFile root f
-          return ()
+--runEternumPinCache :: Path Abs Dir -> IO ()
+--runEternumPinCache root = do
+--  (_,ns) <- listDir (cacheDir root)
+--  traverse go ns
+--  return ()
+--  where
+--    go :: Path Abs File -> IO ()
+--    go f = do
+--      bs <- BS.readFile (toFilePath f)
+--      case cidFromText (T.pack f) of
+--        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ (toFilePath f) ++ ", " ++ e
+--        Right c -> do
+--          putStrLn $ (T.unpack $ printCIDBase32 c)
+--          runEternumPinFile root f
+--          return ()
 

@@ -17,6 +17,8 @@ import qualified Data.Text                            as T
 
 import           Language.Yatima.CID
 import           Language.Yatima.IPLD
+import           Language.Yatima.Package
+import           Language.Yatima.DagAST
 import           Language.Yatima.Term
 import           Language.Yatima.Uses
 
@@ -34,7 +36,7 @@ deriving instance Bounded Uses
 instance Arbitrary Uses where
   arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary AST where
+instance Arbitrary AnonAST where
   arbitrary = oneof
     [ Vari <$> arbitrary
     , Link <$> arbitrary
@@ -50,15 +52,18 @@ instance Arbitrary AST where
 instance Arbitrary Meta where
   arbitrary = Meta <$> arbitrary
 
-instance Arbitrary ASTDef where
-  arbitrary = ASTDef <$> arbitrary <*> arbitrary
+instance Arbitrary AnonDef where
+  arbitrary = AnonDef <$> arbitrary <*> arbitrary
 
-deriving instance Eq ASTDef
+deriving instance Eq AnonDef
 
-instance Arbitrary MetaDef where
-  arbitrary = MetaDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+instance Arbitrary DagDef where
+  arbitrary = DagDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
-deriving instance Eq MetaDef
+deriving instance Eq DagDef
+
+instance Arbitrary Imports where
+  arbitrary = Imports <$> arbitrary
 
 instance Arbitrary Index where
   arbitrary = Index <$> arbitrary <*> arbitrary
@@ -78,7 +83,7 @@ test_defs =
   let trm = Lam "A" (Lam "x" (Var "x"))
       typ = All "" "A" Many Typ (All "" "x" Many (Var "A") (Var "A"))
       def = Def "" trm typ
-      Right (cid, cache) = runExcept (insertDef "id" def emptyIndex M.empty)
+      Right (cid, cache) = runExcept (insertDef "id" def emptyIndex (Cache M.empty))
    in (Index (M.singleton "id" cid) (M.singleton cid "id"), cache)
 
 test_index = fst test_defs
@@ -124,9 +129,9 @@ spec = do
   describe "Checking serialisation correctness: `x == deserialise (serialise x)`" $ do
     it "Cid"  $ property $ prop_serial @CID
     it "Meta" $ property $ prop_serial @Meta
-    it "Anon" $ property $ prop_serial @AST
-    it "ASTDef" $ property $ prop_serial @ASTDef
-    it "MetaDef" $ property $ prop_serial @MetaDef
+    it "Anon" $ property $ prop_serial @AnonAST
+    it "ASTDef" $ property $ prop_serial @AnonDef
+    it "DagDef" $ property $ prop_serial @DagDef
     it "Package" $ property $ prop_serial @Index
     it "Package" $ property $ prop_serial @Package
   describe "Checking metadata separation correctness" $

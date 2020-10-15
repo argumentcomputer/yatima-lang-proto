@@ -52,7 +52,7 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       App func argm           -> apps func argm
       Let nam use typ exp bod -> mconcat
         ["let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
-      Typ                     -> "*"
+      Typ                     -> "Type"
 
     lams :: Name -> Term -> TB.Builder
     lams nam (Lam nam' bod') = mconcat [" ", name nam, lams nam' bod']
