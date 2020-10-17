@@ -343,6 +343,9 @@ pTerm = do
   choice
     [ pLam
     , pAll
+    , pSlf
+    , pUse
+    , pNew
     , pHol
     , pTyp
     , symbol "(" >> pExpr True <* space <* string ")"
