@@ -459,12 +459,13 @@ termToAST n t index cache =
         b' <- go b (n:ctx)
         return $ Ctor "Let" [usesToAST u, t', Bind x', Bind b']
       Typ                   -> bump >> return (Ctor "Typ" [])
-      All s n u t b         -> do
-        bind s >> bump
-        bind n >> bump
-        t' <- go t ctx
-        b' <- go b (n:s:ctx)
-        return $ Ctor "All" [usesToAST u, t', Bind (Bind b')]
+      -- TODO
+      -- All s n u t b         -> do
+      --   bind s >> bump
+      --   bind n >> bump
+      --   t' <- go t ctx
+      --   b' <- go b (n:s:ctx)
+      --   return $ Ctor "All" [usesToAST u, t', Bind (Bind b')]
 
 -- | Find a name in the binding context and return its index
 lookupNameCtx :: Int -> [Name] -> Maybe Name
@@ -530,13 +531,14 @@ astToTerm n index anon meta = do
           bump
           Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
         ("Typ",[]) -> bump >> return Typ
-        ("All",[Ctor u [], t, Bind (Bind b)]) -> do
-          u <- uses u ctx
-          s <- get >>= name
-          bump
-          n <- get >>= name
-          bump
-          All s n u <$> go t ctx <*> go b (n:s:ctx)
+        -- TODO
+        -- ("All",[Ctor u [], t, Bind (Bind b)]) -> do
+        --   u <- uses u ctx
+        --   s <- get >>= name
+        --   bump
+        --   n <- get >>= name
+        --   bump
+        --   All s n u <$> go t ctx <*> go b (n:s:ctx)
         (c, b) -> get >>= \i -> throwError $ UnexpectedCtor c b ctx i
 
 insertDef :: Monad m => Name -> Def -> Index -> Cache
@@ -587,7 +589,8 @@ validateTerm trm ctx index cache = case trm of
   Let nam use typ exp bod ->
     Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
   Typ                     -> return Typ
-  All slf nam use typ bod -> All slf nam use <$> go typ <*> bind2 slf nam bod
+  -- TODO
+  -- All slf nam use typ bod -> All slf nam use <$> go typ <*> bind2 slf nam bod
   Ann trm typ             -> Ann <$> go trm <*> go typ
   where
     go t        = validateTerm t ctx index cache

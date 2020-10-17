@@ -253,28 +253,31 @@ pLam = label "a lambda: \"λ x y => y\"" $ do
   return (foldLam body vars)
 
 foldAll :: Term -> [(Name, Name, Uses, Term)] -> Term
-foldAll body bs = foldr (\(s,n,u,t) x -> All s n u t x) body bs
+-- TODO foldAll body bs = foldr (\(s,n,u,t) x -> All s n u t x) body bs
+foldAll = foldAll
 
 bindAll :: (Ord e, Monad m) => [(Name,Name,Uses,Term)] -> Parser e m a -> Parser e m a
-bindAll bs = bind (foldr (\(s,n,_,_) ns -> s:n:ns) [] bs)
+-- TODO bindAll bs = bind (foldr (\(s,n,_,_) ns -> s:n:ns) [] bs)
+bindAll = bindAll
 
 fst3 (x,y,z) = x
 
 -- | Parse a forall: @∀ (a: A) (b: B) (c: C) -> body@
 pAll :: (Ord e, Monad m) => Parser e m Term
-pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
-  self <- (symbol "@" >> (pName True) <* space) <|> return ""
-  symbol "∀" <|> symbol "all" <|> symbol "forall"
-  binds <- binders self <* space
-  body  <- bindAll binds (pExpr False)
-  return $ foldAll body binds
-  where
-    binder  = pBinder True
-    binders self = do
-     ((n,u,t):ns)  <- binder <* space
-     let b  = ((self,n,u,t) : ((\(n,u,t) -> ("",n,u,t)) <$> ns))
-     bs <- bindAll b $ ((symbol "->" >> return []) <|> binders "")
-     return $ b ++ bs
+pAll = pAll
+-- pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
+--   self <- (symbol "@" >> (pName True) <* space) <|> return ""
+--   symbol "∀" <|> symbol "all" <|> symbol "forall"
+--   binds <- binders self <* space
+--   body  <- bindAll binds (pExpr False)
+--   return $ foldAll body binds
+--   where
+--     binder  = pBinder True
+--     binders self = do
+--      ((n,u,t):ns)  <- binder <* space
+--      let b  = ((self,n,u,t) : ((\(n,u,t) -> ("",n,u,t)) <$> ns))
+--      bs <- bindAll b $ ((symbol "->" >> return []) <|> binders "")
+--      return $ b ++ bs
 
 pDecl :: (Ord e, Monad m) => Bool -> Parser e m (Name, Term, Term)
 pDecl shadow = do
