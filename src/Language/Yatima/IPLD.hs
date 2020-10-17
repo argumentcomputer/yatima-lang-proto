@@ -82,7 +82,7 @@ data MetaDef = MetaDef
   , _typeMeta  :: Meta
   } deriving Show
 
-data Index = Index 
+data Index = Index
   { _byName :: Map Name CID
   , _byCID  :: Map CID Name
   } deriving (Eq,Show)
@@ -110,7 +110,7 @@ data Package = Package
 
 encodeAST :: AST -> Encoding
 encodeAST term = case term of
-  Ctor n ts -> encodeListLen 3 
+  Ctor n ts -> encodeListLen 3
     <> encodeInt 0
     <> encodeString n
     <> encodeListLen (fromIntegral $ length ts)
@@ -390,7 +390,7 @@ derefMetaDef name index metaDef cache = do
   typ_    <- astToTerm name index typeAST (_typeMeta metaDef)
   return $ Def (_document metaDef) term typ_
 
-derefMetaDefCID :: Monad m => Name -> CID -> Index -> Cache 
+derefMetaDefCID :: Monad m => Name -> CID -> Index -> Cache
                 -> ExceptT IPLDErr m Def
 derefMetaDefCID name cid index cache = do
   mdCID   <- indexLookup name index
@@ -406,7 +406,7 @@ usesToAST Affi = Ctor "Affi" []
 usesToAST Once = Ctor "Once" []
 usesToAST Many = Ctor "Many" []
 
-termToAST :: Monad m => Name -> Term -> Index -> Cache 
+termToAST :: Monad m => Name -> Term -> Index -> Cache
           -> ExceptT IPLDErr m (AST, Meta)
 termToAST n t index cache =
   case runState (runExceptT (go t [n])) meta  of
@@ -443,12 +443,20 @@ termToAST n t index cache =
         return $ Ctor "Lam" [Bind b']
       App f a               -> do
         bump
-        f' <- go f ctx 
+        f' <- go f ctx
         a' <- go a ctx
         return $ Ctor "App" [f', a']
+      New e                 -> do
+        bump
+        e' <- go e ctx
+        return $ Ctor "New" [e']
+      Use e                 -> do
+        bump
+        e' <- go e ctx
+        return $ Ctor "Use" [e']
       Ann v t               -> do
         bump
-        v' <- go v ctx 
+        v' <- go v ctx
         t' <- go t ctx
         return $ Ctor "Ann" [v', t']
       Let n u t x b         -> do
@@ -460,10 +468,16 @@ termToAST n t index cache =
         return $ Ctor "Let" [usesToAST u, t', Bind x', Bind b']
       Typ                   -> bump >> return (Ctor "Typ" [])
       All n u t b         -> do
-        bind n >> bump
+        bind n
+        bump
         t' <- go t ctx
         b' <- go b (n:ctx)
         return $ Ctor "All" [usesToAST u, t', Bind (Bind b')]
+      Slf n b               -> do
+        bind n
+        bump
+        b' <- go b (n:ctx)
+        return $ Ctor "Slf" [Bind b']
 
 -- | Find a name in the binding context and return its index
 lookupNameCtx :: Int -> [Name] -> Maybe Name
@@ -522,6 +536,8 @@ astToTerm n index anon meta = do
           bump
           Lam n <$> go b (n:ctx)
         ("App",[f,a]) -> bump >> App <$> go f ctx <*> go a ctx
+        ("New",[e])   -> bump >> New <$> go e ctx
+        ("Use",[e])   -> bump >> Use <$> go e ctx
         ("Ann",[v,t]) -> bump >> Ann <$> go v ctx <*> go t ctx
         ("Let",[Ctor u [],t,Bind x, Bind b]) -> do
           n <- get >>= name
@@ -534,6 +550,10 @@ astToTerm n index anon meta = do
           n <- get >>= name
           bump
           All n u <$> go t ctx <*> go b (n:ctx)
+        ("Slf",[Bind b]) -> do
+          n <- get >>= name
+          bump
+          Slf n <$> go b (n:ctx)
         (c, b) -> get >>= \i -> throwError $ UnexpectedCtor c b ctx i
 
 insertDef :: Monad m => Name -> Def -> Index -> Cache
@@ -572,7 +592,7 @@ emptyPackage n = Package n "" (makeCID BSL.empty) M.empty emptyIndex
 
 -- | Checks that all Refs in a term correspond to valid MetaDef cache entries
 -- and that the term has no free variables
-validateTerm :: Monad m => Term -> [Name] -> Index -> Cache 
+validateTerm :: Monad m => Term -> [Name] -> Index -> Cache
              -> ExceptT IPLDErr m Term
 validateTerm trm ctx index cache = case trm of
   Var nam                 -> case find nam ctx of
@@ -581,10 +601,13 @@ validateTerm trm ctx index cache = case trm of
   Ref nam                 -> makeLink nam index cache >> return (Ref nam)
   Lam nam bod             -> Lam nam <$> bind nam bod
   App fun arg             -> App <$> go fun <*> go arg
+  New exp                 -> New <$> go exp
+  Use exp                 -> Use <$> go exp
   Let nam use typ exp bod ->
     Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
   Typ                     -> return Typ
   All nam use typ bod     -> All nam use <$> go typ <*> bind nam bod
+  Slf nam bod             -> Slf nam <$> bind nam bod
   Ann trm typ             -> Ann <$> go trm <*> go typ
   where
     go t        = validateTerm t ctx index cache
