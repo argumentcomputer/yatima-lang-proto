@@ -179,12 +179,20 @@ termToAST n t index cache =
         return $ Ctor "Lam" [Bind b']
       App f a               -> do
         bump
-        f' <- go f ctx 
+        f' <- go f ctx
         a' <- go a ctx
         return $ Ctor "App" [f', a']
+      New e                 -> do
+        bump
+        e' <- go e ctx
+        return $ Ctor "New" [e']
+      Use e                 -> do
+        bump
+        e' <- go e ctx
+        return $ Ctor "Use" [e']
       Ann v t               -> do
         bump
-        v' <- go v ctx 
+        v' <- go v ctx
         t' <- go t ctx
         return $ Ctor "Ann" [v', t']
       Let n u t x b         -> do
@@ -195,12 +203,17 @@ termToAST n t index cache =
         b' <- go b (n:ctx)
         return $ Ctor "Let" [usesToAST u, t', Bind x', Bind b']
       Typ                   -> bump >> return (Ctor "Typ" [])
-      All s n u t b         -> do
-        bind s >> bump
-        bind n >> bump
+      All n u t b         -> do
+        bind n
+        bump
         t' <- go t ctx
-        b' <- go b (n:s:ctx)
+        b' <- go b (n:ctx)
         return $ Ctor "All" [usesToAST u, t', Bind (Bind b')]
+      Slf n b               -> do
+        bind n
+        bump
+        b' <- go b (n:ctx)
+        return $ Ctor "Slf" [Bind b']
 
 -- | Find a name in the binding context and return its index
 lookupNameCtx :: Int -> [Name] -> Maybe Name
@@ -259,6 +272,8 @@ astToTerm n index anon meta = do
           bump
           Lam n <$> go b (n:ctx)
         ("App",[f,a]) -> bump >> App <$> go f ctx <*> go a ctx
+        ("New",[e])   -> bump >> New <$> go e ctx
+        ("Use",[e])   -> bump >> Use <$> go e ctx
         ("Ann",[v,t]) -> bump >> Ann <$> go v ctx <*> go t ctx
         ("Let",[Ctor u [],t,Bind x, Bind b]) -> do
           n <- get >>= name
@@ -268,11 +283,13 @@ astToTerm n index anon meta = do
         ("Typ",[]) -> bump >> return Typ
         ("All",[Ctor u [], t, Bind (Bind b)]) -> do
           u <- uses u ctx
-          s <- get >>= name
-          bump
           n <- get >>= name
           bump
-          All s n u <$> go t ctx <*> go b (n:s:ctx)
+          All n u <$> go t ctx <*> go b (n:ctx)
+        ("Slf",[Bind b]) -> do
+          n <- get >>= name
+          bump
+          Slf n <$> go b (n:ctx)
         (c, b) -> get >>= \i -> throwError $ UnexpectedCtor c b ctx i
 
 insertDef :: Monad m => Name -> Def -> Index -> Cache
@@ -321,15 +338,17 @@ validateTerm trm ctx index cache = case trm of
   Ref nam                 -> makeLink nam index cache >> return (Ref nam)
   Lam nam bod             -> Lam nam <$> bind nam bod
   App fun arg             -> App <$> go fun <*> go arg
+  New exp                 -> New <$> go exp
+  Use exp                 -> Use <$> go exp
   Let nam use typ exp bod ->
     Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
   Typ                     -> return Typ
-  All slf nam use typ bod -> All slf nam use <$> go typ <*> bind2 slf nam bod
+  All nam use typ bod     -> All nam use <$> go typ <*> bind nam bod
+  Slf nam bod             -> Slf nam <$> bind nam bod
   Ann trm typ             -> Ann <$> go trm <*> go typ
   where
     go t        = validateTerm t ctx index cache
     bind    n t = validateTerm t (n:ctx) index cache
-    bind2 s n t = validateTerm t (n:s:ctx) index cache
 
 indexToDefs :: Monad m => Index -> Cache -> ExceptT IPLDErr m (Map Name Def)
 indexToDefs index cache = M.traverseWithKey go (_byName index)

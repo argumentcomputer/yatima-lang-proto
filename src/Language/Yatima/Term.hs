@@ -43,11 +43,17 @@ data Term where
   -- | Local variable
   Var :: Name -> Term
   -- | A forall
-  All :: Name -> Name -> Uses -> Term -> Term -> Term
+  All :: Name -> Uses -> Term -> Term -> Term
   -- | A lambda
   Lam :: Name -> Term -> Term
   -- | An application of a function to an argument
   App :: Term -> Term -> Term
+  -- | Self type
+  Slf :: Name -> Term -> Term
+  -- | Self introduction
+  New :: Term -> Term
+  -- | Self elimination
+  Use :: Term -> Term
   -- | An reference
   Ref :: Name -> Term
   -- | An inline local definition,

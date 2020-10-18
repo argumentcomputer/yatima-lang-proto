@@ -33,6 +33,9 @@ module Language.Yatima.Parse
   , pName
   , pLam
   , pAll
+  , pSlf
+  , pNew
+  , pUse
   , pTyp
   , pLet
   , pVar
@@ -115,7 +118,7 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
     "illegal redefinition of " ++ T.unpack nam
   showErrorComponent (ReservedKeyword nam) =
     "Reserved keyword: " ++ T.unpack nam
-  showErrorComponent (LeadingDigit nam) = 
+  showErrorComponent (LeadingDigit nam) =
     "illegal leading digit in name: " ++ T.unpack nam
   showErrorComponent (ReservedLeadingChar c nam) =
     "illegal leading character " ++ ['"',c,'"'] ++ " in name: " ++ T.unpack nam
@@ -135,7 +138,7 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
 type Parser e m a =
   RWST ParseEnv ParseLog ParseState (ParsecT (ParseErr e) Text m) a
 
-parseDefault :: (Ord e, Monad m) => Parser e m a -> Text 
+parseDefault :: (Ord e, Monad m) => Parser e m a -> Text
              -> m (Either (ParseErrorBundle Text (ParseErr e)) a)
 parseDefault p s = parseM p defaultParseEnv "" s
 
@@ -260,29 +263,45 @@ pLam = label "a lambda: \"λ x y => y\"" $ do
   body <- bind vars (pExpr False)
   return (foldLam body vars)
 
-foldAll :: Term -> [(Name, Name, Uses, Term)] -> Term
-foldAll body bs = foldr (\(s,n,u,t) x -> All s n u t x) body bs
+foldAll :: Term -> [(Name, Uses, Term)] -> Term
+foldAll body bs = foldr (\(n,u,t) x -> All n u t x) body bs
 
-bindAll :: (Ord e, Monad m) => [(Name,Name,Uses,Term)] -> Parser e m a -> Parser e m a
-bindAll bs = bind (foldr (\(s,n,_,_) ns -> s:n:ns) [] bs)
+bindAll :: (Ord e, Monad m) => [(Name,Uses,Term)] -> Parser e m a -> Parser e m a
+bindAll bs = bind (foldr (\(n,_,_) ns -> n:ns) [] bs)
 
 fst3 (x,y,z) = x
 
--- | Parse a forall: ∀.self (a: A) (b: B) (c: C) -> body@
+-- | Parse a forall: ∀ (a: A) (b: B) (c: C) -> body@
 pAll :: (Ord e, Monad m) => Parser e m Term
 pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
-  string "@" <|> string "∀" <|> string "forall"
-  self <- (string "." >> (pName True) <* space) <|> (space >> return "")
-  binds <- binders self <* space
+  symbol "∀" <|> symbol "forall"
+  binds <- binders <* space
   body  <- bindAll binds (pExpr False)
   return $ foldAll body binds
   where
     binder  = pBinder True
-    binders self = do
-     ((n,u,t):ns)  <- binder <* space
-     let b  = ((self,n,u,t) : ((\(n,u,t) -> ("",n,u,t)) <$> ns))
-     bs <- bindAll b $ ((symbol "->" >> return []) <|> binders "")
+    binders = do
+     b  <- binder <* space
+     bs <- bindAll b $ ((symbol "->" >> return []) <|> binders)
      return $ b ++ bs
+
+pSlf :: (Ord e, Monad m) => Parser e m Term
+pSlf = label "a self type: \"@x A\"" $ do
+  name <- symbol "@" >> (pName True) <* space
+  body <- bind [name] $ pExpr False
+  return $ Slf name body
+
+pNew :: (Ord e, Monad m) => Parser e m Term
+pNew = label "datatype introduction: \"data x\"" $ do
+  symbol "data "
+  expr <- pExpr True
+  return $ New expr
+
+pUse :: (Ord e, Monad m) => Parser e m Term
+pUse = label "a case expression: \"case x\"" $ do
+  symbol "case "
+  expr <- pExpr True
+  return $ Use expr
 
 pDecl :: (Ord e, Monad m) => Bool -> Parser e m (Name, Term, Term)
 pDecl shadow = do
@@ -293,7 +312,7 @@ pDecl shadow = do
   bs      <- ((symbol ":" >> return []) <|> binders)
   let ns  = nam:(fst3 <$> bs)
   typBody <- bind ns (pExpr False)
-  let typ = foldAll typBody ((\(n,u,t) -> ("",n,u,t)) <$> bs)
+  let typ = foldAll typBody bs
   expBody <- symbol "=" >> bind ns (pExpr False)
   let exp = foldLam expBody (fst3 <$> bs)
   return (nam, exp, typ)
@@ -318,7 +337,7 @@ pVar :: (Ord e, Monad m) => Parser e m Term
 pVar = label "a local or global reference: \"x\", \"add\"" $ do
   env <- ask
   nam <- pName False
-  if nam `Set.member` (_context env) 
+  if nam `Set.member` (_context env)
   then return (Var nam)
   else do
     unless (Set.member nam (_refs env))
@@ -332,6 +351,9 @@ pTerm = do
   choice
     [ pLam
     , pAll
+    , pSlf
+    , pUse
+    , pNew
     , pHol
     , pTyp
     , symbol "(" >> pExpr True <* space <* string ")"
@@ -359,8 +381,8 @@ pExpr annotatable = do
       ts <- args
       return (t:ts)
     terminator = choice
-      [ void (string "def") 
-      , void (string "::") 
+      [ void (string "def")
+      , void (string "::")
       , void (string "{|")
       , void eof
       ]

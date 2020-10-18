@@ -44,8 +44,11 @@ data HOAS where
   RefH :: Name -> HOAS
   LamH :: Name -> (HOAS -> HOAS) -> HOAS
   AppH :: HOAS -> HOAS -> HOAS
+  NewH :: HOAS -> HOAS
+  UseH :: HOAS -> HOAS
   LetH :: Name -> Uses -> HOAS -> HOAS -> (HOAS -> HOAS) -> HOAS
-  AllH :: Name -> Name -> Uses -> HOAS -> (HOAS -> HOAS -> HOAS) -> HOAS
+  AllH :: Name -> Uses -> HOAS -> (HOAS -> HOAS) -> HOAS
+  SlfH :: Name -> (HOAS -> HOAS) -> HOAS
   FixH :: Name -> (HOAS -> HOAS) -> HOAS
   AnnH :: HOAS -> HOAS -> HOAS
   UnrH :: Int  -> HOAS -> HOAS -> HOAS
@@ -78,13 +81,15 @@ termToHoas ctx t = case t of
   Ref nam                 -> RefH nam
   Lam nam bod             -> LamH nam (bind nam bod)
   App fun arg             -> AppH (go fun) (go arg)
+  New exp                 -> NewH (go exp)
+  Use exp                 -> UseH (go exp)
   Ann val typ             -> AnnH (go val) (go typ)
   Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
-  All slf nam use typ bod -> AllH slf nam use (go typ) (bind2 slf nam bod)
+  All nam use typ bod     -> AllH nam use (go typ) (bind nam bod)
+  Slf nam bod             -> SlfH nam (bind nam bod)
   where
     go      t   = termToHoas ctx t
     bind  n t   = (\x   -> termToHoas ((n,x)<|ctx) t)
-    bind2 n m t = (\s x -> termToHoas ((m,x)<|(n,s)<|ctx) t)
     rec n t = FixH n (bind n t)
 
 -- | Convert a GHC higher-order representation to a lower-order one
@@ -96,8 +101,11 @@ hoasToTerm ctx t = case t of
   VarH nam idx             -> Var nam
   LamH nam bod             -> Lam nam (bind nam bod)
   AppH fun arg             -> App (go fun) (go arg)
+  UseH exp                 -> Use (go exp)
+  NewH exp                 -> New (go exp)
   LetH nam use typ exp bod -> Let nam use (go typ) (go exp) (bind nam bod)
-  AllH slf nam use typ bod -> All slf nam use (go typ) (bind2 slf nam bod)
+  AllH nam use typ bod     -> All nam use (go typ) (bind nam bod)
+  SlfH nam bod             -> Slf nam (bind nam bod)
   FixH nam bod             -> bind nam bod
   AnnH trm typ             -> Ann (go trm) (go typ)
   UnrH _   trm _           -> go trm
@@ -105,8 +113,6 @@ hoasToTerm ctx t = case t of
     dep          = Ctx.depth ctx
     go t         = hoasToTerm ctx t
     bind n b     = hoasToTerm ((n,TypH)<|ctx) (b (VarH n dep))
-    bind2 s n b  =
-      hoasToTerm ((n,TypH)<|(s,TypH)<|ctx) (b (VarH s dep) (VarH n (dep+1)))
 
 printHOAS :: HOAS -> Text
 printHOAS = prettyTerm . (hoasToTerm Ctx.empty)
@@ -122,7 +128,7 @@ defToHoas name (Def _ term typ_) =
 
 whnf :: Defs -> HOAS -> HOAS
 whnf defs trm = case trm of
-  RefH nam       -> case defs M.!? nam of
+  RefH nam           -> case defs M.!? nam of
     Just d  -> go $ fst (defToHoas nam d)
     Nothing -> RefH nam
   FixH nam bod       -> go (bod trm)
@@ -139,13 +145,14 @@ whnf defs trm = case trm of
 -- | Normalize a HOAS term
 --norm :: Defs -> HOAS -> HOAS
 --norm defs term = case whnf defs term of
---  AllH slf nam use typ bod -> AllH slf nam use (go typ) (\s x -> go (bod s x))
---  LamH nam bod             -> LamH nam (\x -> go (bod x))
---  AppH fun arg             -> AppH (go fun) (go arg)
---  FixH nam bod             -> go (bod (FixH nam bod))
---  step                     -> step
---  where
---    go x = norm defs x
+--  AllH nam use typ bod -> AllH nam use (go typ) (\x -> go (bod x))
+--  LamH nam bod         -> LamH nam (\x -> go (bod x))
+--  AppH fun arg         -> AppH (go fun) (go arg)
+--  FixH nam bod         -> go (bod (FixH nam bod))
+--  SlfH nam bod         -> SlfH nam (\x -> go (bod x))
+--  NewH exp             -> NewH (go exp)
+--  UseH exp             -> UseH (go exp)
+--  step                 -> step
 
 norm :: Defs -> HOAS -> HOAS
 norm defs term = go term 0 Set.empty
@@ -162,12 +169,15 @@ norm defs term = go term 0 Set.empty
 
     next :: HOAS -> Int -> Set LT.Text -> HOAS
     next step lvl seen = case step of
-      AllH slf nam use typ bod ->
-        AllH slf nam use (go typ lvl seen) (\s x -> go (bod s x) (lvl+1) seen)
-      LamH nam bod             -> LamH nam (\x -> go (bod x) (lvl+1) seen)
-      AppH fun arg             -> AppH (go fun lvl seen) (go arg lvl seen)
-      FixH nam bod             -> go (bod (FixH nam bod)) lvl seen
-      step                     -> step
+      AllH nam use typ bod -> 
+        AllH nam use (go typ lvl seen) (\x -> go (bod x) (lvl+1) seen)
+      LamH nam bod         -> LamH nam (\x -> go (bod x) (lvl+1) seen)
+      AppH fun arg         -> AppH (go fun lvl seen) (go arg lvl seen)
+      FixH nam bod         -> go (bod (FixH nam bod)) lvl seen
+      SlfH nam bod         -> SlfH nam (\x -> go (bod x) (lvl+1) seen)
+      NewH exp             -> NewH (go exp lvl seen)
+      UseH exp             -> UseH (go exp lvl seen)
+      step                 -> step
 
 -- Converts a term to a unique string representation. This is used by equal.
 -- TODO: use a hash function instead
@@ -192,13 +202,17 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
         then "^" <> TB.decimal (lvl-idx-1) 
         else "#" <> TB.decimal idx
       RefH nam -> "$" <> name nam
-      AllH slf nam use typ bod ->
-        "@" <> name slf <> "∀" <> uses use <> name nam
+      AllH nam use typ bod     ->
+        "∀" <> uses use <> name nam
         <> go typ lvl ini
-        <> go (bod (VarH slf lvl) (VarH nam (lvl+1))) (lvl+2) ini
+        <> go (bod (VarH nam lvl)) (lvl+1) ini
+      SlfH nam bod             ->
+        "@" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
       LamH nam bod             ->
         "λ" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
       AppH fun arg             -> "+" <> go fun lvl ini <> go arg lvl ini
+      NewH exp                 -> "ν" <> go exp lvl ini
+      UseH exp                 -> "σ" <> go exp lvl ini
       LetH nam use typ exp bod ->
         "~" <> uses use <> name nam
         <> go typ lvl ini <> go exp lvl ini
@@ -227,17 +241,25 @@ equal defs a b lvl = go a b lvl Set.empty
 
     next :: HOAS -> HOAS -> Int -> Set (LT.Text, LT.Text) -> Either Hole Bool
     next a b lvl seen = case (a, b) of
-      (AllH aSlf aNam aUse aTyp aBod, AllH bSlf bNam bUse bTyp bBod) -> do
-        let aBod' = aBod (VarH aSlf lvl) (VarH aNam (lvl + 1))
-        let bBod' = bBod (VarH bSlf lvl) (VarH bNam (lvl + 1))
+      (AllH aNam aUse aTyp aBod, AllH bNam bUse bTyp bBod) -> do
+        let aBod' = aBod (VarH aNam lvl)
+        let bBod' = bBod (VarH bNam lvl)
         let useEq = aUse == bUse
         typEq <- go aTyp bTyp lvl seen
-        bodEq <- go aBod' bBod' (lvl+2) seen
+        bodEq <- go aBod' bBod' (lvl+1) seen
         return $ useEq && typEq && bodEq
+      (SlfH aNam aBod, SlfH bNam bBod) -> do
+        let aBod' = aBod (VarH aNam lvl)
+        let bBod' = bBod (VarH bNam lvl)
+        go aBod' bBod' (lvl+1) seen
       (LamH aNam aBod, LamH bNam bBod) -> do
         let aBod' = aBod (VarH aNam lvl)
         let bBod' = bBod (VarH bNam lvl)
         go aBod' bBod' (lvl+1) seen
+      (NewH aExp, NewH bExp) -> do
+        go aExp bExp lvl seen
+      (UseH aExp, UseH bExp) -> do
+        go aExp bExp lvl seen
       (AppH aFun aArg, AppH bFun bArg) -> do
         funEq <- go aFun bFun lvl seen
         argEq <- go aArg bArg lvl seen
@@ -258,7 +280,9 @@ data CheckErr
   | UntypedLambda
   | UndefinedReference Name
   | LambdaNonFunctionType PreContext HOAS HOAS HOAS
+  | NewNonSelfType PreContext HOAS HOAS HOAS
   | NonFunctionApplication Context HOAS HOAS HOAS
+  | NonSelfUse  Context HOAS HOAS HOAS
   | CustomErr PreContext Text
 
 -- | Fills holes of a term until it is complete
@@ -271,12 +295,15 @@ synth defs term typ_ = do
 
 fill :: Hole -> HOAS -> HOAS
 fill hole term = case term of
-  TypH                     -> TypH
-  VarH nam idx             -> VarH nam idx
-  LamH nam bod             -> LamH nam (\x -> go (bod x))
-  AllH slf nam use typ bod -> AllH slf nam use (go typ) (\s x -> go (bod s x))
-  AppH fun arg             -> AppH (go fun) (go arg)
-  HolH nam                 -> if fst hole == nam then snd hole else HolH nam
+  TypH                 -> TypH
+  VarH nam idx         -> VarH nam idx
+  LamH nam bod         -> LamH nam (\x -> go (bod x))
+  AllH nam use typ bod -> AllH nam use (go typ) (\x -> go (bod x))
+  SlfH nam bod         -> SlfH nam (\x -> go (bod x))
+  NewH exp             -> NewH (go exp)
+  UseH exp             -> UseH (go exp)
+  AppH fun arg         -> AppH (go fun) (go arg)
+  HolH nam             -> if fst hole == nam then snd hole else HolH nam
   where
     go x = fill hole x
 
@@ -285,8 +312,8 @@ check :: Defs -> PreContext -> Uses -> HOAS -> HOAS
       -> Except CheckErr (Context, HOAS)
 check defs pre use term typ = case term of
   LamH name body -> case whnf defs typ of
-    AllH self bindName bindUse bind typeBody -> do
-      let bodyType = typeBody term (VarH name (Ctx.depth pre))
+    AllH bindName bindUse bind typeBody -> do
+      let bodyType = typeBody (VarH name (Ctx.depth pre))
       let bodyTerm = body (VarH name (Ctx.depth pre))
       (bodyCtx,_) <- check defs ((name,bind) <| pre) Once bodyTerm bodyType
       case _ctx bodyCtx of
@@ -298,6 +325,10 @@ check defs pre use term typ = case term of
             throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked))
           return (mulCtx use (Ctx bodyCtx'),typ)
     x -> throwError $ LambdaNonFunctionType pre term typ x
+  NewH expr -> case whnf defs typ of
+    SlfH slfName slfBody -> do
+      check defs pre use expr (slfBody term)
+    x -> throwError $ NewNonSelfType pre term typ x
   LetH name exprUse exprTyp expr body -> do
     (exprCtx,_) <- check defs pre exprUse expr exprTyp
     let var = VarH name (Ctx.depth pre)
@@ -342,15 +373,24 @@ infer defs pre use term = case term of
   AppH func argm -> do
     (funcCtx, funcTyp) <- infer defs pre use func
     case whnf defs funcTyp of
-      AllH _ _ argmUse bind body -> do
+      AllH _ argmUse bind body -> do
         (argmCtx,_) <- check defs pre (argmUse *# use) argm bind
-        return (addCtx funcCtx argmCtx, body func argm)
+        return (addCtx funcCtx argmCtx, body argm)
       x -> throwError $ NonFunctionApplication funcCtx func funcTyp x
-  AllH self name bindUse bind body -> do
-    let selfVar = VarH self $ Ctx.depth pre
-    let nameVar = VarH name $ Ctx.depth pre + 1
+  UseH expr -> do
+    (exprCtx, exprTyp) <- infer defs pre use expr
+    case whnf defs exprTyp of
+      SlfH _ body -> do
+        return (exprCtx, body expr)
+      x -> throwError $ NonSelfUse exprCtx expr exprTyp x
+  AllH name bindUse bind body -> do
+    let nameVar = VarH name $ Ctx.depth pre
     check defs pre None bind TypH
-    check defs ((name,bind)<|(self,term)<|pre) None (body selfVar nameVar) TypH
+    check defs ((name,bind)<|pre) None (body nameVar) TypH
+    return (toContext pre, TypH)
+  SlfH name body -> do
+    let selfVar = VarH name $ Ctx.depth pre
+    check defs ((name,term)<|pre) None (body selfVar) TypH
     return (toContext pre, TypH)
   LetH name exprUse exprTyp expr body -> do
     (exprCtx,_)    <- check defs pre exprUse expr exprTyp
@@ -433,6 +473,14 @@ prettyError e = case e of
       , "With context:\n"
       , prettyPre ctx
       ]
+    NewNonSelfType ctx trm typ typ' -> T.concat
+      ["The type of data must be a self: \n"
+      , "  Checked term: ", printHOAS trm,"\n"
+      , "  Against type: ", printHOAS typ, "\n"
+      , "  Reduced type: ",  printHOAS typ',"\n"
+      , "With context:\n"
+      , prettyPre ctx
+      ]
     UnboundVariable nam idx -> T.concat
       ["Unbound free variable: ", T.pack $ show nam, " at level ", T.pack $ show idx]
     UntypedLambda -> "Can't infer the type of a lambda"
@@ -440,6 +488,14 @@ prettyError e = case e of
       ["Can't fill hole: ?", T.pack $ show name, " : ", printHOAS term]
     NonFunctionApplication ctx trm typ typ' -> T.concat
       ["Tried to apply something that wasn't a lambda: \n"
+      , "  Checked term: ", printHOAS trm,"\n"
+      , "  Against type: ", printHOAS typ, "\n"
+      , "  Reduced type: ",  printHOAS typ',"\n"
+      , "With context:\n"
+      , prettyCtx ctx
+      ]
+    NonSelfUse ctx trm typ typ' -> T.concat
+      ["Tried to case on something that wasn't data: \n"
       , "  Checked term: ", printHOAS trm,"\n"
       , "  Against type: ", printHOAS typ, "\n"
       , "  Reduced type: ",  printHOAS typ',"\n"
