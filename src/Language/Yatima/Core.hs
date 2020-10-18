@@ -36,6 +36,8 @@ import qualified Language.Yatima.Ctx            as Ctx
 import           Language.Yatima.Print
 import           Language.Yatima.Term
 
+import           Debug.Trace
+
 -- | Higher-Order Abstract Syntax
 data HOAS where
   VarH :: Name -> Int -> HOAS
@@ -135,15 +137,37 @@ whnf defs trm = case trm of
     go x = whnf defs x
 
 -- | Normalize a HOAS term
+--norm :: Defs -> HOAS -> HOAS
+--norm defs term = case whnf defs term of
+--  AllH slf nam use typ bod -> AllH slf nam use (go typ) (\s x -> go (bod s x))
+--  LamH nam bod             -> LamH nam (\x -> go (bod x))
+--  AppH fun arg             -> AppH (go fun) (go arg)
+--  FixH nam bod             -> go (bod (FixH nam bod))
+--  step                     -> step
+--  where
+--    go x = norm defs x
+
 norm :: Defs -> HOAS -> HOAS
-norm defs term = case whnf defs term of
-  AllH slf nam use typ bod -> AllH slf nam use (go typ) (\s x -> go (bod s x))
-  LamH nam bod             -> LamH nam (\x -> go (bod x))
-  AppH fun arg             -> AppH (go fun) (go arg)
-  FixH nam bod             -> go (bod (FixH nam bod))
-  step                     -> step
+norm defs term = go term 0 Set.empty
   where
-    go x = norm defs x
+    go :: HOAS -> Int -> Set LT.Text -> HOAS
+    go term lvl seen =
+      let step  = whnf defs term
+          hash  = serialize lvl term
+          hash' = serialize lvl step
+       in
+       if | hash  `Set.member` seen -> step
+          | hash' `Set.member` seen -> step
+          | otherwise -> next step lvl (Set.insert hash' (Set.insert hash seen))
+
+    next :: HOAS -> Int -> Set LT.Text -> HOAS
+    next step lvl seen = case step of
+      AllH slf nam use typ bod ->
+        AllH slf nam use (go typ lvl seen) (\s x -> go (bod s x) (lvl+1) seen)
+      LamH nam bod             -> LamH nam (\x -> go (bod x) (lvl+1) seen)
+      AppH fun arg             -> AppH (go fun lvl seen) (go arg lvl seen)
+      FixH nam bod             -> go (bod (FixH nam bod)) lvl seen
+      step                     -> step
 
 -- Converts a term to a unique string representation. This is used by equal.
 -- TODO: use a hash function instead
@@ -436,4 +460,8 @@ prettyError e = case e of
 
 instance Show CheckErr where
   show e = T.unpack $ prettyError e
+
+
+--expandConstant :: Constant -> HOAS
+--expandConstant
 

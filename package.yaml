@@ -21,6 +21,7 @@ library:
     - Language.Yatima.Uses
     - Language.Yatima.Print
     - Language.Yatima.Parse
+    - Language.Yatima.Parse.Integer
     - Language.Yatima.DagJSON
     - Language.Yatima.DagAST
     - Language.Yatima.Package
@@ -44,6 +45,7 @@ library:
     - serialise
     - bytestring
     - base16-bytestring
+    - utf8-string
     - multibase
     - cryptonite
     - multihash-cryptonite
@@ -71,6 +73,10 @@ library:
     - TupleSections
 
 executables:
+  #yatima:
+  #  main: Main.hs
+  #  source-dirs: yide
+
   yide:
     main: Main.hs
     source-dirs: yide

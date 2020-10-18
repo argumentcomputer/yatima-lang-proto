@@ -59,11 +59,18 @@ import           Control.Monad.RWS.Lazy     hiding (All, Typ)
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
-import           Data.Char                  (isDigit)
+import           Data.Bits
+import           Data.Word
+import           Data.Char                  (isDigit, chr, ord)
+import           Data.List                  (unfoldr)
 import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
+import           Data.Ratio
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.UTF8       as BS
+import           Data.ByteString            (ByteString)
 
 import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
@@ -72,6 +79,7 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import           Language.Yatima.Uses
 import           Language.Yatima.Term
 import           Language.Yatima.Print
+import           Language.Yatima.Parse.Integer
 
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
@@ -329,6 +337,7 @@ pTerm = do
     , symbol "(" >> pExpr True <* space <* string ")"
     , pLet
     , pVar
+    , Lit <$> pConstant
     ]
 
 -- | Parse a sequence of terms as an expression. The `Bool` switches whether or
@@ -386,3 +395,143 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
     (n,d) <- pDef
     ds    <- local (\e -> e { _refs = Set.insert n (_refs e) }) pDefs
     return $ (n,d):ds
+
+pConstant :: (Ord e, Monad m) => Parser e m Constant
+pConstant = choice
+  [ string "#String"   >> return TStr
+  , string "#Char"     >> return TChr
+  , string "#World"    >> return TUni
+  , string "#Bits"     >> return TBit
+  , string "#Integer"  >> return TInt
+  , string "#Rational" >> return TRat
+  , string "#world"    >> return CUni
+  , CInt <$> pInteger
+  , CRat <$> pRational
+  , CStr <$> pString
+  , CBit <$> pBits
+  , CChr <$> pChar
+  ]
+
+pInteger :: (Ord e, Monad m) => Parser e m Integer
+pInteger = do
+  val <- L.signed empty $ choice
+    [ string "0x" >> hexadecimal
+    , string "0o" >> octal
+    , string "0b" >> binary
+    , notFollowedBy (string "_") >> decimal
+    ]
+  return val
+
+pBits :: (Ord e, Monad m) => Parser e m ByteString
+pBits = do
+  val <- choice
+    [ string "0X" >> hexadecimal
+    , string "0O" >> octal
+    , string "0B" >> binary
+    , string "0D" >> decimal
+    ]
+  return $ BS.pack $ unroll val
+
+unroll :: Integer -> [Word8]
+unroll = unfoldr step
+  where
+    step 0 = Nothing
+    step i = Just (fromIntegral i, i `shiftR` 8)
+
+roll :: [Word8] -> Integer
+roll   = foldr unstep 0
+  where
+    unstep b a = a `shiftL` 8 .|. fromIntegral b
+
+--pWord :: (Ord e, Monad m) => Parser e m Word
+--pWord = do
+--  val <- pBits
+--  len <- choice
+
+
+pRational :: (Ord e, Monad m) => Parser e m Rational
+pRational = L.signed empty $ do
+  x <- decimal
+  string "."
+  y <- decimal
+  return $ x % 1 + (mantissa y 10)
+  where
+    mantissa :: Integer -> Integer -> Rational
+    mantissa num dem
+      | num >= dem = mantissa num (dem * 10)
+      | otherwise  = num % dem
+
+pString :: (Ord e, Monad m) => Parser e m ByteString
+pString = do
+  string "\""
+  str <- many $ choice
+    [ pure <$> noneOf ['\\', '"']
+    , string "\\&" >> return []
+    , pure <$> pEscape
+    ]
+  string "\""
+  return $ BS.fromString $ concat str
+
+pChar :: (Ord e, Monad m) => Parser e m Char
+pChar = do
+  string "'"
+  chr <- noneOf ['\\', '\''] <|> pEscape
+  string "'"
+  return chr
+
+pEscape :: (Ord e, Monad m) => Parser e m Char
+pEscape = do
+  char '\\'
+  choice
+    [ string "\\"  >> return '\\'
+    , string "\""  >> return '"'
+    , string "x"   >> chr <$> hexadecimal
+    , string "o"   >> chr <$> octal
+    , string "n"   >> return '\n'
+    , string "r"   >> return '\r'
+    , string "v"   >> return '\v'
+    , string "b"   >> return '\b'
+    , string "f"   >> return '\f'
+    , string "ACK" >> return '\ACK'
+    , string "BEL" >> return '\BEL'
+    , string "BS"  >> return '\BS'
+    , string "CR"  >> return '\CR'
+    , string "DEL" >> return '\DEL'
+    , string "DC1" >> return '\DC1'
+    , string "DC2" >> return '\DC2'
+    , string "DC3" >> return '\DC3'
+    , string "DC4" >> return '\DC4'
+    , string "DLE" >> return '\DLE'
+    , string "ENQ" >> return '\ENQ'
+    , string "EOT" >> return '\EOT'
+    , string "ESC" >> return '\ESC'
+    , string "ETX" >> return '\ETX'
+    , string "ETB" >> return '\ETB'
+    , string "EM"  >> return '\EM'
+    , string "FS"  >> return '\FS'
+    , string "FF"  >> return '\FF'
+    , string "GS"  >> return '\GS'
+    , string "HT"  >> return '\HT'
+    , string "LF"  >> return '\LF'
+    , string "NUL" >> return '\NUL'
+    , string "NAK" >> return '\NAK'
+    , string "RS"  >> return '\RS'
+    , string "SOH" >> return '\SOH'
+    , string "STX" >> return '\STX'
+    , string "SUB" >> return '\SUB'
+    , string "SYN" >> return '\SYN'
+    , string "SI"  >> return '\SI'
+    , string "SO"  >> return '\SO'
+    , string "SP"  >> return '\SP'
+    , string "US"  >> return '\US'
+    , string "VT"  >> return '\VT'
+    , string "^@"  >> return '\0'
+    , string "^["  >> return '\ESC'
+    , string "^\\" >> return '\FS'
+    , string "^]"  >> return '\GS'
+    , string "^^"  >> return '\RS'
+    , string "^_"  >> return '\US'
+    , (\ c -> chr $ (ord c) - 64) <$> (string "^" >> oneOf ['A'..'Z'])
+    , chr <$> decimal
+    ]
+

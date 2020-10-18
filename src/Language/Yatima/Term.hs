@@ -16,6 +16,7 @@ module Language.Yatima.Term
   , Term(..)
   , Def(..)
   , Defs
+  , Constant(..)
   ) where
 
 
@@ -23,6 +24,10 @@ import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
+
+import           Data.ByteString            as BS
+import           Data.ByteString            (ByteString)
+import           Data.Word
 
 import           Language.Yatima.Uses
 
@@ -51,9 +56,30 @@ data Term where
   Typ :: Term
   -- | Type annotation
   Ann :: Term -> Term -> Term
+  -- | Literal
+  Lit :: Constant -> Term
 
 deriving instance Show Term
 deriving instance Eq Term
+
+data Constant where
+  CInt :: Integer    -> Constant
+  CRat :: Rational   -> Constant
+  CBit :: ByteString -> Constant
+  CWrd :: ByteString -> Constant
+  CStr :: ByteString -> Constant
+  CChr :: Char       -> Constant
+  CUni :: Constant
+  TInt :: Constant
+  TRat :: Constant
+  TBit :: Constant
+  TWrd :: Integer    -> Constant
+  TStr :: Constant
+  TChr :: Constant
+  TUni :: Constant
+
+deriving instance Show Constant
+deriving instance Eq Constant
 
 -- | A type annotated definition
 data Def = Def

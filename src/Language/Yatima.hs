@@ -114,8 +114,8 @@ checkRef index cache (name,cid) = do
         ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
 
 -- | Evaluate a `HOAS` from a file
-normDef :: Name -> FilePath -> FilePath -> IO HOAS
-normDef name dir file = do
+normDef :: Name -> FilePath -> IO HOAS
+normDef name file = do
   (r,c,p) <- loadFile file
   let index = _index p
   cache <- readCache r
@@ -123,6 +123,16 @@ normDef name dir file = do
   def   <- catchErr (derefDagDefCID name cid index cache)
   defs  <- catchErr (indexToDefs index cache)
   return $ Core.norm defs (fst $ defToHoas name def)
+
+whnfDef :: Name -> FilePath -> IO HOAS
+whnfDef name file = do
+  (r,c,p) <- loadFile file
+  let index = _index p
+  cache <- readCache r
+  cid   <- catchErr (indexLookup name index)
+  def   <- catchErr (derefDagDefCID name cid index cache)
+  defs  <- catchErr (indexToDefs index cache)
+  return $ Core.whnf defs (fst $ defToHoas name def)
 
 whnf :: Defs -> Term -> Term
 whnf defs =
