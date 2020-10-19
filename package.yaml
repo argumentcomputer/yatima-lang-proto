@@ -16,6 +16,7 @@ library:
   source-dirs: src
   exposed-modules:
     - Language.Yatima.Term
+    - Language.Yatima.Constant
     - Language.Yatima.IPLD
     - Language.Yatima.CID
     - Language.Yatima.Uses

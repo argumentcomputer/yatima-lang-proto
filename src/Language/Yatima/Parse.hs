@@ -50,7 +50,7 @@ module Language.Yatima.Parse
   , pChar
   , pEscape
   , pString
-  , pBits
+  , pHexBits
   , pDoc
   , symbol
   , symbol'

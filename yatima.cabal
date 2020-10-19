@@ -21,6 +21,7 @@ extra-source-files:
 library
   exposed-modules:
       Language.Yatima.Term
+      Language.Yatima.Constant
       Language.Yatima.IPLD
       Language.Yatima.CID
       Language.Yatima.Uses
@@ -36,7 +37,6 @@ library
       Language.Yatima.IPFS
       Language.Yatima
   other-modules:
-      Language.Yatima.Constant
       Paths_yatima
   hs-source-dirs:
       src
