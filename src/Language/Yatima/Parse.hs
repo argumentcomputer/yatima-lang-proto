@@ -82,6 +82,8 @@ import qualified Data.ByteString.UTF8       as BS
 import qualified Data.ByteString.Base16     as B16
 import           Data.ByteString            (ByteString)
 
+import           Numeric.Natural
+
 import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -442,10 +444,12 @@ pConstant = choice
   , string "#Word"     >> TWrd <$> pNum
   , string "#Bits"     >> return TBit
   , string "#Integer"  >> return TInt
+  , string "#Natural"  >> return TNat
   , string "#Rational" >> return TRat
   , string "#world"    >> return CUni
   , try $ CRat <$> pRationalDot
   , try $ CRat <$> pRational
+  , try $ CNat <$> pNatural
   , try $ CInt <$> pInteger
   , pWord
   , CStr <$> pString
@@ -467,6 +471,12 @@ pInteger = do
   val <- L.signed (pure ()) pNum
   notFollowedBy (string "u")
   return val
+
+pNatural :: (Ord e, Monad m) => Parser e m Natural
+pNatural = do
+  val <- pNum
+  string "n"
+  return $ fromIntegral val
 
 -- TODO: binary, octal, decimal bitstring literals
 pHexBits :: (Ord e, Monad m) => Parser e m ByteString

@@ -103,6 +103,7 @@ name_gen = do
 constant_gen :: Gen Constant
 constant_gen = oneof
   [ CInt <$> arbitrary
+  , CNat <$> arbitrarySizedNatural
   , CRat <$> arbitrary
   , CBit <$> arbitrary
   , do 
@@ -113,6 +114,7 @@ constant_gen = oneof
   , CChr <$> arbitrary
   , return CUni
   , return TInt
+  , return TNat
   , return TRat
   , return TBit
   , TWrd <$> arbitrarySizedNatural

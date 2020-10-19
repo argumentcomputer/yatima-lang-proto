@@ -103,6 +103,7 @@ prettyConstant :: Constant -> Text
 prettyConstant t = case t of
   CStr x   -> (T.pack $ show $ UTF8.toString x)
   CInt x   -> (T.pack $ show x)
+  CNat x   -> (T.pack $ show x) <> "n"
   CChr x   -> T.pack $ show x
   CBit x   -> "'x" <> (B16.encodeBase16 x)
   CRat x   -> (T.pack $ show $ numerator x) <> "/" <> (T.pack $ show $ denominator x)
@@ -111,6 +112,7 @@ prettyConstant t = case t of
   TStr   -> "#String"
   TChr   -> "#Char"
   TInt   -> "#Integer"
+  TNat   -> "#Natural"
   TRat   -> "#Rational"
   TBit   -> "#Bits"
   TUni   -> "#World"

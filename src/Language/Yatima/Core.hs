@@ -54,6 +54,7 @@ data HOAS where
   UnrH :: Int  -> HOAS -> HOAS -> HOAS
   TypH :: HOAS
   HolH :: Name -> HOAS
+  LitH :: Constant -> HOAS
 
 type PreContext = Ctx HOAS
 type Context    = Ctx (Uses,HOAS)
@@ -87,6 +88,7 @@ termToHoas ctx t = case t of
   Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
   All nam use typ bod     -> AllH nam use (go typ) (bind nam bod)
   Slf nam bod             -> SlfH nam (bind nam bod)
+  Lit con                 -> LitH con
   where
     go      t   = termToHoas ctx t
     bind  n t   = (\x   -> termToHoas ((n,x)<|ctx) t)
@@ -109,6 +111,7 @@ hoasToTerm ctx t = case t of
   FixH nam bod             -> bind nam bod
   AnnH trm typ             -> Ann (go trm) (go typ)
   UnrH _   trm _           -> go trm
+  LitH con                 -> Lit con
   where
     dep          = Ctx.depth ctx
     go t         = hoasToTerm ctx t
@@ -517,7 +520,10 @@ prettyError e = case e of
 instance Show CheckErr where
   show e = T.unpack $ prettyError e
 
+expandConstant :: Constant -> HOAS
+expandConstant t = case t of
+  TUni -> LitH TUni
+  CUni -> LitH CUni
+  --TStr -> termToHoas $
 
---expandConstant :: Constant -> HOAS
---expandConstant
 
