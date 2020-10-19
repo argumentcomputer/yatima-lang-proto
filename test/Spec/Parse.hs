@@ -105,24 +105,14 @@ spec = do
     ]
 
   parseDescribe pAll "Forall"
-    [ ( "∀ (x: Type) -> Type", Good $ All "" "x" Many Typ Typ)
-    , ( "∀ (x: Type) -> x", Good $ All "" "x" Many Typ $ Var "x")
-    , ( "∀ (x: Type) (y: Type) -> x", Good $ All "" "x" Many Typ $ All "" "y" Many Typ $ Var "x")
-    , ( "∀ (A: Type) (x: A) -> x" , Good $ All "" "A" Many Typ $ All "" "x" Many (Var "A") $ Var "x")
-    , ( "@ (x: Type) -> Type", Good $ All "" "x" Many Typ Typ)
-    , ( "@ (x: Type) -> x", Good $ All "" "x" Many Typ $ Var "x")
-    , ( "@ (x: Type) (y: Type) -> x", Good $ All "" "x" Many Typ $ All "" "y" Many Typ $ Var "x")
-    , ( "@ (A: Type) (x: A) -> x", Good $ All "" "A" Many Typ $ All "" "x" Many (Var "A") $ Var "x")
-    , ( "@.self (x: Type) -> x", Good $ All "self" "x" Many Typ $ Var "x")
-    , ( "@.self (x: Type) -> self", Good $ All "self" "x" Many Typ $ Var "self")
-    , ( "@.self (0 x: Type) -> x", Good $ All "self" "x" None Typ $ Var "x")
-    , ( "@.self (& x: Type) -> x", Good $ All "self" "x" Affi Typ $ Var "x")
-    , ( "@.self (1 x: Type) -> x", Good $ All "self" "x" Once Typ $ Var "x")
-    , ( "∀.self (x: Type) -> x", Good $ All "self" "x" Many Typ $ Var "x")
-    , ( "∀.self (x: Type) -> self", Good $ All "self" "x" Many Typ $ Var "self")
-    , ( "∀.self (0 x: Type) -> x", Good $ All "self" "x" None Typ $ Var "x")
-    , ( "∀.self (& x: Type) -> x", Good $ All "self" "x" Affi Typ $ Var "x")
-    , ( "∀.self (1 x: Type) -> x", Good $ All "self" "x" Once Typ $ Var "x")
+    [ ( "∀ (x: Type) -> Type", Good $ All "x" Many Typ Typ)
+    , ( "∀ (x: Type) -> x", Good $ All "x" Many Typ $ Var "x")
+    , ( "∀ (x: Type) (y: Type) -> x", Good $ All "x" Many Typ $ All "y" Many Typ $ Var "x")
+    , ( "∀ (A: Type) (x: A) -> x", Good $ All "A" Many Typ $ All "x" Many (Var "A") $ Var "x")
+    , ( "∀ (x: Type) -> x", Good $ All  "x" Many Typ $ Var "x")
+    , ( "∀ (0 x: Type) -> x", Good $ All "x" None Typ $ Var "x")
+    , ( "∀ (& x: Type) -> x", Good $ All "x" Affi Typ $ Var "x")
+    , ( "∀ (1 x: Type) -> x", Good $ All "x" Once Typ $ Var "x")
     ]
 
   parseDescribe pTyp "Typ"
@@ -134,8 +124,8 @@ spec = do
     , ("foo (A:Type) (B:Type) (x:A) (y:B) : A = x", Good $ 
         ( "foo"
         , Lam "A" (Lam "B" (Lam "x" (Lam "y" (Var "x"))))
-        , All "" "A" Many Typ (All "" "B" Many Typ (All "" "x" Many (Var "A")
-          (All "" "y" Many (Var "B") (Var "A"))))
+        , All "A" Many Typ (All "B" Many Typ (All "x" Many (Var "A")
+          (All "y" Many (Var "B") (Var "A"))))
         )
       )
     ]
@@ -143,7 +133,7 @@ spec = do
   parseDescribe pLet "Let"
     [ ("let any: Type = Type; any", Good $ Let "any" Many Typ Typ $ Var "any")
     , ("let any (x:Type) (y:Type): Type = Type; any", Good $ 
-          Let "any" Many (All "" "x" Many Typ (All "" "y" Many Typ Typ))
+          Let "any" Many (All "x" Many Typ (All "y" Many Typ Typ))
             (Lam "x" (Lam "y" Typ)) (Var "any")
       )
     ]

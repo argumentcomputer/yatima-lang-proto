@@ -33,6 +33,7 @@ data AnonAST
   | Bind AnonAST
   | Vari Int
   | Link CID
+  | Data BS.ByteString
   deriving (Eq,Show,Ord)
 
 -- | The computationally irrelevant metadata of an AST
@@ -48,6 +49,7 @@ encodeAnonAST term = case term of
   Bind t    -> encodeListLen 2 <> encodeInt 1 <> encodeAnonAST t
   Vari idx  -> encodeListLen 2 <> encodeInt 2 <> encodeInt idx
   Link cid  -> encodeListLen 2 <> encodeInt 3 <> encodeCID cid
+  Data bs   -> encodeListLen 2 <> encodeInt 4 <> encodeBytes bs
 
 decodeAnonAST :: Decoder s AnonAST
 decodeAnonAST = do
@@ -62,6 +64,7 @@ decodeAnonAST = do
     (2,1) -> Bind <$> decodeAnonAST
     (2,2) -> Vari <$> decodeInt
     (2,3) -> Link <$> decodeCID
+    (2,4) -> Data <$> decodeBytes
     _     -> fail $ concat
       ["invalid AnonAST with size: ", show size, " and tag: ", show tag]
 

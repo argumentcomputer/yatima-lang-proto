@@ -44,7 +44,7 @@ library:
 
     - serialise
     - bytestring
-    - base16-bytestring
+    - base16
     - utf8-string
     - multibase
     - cryptonite
@@ -132,6 +132,7 @@ tests:
       - text
       - vector
       - unsafeperformst
+      - utf8-string
       - hspec
       - QuickCheck
       - quickcheck-instances

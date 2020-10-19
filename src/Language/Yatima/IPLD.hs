@@ -214,6 +214,9 @@ termToAST n t index cache =
         bump
         b' <- go b (n:ctx)
         return $ Ctor "Slf" [Bind b']
+      Lit x                -> do
+        bump
+        return $ Data (BSL.toStrict $ serialise x)
 
 -- | Find a name in the binding context and return its index
 lookupNameCtx :: Int -> [Name] -> Maybe Name
@@ -265,7 +268,12 @@ astToTerm n index anon meta = do
         n <- get >>= link
         bump
         return $ Ref n
-      Bind b    -> get >>= \i -> throwError $ UnexpectedBind b ctx i
+      Bind b  -> get >>= \i -> throwError $ UnexpectedBind b ctx i
+      Data bs -> do
+        bump
+        case (deserialiseOrFail $ BSL.fromStrict bs) of
+          Left e  -> throwError $ NoDeserial e
+          Right x -> return $ Lit x
       Ctor nam args -> case (nam,args) of
         ("Lam",[Bind b]) -> do
           n <- get >>= name

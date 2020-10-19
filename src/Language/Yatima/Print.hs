@@ -11,15 +11,24 @@ module Language.Yatima.Print
   ( prettyTerm
   , prettyDef
   , prettyDefs
+  , prettyConstant
   ) where
 
 import           Data.Map                (Map)
 import qualified Data.Map                as M
-import           Data.Text               (Text)
+import           Data.Ratio
 
+import           Data.Text               (Text)
 import qualified Data.Text               as T hiding (find)
+import qualified Data.Text.Encoding      as T
 import qualified Data.Text.Lazy          as LT
 import qualified Data.Text.Lazy.Builder  as TB
+
+import           Data.ByteString         (ByteString)
+import qualified Data.ByteString         as B
+import qualified Data.ByteString.UTF8    as UTF8
+
+import qualified Data.ByteString.Base16  as B16
 
 import           Control.Monad.Except
 
@@ -55,6 +64,7 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Let nam use typ exp bod -> mconcat
         ["let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
       Typ                     -> "Type"
+      Lit lit                 -> TB.fromText (prettyConstant lit)
 
     lams :: Name -> Term -> TB.Builder
     lams nam (Lam nam' bod') = mconcat [" ", name nam, lams nam' bod']
@@ -74,6 +84,7 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Hol _   -> True
       Var _   -> True
       Ref _   -> True
+      Lit _   -> True
       Ann _ _ -> True
       _       -> False
 
@@ -87,6 +98,23 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
     apps f a
       | isAtom f  = fun f <> " " <> pars (go a)
       | otherwise = fun f <> " " <> go a
+
+prettyConstant :: Constant -> Text
+prettyConstant t = case t of
+  CStr x   -> (T.pack $ show $ UTF8.toString x)
+  CInt x   -> (T.pack $ show x)
+  CChr x   -> T.pack $ show x
+  CBit x   -> "'x" <> (B16.encodeBase16 x)
+  CRat x   -> (T.pack $ show $ numerator x) <> "/" <> (T.pack $ show $ denominator x)
+  CWrd l x -> (T.pack $ show x) <> "u" <> (T.pack $ show l)
+  TWrd l   -> "#Word" <> (T.pack $ show l)
+  TStr   -> "#String"
+  TChr   -> "#Char"
+  TInt   -> "#Integer"
+  TRat   -> "#Rational"
+  TBit   -> "#Bits"
+  TUni   -> "#World"
+  CUni   -> "#world"
 
 prettyDef :: Name -> Def -> Text
 prettyDef name (Def doc term typ_) = T.concat

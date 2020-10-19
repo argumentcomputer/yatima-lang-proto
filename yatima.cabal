@@ -36,6 +36,7 @@ library
       Language.Yatima.IPFS
       Language.Yatima
   other-modules:
+      Language.Yatima.Constant
       Paths_yatima
   hs-source-dirs:
       src
@@ -43,7 +44,7 @@ library
   build-depends:
       aeson
     , base >=4.7 && <5
-    , base16-bytestring
+    , base16
     , bytestring
     , cborg
     , containers
@@ -123,6 +124,7 @@ test-suite spec
     , text
     , transformers
     , unsafeperformst
+    , utf8-string
     , vector
     , yatima
   default-language: Haskell2010

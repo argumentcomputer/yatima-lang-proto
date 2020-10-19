@@ -46,6 +46,11 @@ module Language.Yatima.Parse
   , pExpr
   , pDef
   , pDefs
+  , pConstant
+  , pChar
+  , pEscape
+  , pString
+  , pBits
   , pDoc
   , symbol
   , symbol'
@@ -62,9 +67,10 @@ import           Control.Monad.RWS.Lazy     hiding (All, Typ)
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
+import qualified Data.Text.Encoding         as T
 import           Data.Bits
 import           Data.Word
-import           Data.Char                  (isDigit, chr, ord)
+import           Data.Char                  (isHexDigit,isDigit, chr, ord)
 import           Data.List                  (unfoldr)
 import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
@@ -73,6 +79,7 @@ import qualified Data.Map                   as M
 import           Data.Ratio
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.UTF8       as BS
+import qualified Data.ByteString.Base16     as B16
 import           Data.ByteString            (ByteString)
 
 import           Text.Megaparsec            hiding (State)
@@ -107,6 +114,9 @@ data ParseErr e
   | TopLevelRedefinition Name
   | ReservedKeyword Name
   | ReservedLeadingChar Char Name
+  | MalformedWordLength Integer Integer
+  | MalformedBits ByteString
+  | RationalHasZeroDenominator Integer Integer
   | LeadingDigit Name
   | ParseEnvironmentError e
   deriving (Eq, Ord,Show)
@@ -119,10 +129,16 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
   showErrorComponent (ReservedKeyword nam) =
     "Reserved keyword: " ++ T.unpack nam
   showErrorComponent (LeadingDigit nam) =
-    "illegal leading digit in name: " ++ T.unpack nam
+    "Illegal leading digit in name: " ++ T.unpack nam
   showErrorComponent (ReservedLeadingChar c nam) =
-    "illegal leading character " ++ ['"',c,'"'] ++ " in name: " ++ T.unpack nam
+    "Illegal leading character " ++ ['"',c,'"'] ++ " in name: " ++ T.unpack nam
   showErrorComponent (ParseEnvironmentError e) = showErrorComponent e
+  showErrorComponent (MalformedWordLength val len) = 
+    "Declared Word constant whose declared value " ++ show val ++ 
+      " overflows its declared length " ++ show len
+  showErrorComponent (RationalHasZeroDenominator x y) = 
+    "Rational number constant " ++ show x ++ "/" ++ show y 
+      ++ " has zero denominator."
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
@@ -358,8 +374,8 @@ pTerm = do
     , pTyp
     , symbol "(" >> pExpr True <* space <* string ")"
     , pLet
-    , pVar
     , Lit <$> pConstant
+    , pVar
     ]
 
 -- | Parse a sequence of terms as an expression. The `Bool` switches whether or
@@ -423,56 +439,65 @@ pConstant = choice
   [ string "#String"   >> return TStr
   , string "#Char"     >> return TChr
   , string "#World"    >> return TUni
+  , string "#Word"     >> TWrd <$> pNum
   , string "#Bits"     >> return TBit
   , string "#Integer"  >> return TInt
   , string "#Rational" >> return TRat
   , string "#world"    >> return CUni
-  , CInt <$> pInteger
-  , CRat <$> pRational
+  , try $ CRat <$> pRationalDot
+  , try $ CRat <$> pRational
+  , try $ CInt <$> pInteger
+  , pWord
   , CStr <$> pString
-  , CBit <$> pBits
-  , CChr <$> pChar
+  , try $ CChr <$> pChar
+  , CBit <$> pHexBits
+  ]
+
+pNum :: (Ord e, Monad m) => Parser e m Integer
+pNum = choice
+  [ string "0x" >> hexadecimal
+  , string "0o" >> octal
+  , string "0b" >> binary
+  , string "0d" >> decimal
+  , notFollowedBy (string "_") >> decimal
   ]
 
 pInteger :: (Ord e, Monad m) => Parser e m Integer
 pInteger = do
-  val <- L.signed empty $ choice
-    [ string "0x" >> hexadecimal
-    , string "0o" >> octal
-    , string "0b" >> binary
-    , notFollowedBy (string "_") >> decimal
-    ]
+  val <- L.signed (pure ()) pNum
+  notFollowedBy (string "u")
   return val
 
-pBits :: (Ord e, Monad m) => Parser e m ByteString
-pBits = do
-  val <- choice
-    [ string "0X" >> hexadecimal
-    , string "0O" >> octal
-    , string "0B" >> binary
-    , string "0D" >> decimal
-    ]
-  return $ BS.pack $ unroll val
+-- TODO: binary, octal, decimal bitstring literals
+pHexBits :: (Ord e, Monad m) => Parser e m ByteString
+pHexBits = do
+  string "'x"
+  str <- many (pure <$> (satisfy isHexDigit) <|> (string "_" >> return []))
+  let txt = BS.fromString (concat str)
+  case (B16.decodeBase16 txt) of
+    Left x  -> either (\e -> customFailure $ MalformedBits txt)
+                  pure (B16.decodeBase16 ("0" <> txt))
+    Right x -> return x
 
-unroll :: Integer -> [Word8]
-unroll = unfoldr step
-  where
-    step 0 = Nothing
-    step i = Just (fromIntegral i, i `shiftR` 8)
 
-roll :: [Word8] -> Integer
-roll   = foldr unstep 0
-  where
-    unstep b a = a `shiftL` 8 .|. fromIntegral b
-
---pWord :: (Ord e, Monad m) => Parser e m Word
---pWord = do
---  val <- pBits
---  len <- choice
-
+pWord :: (Ord e, Monad m) => Parser e m Constant
+pWord = do
+  val <- pNum
+  string "u"
+  len <- notFollowedBy (string "_") >> decimal
+  when (val >= 2 ^ len) (customFailure $ MalformedWordLength val len)
+  return $ CWrd (fromIntegral len) (fromIntegral val)
 
 pRational :: (Ord e, Monad m) => Parser e m Rational
-pRational = L.signed empty $ do
+pRational = L.signed (pure ()) $ do
+  x <- decimal
+  string "/"
+  y <- decimal
+  when (y == 0) (customFailure $ RationalHasZeroDenominator x y)
+  return $ x % y
+
+pRationalDot :: (Ord e, Monad m) => Parser e m Rational
+pRationalDot = L.signed (pure ()) $ do
   x <- decimal
   string "."
   y <- decimal
@@ -496,9 +521,9 @@ pString = do
 
 pChar :: (Ord e, Monad m) => Parser e m Char
 pChar = do
-  string "'"
+  char '\''
   chr <- noneOf ['\\', '\''] <|> pEscape
-  string "'"
+  char '\''
   return chr
 
 pEscape :: (Ord e, Monad m) => Parser e m Char
@@ -507,16 +532,21 @@ pEscape = do
   choice
     [ string "\\"  >> return '\\'
     , string "\""  >> return '"'
-    , string "x"   >> chr <$> hexadecimal
-    , string "o"   >> chr <$> octal
+    , string "\'"  >> return '\''
+    , string "x"   >> chr <$> L.hexadecimal
+    , string "o"   >> chr <$> L.octal
+    , string "0"   >> return '\0'
     , string "n"   >> return '\n'
     , string "r"   >> return '\r'
     , string "v"   >> return '\v'
+    , string "t"   >> return '\t'
     , string "b"   >> return '\b'
+    , string "a"   >> return '\a'
     , string "f"   >> return '\f'
     , string "ACK" >> return '\ACK'
     , string "BEL" >> return '\BEL'
     , string "BS"  >> return '\BS'
+    , string "CAN" >> return '\CAN'
     , string "CR"  >> return '\CR'
     , string "DEL" >> return '\DEL'
     , string "DC1" >> return '\DC1'
@@ -554,6 +584,6 @@ pEscape = do
     , string "^^"  >> return '\RS'
     , string "^_"  >> return '\US'
     , (\ c -> chr $ (ord c) - 64) <$> (string "^" >> oneOf ['A'..'Z'])
-    , chr <$> decimal
+    , chr <$> L.decimal
     ]
 

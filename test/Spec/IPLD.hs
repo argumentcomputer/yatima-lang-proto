@@ -8,17 +8,21 @@ import           Codec.Serialise.Encoding
 
 import           Control.Monad.Except
 
+import           Numeric.Natural
+
 import           Data.ByteString                      (ByteString)
 import qualified Data.ByteString                      as BS
 import qualified Data.ByteString.Lazy                 as BSL
+import qualified Data.ByteString.UTF8                 as UTF8
 import qualified Data.Map                             as M
 import           Data.Text                            (Text)
 import qualified Data.Text                            as T
+import qualified Data.Text.Encoding                   as T
 
 import           Language.Yatima.CID
+import           Language.Yatima.DagAST
 import           Language.Yatima.IPLD
 import           Language.Yatima.Package
-import           Language.Yatima.DagAST
 import           Language.Yatima.Term
 import           Language.Yatima.Uses
 
@@ -41,6 +45,7 @@ instance Arbitrary AnonAST where
     [ Vari <$> arbitrary
     , Link <$> arbitrary
     , Bind <$> arbitrary
+    , Data <$> arbitrary
     , do
         n <- (\n -> (n * 2) `div` 3) <$> getSize
         i <- choose (0,n)
@@ -81,7 +86,7 @@ prop_serial x = let s = serialise x in
 test_defs :: (Index,Cache)
 test_defs =
   let trm = Lam "A" (Lam "x" (Var "x"))
-      typ = All "" "A" Many Typ (All "" "x" Many (Var "A") (Var "A"))
+      typ = All "A" Many Typ (All "x" Many (Var "A") (Var "A"))
       def = Def "" trm typ
       Right (cid, cache) = runExcept (insertDef "id" def emptyIndex (Cache M.empty))
    in (Index (M.singleton "id" cid) (M.singleton cid "id"), cache)
@@ -95,16 +100,41 @@ name_gen = do
   n <- choose (0,100) :: Gen Int
   return $ T.cons a (T.pack $ show n)
 
+constant_gen :: Gen Constant
+constant_gen = oneof
+  [ CInt <$> arbitrary
+  , CRat <$> arbitrary
+  , CBit <$> arbitrary
+  , do 
+    len <- fromIntegral <$> (choose (0,64) :: Gen Int)
+    val <- fromIntegral <$> (choose (0, 2 ^ len - 1) :: Gen Integer)
+    return $ CWrd len val
+  , CStr . UTF8.fromString <$> arbitrary
+  , CChr <$> arbitrary
+  , return CUni
+  , return TInt
+  , return TRat
+  , return TBit
+  , TWrd <$> arbitrarySizedNatural
+  , return TStr
+  , return TChr
+  , return TUni
+  ]
+
+instance Arbitrary Constant where
+  arbitrary = constant_gen
+
 term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
-  [ (100,Var <$> elements ctx)
-  , (100,Ref <$> elements (M.keys (_byName test_index)))
+  [ (100, Var <$> elements ctx)
+  , (100, Ref <$> elements (M.keys (_byName test_index)))
   , (100, return Typ)
+  , (100, Lit <$> arbitrary)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
+  , (50, (name_gen >>= \n -> Slf n <$> term_gen (n:ctx)))
   , (50, App <$> term_gen ctx <*> term_gen ctx)
   , (50, Ann <$> term_gen ctx <*> term_gen ctx)
-  , (33, (name_gen >>= \s -> name_gen >>= \n -> 
-            All s n <$> arbitrary <*> term_gen ctx <*> term_gen (n:s:ctx)))
+  , (33, (name_gen >>= \n -> All n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)))
   , (33, (name_gen >>= \n -> 
             Let n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)
                   <*> term_gen (n:ctx)))
@@ -130,6 +160,7 @@ spec = do
     it "Cid"  $ property $ prop_serial @CID
     it "Meta" $ property $ prop_serial @Meta
     it "Anon" $ property $ prop_serial @AnonAST
+    it "Constant" $ property $ prop_serial @Constant
     it "ASTDef" $ property $ prop_serial @AnonDef
     it "DagDef" $ property $ prop_serial @DagDef
     it "Package" $ property $ prop_serial @Index
