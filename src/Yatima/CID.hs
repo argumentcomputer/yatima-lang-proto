@@ -1,5 +1,13 @@
+{-|
+Module      : Yatima.CID
+Description : Utilities for Content-IDs in the InterPlanetary FileSystem
+Copyright   : (c) Sunshine Cybernetics, 2020
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 {-# LANGUAGE DataKinds   #-}
-module Language.Yatima.CID 
+module Yatima.CID
   ( CID(..)
   , encodeCID
   , decodeCID
@@ -86,5 +94,3 @@ makeCID a = mkCborCIDv1 C.Blake2b_256 a
 
 printCIDBase32 :: CID -> Text
 printCIDBase32 c = decodeUtf8 $ cidToBase BaseN.Base32 c
-
-

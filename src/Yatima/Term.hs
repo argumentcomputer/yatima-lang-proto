@@ -1,22 +1,22 @@
 {-|
-Module      : Language.Yatima.Term
+Module      : Yatima.Term
 Description : Defines expressions in the Yatima language
 Copyright   : (c) Sunshine Cybernetics, 2020
 License     : GPL-3
-Maintainer  : contact@sunshinecybernetics.com
+Maintainer  : john@yatima.io
 Stability   : experimental
 
 This module defines `Term`, the type of expressions in the Yatima language.
 
 -}
-module Language.Yatima.Term
-  ( -- | IPFS content-identifiers
-    module Language.Yatima.Uses
-  , Name(..)
-  , Term(..)
-  , Def(..)
-  , Defs
-  , Constant(..)
+module Yatima.Term
+  ( module Yatima.Uses
+  , module Yatima.Literal
+  , module Yatima.PrimOp
+  , Name
+  , Term (..)
+  , Def  (..)
+  , Defs 
   ) where
 
 import           Data.Text                  (Text)
@@ -24,8 +24,9 @@ import qualified Data.Text                  as T hiding (find)
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
 
-import           Language.Yatima.Uses
-import           Language.Yatima.Constant
+import           Yatima.Uses
+import           Yatima.PrimOp
+import           Yatima.Literal
 
 -- * Yatima expressions
 
@@ -58,17 +59,19 @@ data Term where
   Typ :: Term
   -- | Type annotation
   Ann :: Term -> Term -> Term
-  -- | Literal
-  Lit :: Constant -> Term
+  -- | a primitive literal
+  Lit :: Literal -> Term
+  -- | a primitive operation
+  Opr :: PrimOp -> Term
 
 deriving instance Show Term
 deriving instance Eq Term
 
 -- | A type annotated definition
 data Def = Def
-  { _doc  :: Text
-  , _term :: Term
-  , _type :: Term
+  { _doc    :: Text
+  , _term   :: Term
+  , _type   :: Term
   } deriving Show
 
 type Defs = Map Name Def

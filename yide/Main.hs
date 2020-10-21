@@ -4,7 +4,7 @@ import           Control.Monad.State.Strict
 
 import           Data.Map (empty)
 import           Path.IO
-import           Language.Yatima
+import           Yatima
 
 import           Yide
 

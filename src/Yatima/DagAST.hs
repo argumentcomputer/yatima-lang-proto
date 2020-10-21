@@ -1,4 +1,12 @@
-module Language.Yatima.DagAST where
+{-|
+Module      : Yatima.DagAST
+Description : Encode an Abstract Syntax Tree on the IPLD Directed Acyclic Graph
+Copyright   : (c) Sunshine Cybernetics, 2020
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
+module Yatima.DagAST where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -13,8 +21,8 @@ import qualified Data.Text                  as T hiding (find)
 import           Data.IntMap                (IntMap)
 import qualified Data.IntMap                as IM
 
-import           Language.Yatima.CID
-import           Language.Yatima.Term
+import           Yatima.CID
+import           Yatima.Term
 
 -- | A definition embedded in the IPLD DAG
 data DagDef = DagDef

@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Language.Yatima.Import where
+module Yatima.Import where
 
 import           Control.Monad.Except
 import           Control.Monad.Catch
@@ -26,12 +26,12 @@ import qualified Data.ByteString            as BS
 import           Data.Char
 import           Debug.Trace
 
-import           Language.Yatima.CID
-import           Language.Yatima.Term
-import           Language.Yatima.Package
-import           Language.Yatima.IPLD
-import           Language.Yatima.Parse      hiding (parseDefault)
-import           Language.Yatima.Print
+import           Yatima.CID
+import           Yatima.Term
+import           Yatima.Package
+import           Yatima.IPLD
+import           Yatima.Parse      hiding (parseDefault)
+import           Yatima.Print
 
 import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)

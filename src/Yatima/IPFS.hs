@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE QuasiQuotes #-}
-module Language.Yatima.IPFS where
+module Yatima.IPFS where
 
 import           Control.Monad
 import           Control.Monad.Except
@@ -32,13 +32,13 @@ import           Path.IO
 
 import           Codec.Serialise
 
-import           Language.Yatima.CID
-import           Language.Yatima.IPLD
-import           Language.Yatima.DagJSON
-import           Language.Yatima.DagAST
-import           Language.Yatima.Package
-import           Language.Yatima.Import
-import           Language.Yatima.Term
+import           Yatima.CID
+import           Yatima.IPLD
+import           Yatima.DagJSON
+import           Yatima.DagAST
+import           Yatima.Package
+import           Yatima.Import
+import           Yatima.Term
 
 
 apiCommands :: Proxy ApiV0Commands

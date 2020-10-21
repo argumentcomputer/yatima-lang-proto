@@ -1,18 +1,14 @@
 {-|
-Module      : Language.Yatima.Print
+Module      : Yatima.Print
 Description : Pretty-printing of expressions in the Yatima Language
 Copyright   : (c) Sunshine Cybernetics, 2020
 License     : GPL-3
-Maintainer  : john@sunshinecybernetics.com
+Maintainer  : john@yatima.io
 Stability   : experimental
 -}
 {-# LANGUAGE OverloadedStrings #-}
-module Language.Yatima.Print
-  ( prettyTerm
-  , prettyDef
-  , prettyDefs
-  , prettyConstant
-  ) where
+module Yatima.Print where
+
 
 import           Data.Map                (Map)
 import qualified Data.Map                as M
@@ -32,8 +28,8 @@ import qualified Data.ByteString.Base16  as B16
 
 import           Control.Monad.Except
 
-import           Language.Yatima.IPLD
-import           Language.Yatima.Term
+import           Yatima.IPLD
+import           Yatima.Term
 
 -- | Pretty-printer for terms
 prettyTerm :: Term -> Text
@@ -64,7 +60,8 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Let nam use typ exp bod -> mconcat
         ["let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
       Typ                     -> "Type"
-      Lit lit                 -> TB.fromText (prettyConstant lit)
+      Lit lit                 -> TB.fromText (prettyLiteral lit)
+      Opr pri                 -> TB.fromText (prettyPrimOp pri)
 
     lams :: Name -> Term -> TB.Builder
     lams nam (Lam nam' bod') = mconcat [" ", name nam, lams nam' bod']
@@ -99,24 +96,23 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       | isAtom f  = fun f <> " " <> pars (go a)
       | otherwise = fun f <> " " <> go a
 
-prettyConstant :: Constant -> Text
-prettyConstant t = case t of
-  CStr x   -> (T.pack $ show $ UTF8.toString x)
-  CInt x   -> (T.pack $ show x)
-  CNat x   -> (T.pack $ show x) <> "n"
-  CChr x   -> T.pack $ show x
-  CBit x   -> "'x" <> (B16.encodeBase16 x)
-  CRat x   -> (T.pack $ show $ numerator x) <> "/" <> (T.pack $ show $ denominator x)
-  CWrd l x -> (T.pack $ show x) <> "u" <> (T.pack $ show l)
-  TWrd l   -> "#Word" <> (T.pack $ show l)
-  TStr   -> "#String"
-  TChr   -> "#Char"
-  TInt   -> "#Integer"
-  TNat   -> "#Natural"
-  TRat   -> "#Rational"
-  TBit   -> "#Bits"
-  TUni   -> "#World"
-  CUni   -> "#world"
+prettyLiteral :: Literal -> Text
+prettyLiteral t = case t of
+  VString  x     -> (T.pack $ show $ UTF8.toString x)
+  TString        -> "#String"
+  TWorld         -> "#World"
+  VWorld         -> "#world"
+  VNatural x     -> (T.pack $ show x)
+  TNatural       -> "#Natural"
+  VChar    x     -> T.pack $ show x
+  VBitString x   -> "0x" <> (B16.encodeBase16 x)
+  VBitVector l x -> (T.pack $ show l) <> "x" <> (B16.encodeBase16 x)
+  TBitVector l   -> "#BitVector" <> (T.pack $ show l)
+  TChar          -> "#Char"
+  TBitString     -> "#BitString"
+
+prettyPrimOp :: PrimOp -> Text
+prettyPrimOp p = "#" <> primOpName p
 
 prettyDef :: Name -> Def -> Text
 prettyDef name (Def doc term typ_) = T.concat

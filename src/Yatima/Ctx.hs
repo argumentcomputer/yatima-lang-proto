@@ -1,4 +1,16 @@
-module Language.Yatima.Ctx where
+{-|
+Module      : Yatima.Ctx
+Description : Defines a named sequence datatype used as a context for
+typechecking.
+Copyright   : (c) Sunshine Cybernetics, 2020
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+
+This module defines `Term`, the type of expressions in the Yatima language.
+
+-}
+module Yatima.Ctx where
 
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
@@ -6,7 +18,7 @@ import qualified Data.Text                      as T
 import           Data.Sequence (Seq(..))
 import qualified Data.Sequence as Seq
 
-import           Language.Yatima.Term
+import           Yatima.Term
 
 -- | A generalized context
 newtype Ctx a = Ctx { _ctx :: Seq (Name,a) }

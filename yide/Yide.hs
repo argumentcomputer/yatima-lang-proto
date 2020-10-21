@@ -31,16 +31,16 @@ import           Path.IO
 
 import           HaskelineT
 
-import           Language.Yatima.CID
-import           Language.Yatima.Package
-import qualified Language.Yatima.Ctx as Ctx
-import           Language.Yatima.Term
-import qualified Language.Yatima.Core as Core
-import           Language.Yatima.Parse
-import           Language.Yatima.Print
-import           Language.Yatima.Import
-import           Language.Yatima.IPLD
-import           Language.Yatima
+import           Yatima.CID
+import           Yatima.Package
+import qualified Yatima.Ctx as Ctx
+import           Yatima.Term
+import qualified Yatima.Core as Core
+import           Yatima.Parse
+import           Yatima.Print
+import           Yatima.Import
+import           Yatima.IPLD
+import           Yatima
 
 
 data YideState = YideState

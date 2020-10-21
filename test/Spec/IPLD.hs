@@ -19,12 +19,12 @@ import           Data.Text                            (Text)
 import qualified Data.Text                            as T
 import qualified Data.Text.Encoding                   as T
 
-import           Language.Yatima.CID
-import           Language.Yatima.DagAST
-import           Language.Yatima.IPLD
-import           Language.Yatima.Package
-import           Language.Yatima.Term
-import           Language.Yatima.Uses
+import           Yatima.CID
+import           Yatima.DagAST
+import           Yatima.IPLD
+import           Yatima.Package
+import           Yatima.Term
+import           Yatima.Uses
 
 import           Test.Hspec
 import           Test.QuickCheck
@@ -100,31 +100,30 @@ name_gen = do
   n <- choose (0,100) :: Gen Int
   return $ T.cons a (T.pack $ show n)
 
-constant_gen :: Gen Constant
-constant_gen = oneof
-  [ CInt <$> arbitrary
-  , CNat <$> arbitrarySizedNatural
-  , CRat <$> arbitrary
-  , CBit <$> arbitrary
+literal_gen :: Gen Literal
+literal_gen = oneof
+  [ return VWorld
+  , return TWorld
+  , VNatural <$> arbitrarySizedNatural
+  , VBitString <$> arbitrary
   , do 
-    len <- fromIntegral <$> (choose (0,64) :: Gen Int)
-    val <- fromIntegral <$> (choose (0, 2 ^ len - 1) :: Gen Integer)
-    return $ CWrd len val
-  , CStr . UTF8.fromString <$> arbitrary
-  , CChr <$> arbitrary
-  , return CUni
-  , return TInt
-  , return TNat
-  , return TRat
-  , return TBit
-  , TWrd <$> arbitrarySizedNatural
-  , return TStr
-  , return TChr
-  , return TUni
+    len <- choose (1,64) :: Gen Int
+    val <- BS.pack <$> vectorOf len arbitrary
+    return $ VBitVector (fromIntegral len*8) val
+  , VString . UTF8.fromString <$> arbitrary
+  , VChar <$> arbitrary
+  , return TNatural
+  , return TBitString
+  , TBitVector <$> arbitrarySizedNatural
+  , return TString
+  , return TChar
   ]
 
-instance Arbitrary Constant where
-  arbitrary = constant_gen
+instance Arbitrary Literal where
+  arbitrary = literal_gen
+
+instance Arbitrary PrimOp where
+  arbitrary = arbitraryBoundedEnum
 
 term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
@@ -132,6 +131,7 @@ term_gen ctx = frequency
   , (100, Ref <$> elements (M.keys (_byName test_index)))
   , (100, return Typ)
   , (100, Lit <$> arbitrary)
+  , (100, Opr <$> arbitrary)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, (name_gen >>= \n -> Slf n <$> term_gen (n:ctx)))
   , (50, App <$> term_gen ctx <*> term_gen ctx)
@@ -162,7 +162,8 @@ spec = do
     it "Cid"  $ property $ prop_serial @CID
     it "Meta" $ property $ prop_serial @Meta
     it "Anon" $ property $ prop_serial @AnonAST
-    it "Constant" $ property $ prop_serial @Constant
+    it "Literal" $ property $ prop_serial @Literal
+    it "PrimOp" $ property $ prop_serial @PrimOp
     it "ASTDef" $ property $ prop_serial @AnonDef
     it "DagDef" $ property $ prop_serial @DagDef
     it "Package" $ property $ prop_serial @Index

@@ -1,4 +1,4 @@
-module Language.Yatima.Uses where
+module Yatima.Uses where
 
 data Uses = None | Affi | Once | Many deriving (Eq, Show, Enum)
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE QuasiQuotes #-}
-module Language.Yatima.IPLD where
+module Yatima.IPLD where
 
 --import           Data.Set                   (Set)
 --import qualified Data.Set                   as Set
@@ -25,10 +25,10 @@ import           Control.Monad.State.Strict
 import           Path
 import           Path.IO
 
-import           Language.Yatima.CID
-import           Language.Yatima.Term
-import           Language.Yatima.Package
-import           Language.Yatima.DagAST
+import           Yatima.CID
+import           Yatima.Term
+import           Yatima.Package
+import           Yatima.DagAST
 
 newtype Cache = Cache { _data :: Map CID BS.ByteString }
 
@@ -217,6 +217,9 @@ termToAST n t index cache =
       Lit x                -> do
         bump
         return $ Data (BSL.toStrict $ serialise x)
+      Opr x                -> do
+        bump
+        return $ Data (BSL.toStrict $ serialise x)
 
 -- | Find a name in the binding context and return its index
 lookupNameCtx :: Int -> [Name] -> Maybe Name
@@ -271,9 +274,12 @@ astToTerm n index anon meta = do
       Bind b  -> get >>= \i -> throwError $ UnexpectedBind b ctx i
       Data bs -> do
         bump
-        case (deserialiseOrFail $ BSL.fromStrict bs) of
-          Left e  -> throwError $ NoDeserial e
+        let bs' = BSL.fromStrict bs
+        case (deserialiseOrFail bs') of
           Right x -> return $ Lit x
+          Left e  -> case (deserialiseOrFail bs') of
+            Right x -> return $ Opr x
+            Left e  -> throwError $ NoDeserial e
       Ctor nam args -> case (nam,args) of
         ("Lam",[Bind b]) -> do
           n <- get >>= name

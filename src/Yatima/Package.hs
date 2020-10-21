@@ -1,4 +1,4 @@
-module Language.Yatima.Package where
+module Yatima.Package where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -18,8 +18,8 @@ import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
 import           Data.List                  (sortBy)
 
-import           Language.Yatima.CID
-import           Language.Yatima.Term
+import           Yatima.CID
+import           Yatima.Term
 
 data Package = Package
   { _title   :: Name

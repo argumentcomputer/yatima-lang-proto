@@ -3,24 +3,24 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeApplications #-}
-module Language.Yatima where
+module Yatima where
 
-import           Language.Yatima.CID
-import           Language.Yatima.Package
-import           Language.Yatima.Import
+import           Yatima.CID
+import           Yatima.Package
+import           Yatima.Import
 --import           Language.Yatima.IPFS
-import           Language.Yatima.IPLD
-import           Language.Yatima.Uses
-import           Language.Yatima.Ctx    (Ctx, (<|))
-import qualified Language.Yatima.Ctx    as Ctx
-import           Language.Yatima.Core   (CheckErr,HOAS (..),PreContext,defToHoas)
-import qualified Language.Yatima.Core   as Core
-import           Language.Yatima.Print  (prettyTerm)
-import qualified Language.Yatima.Print  as Print
-import           Language.Yatima.Parse  (parseTerm, unsafeParseTerm)
-import qualified Language.Yatima.Parse  as Parse
-import           Language.Yatima.Term   (Def (..), Defs, Name, Term (..))
-import qualified Language.Yatima.Term   as Term
+import           Yatima.IPLD
+import           Yatima.Uses
+import           Yatima.Ctx    (Ctx, (<|))
+import qualified Yatima.Ctx    as Ctx
+import           Yatima.Core   (CheckErr,HOAS (..),PreContext,defToHoas)
+import qualified Yatima.Core   as Core
+import           Yatima.Print  (prettyTerm)
+import qualified Yatima.Print  as Print
+import           Yatima.Parse  (parseTerm, unsafeParseTerm)
+import qualified Yatima.Parse  as Parse
+import           Yatima.Term   (Def (..), Defs, Name, Term (..))
+import qualified Yatima.Term   as Term
 
 import           Control.Monad.Except
 import           Control.Monad.Catch

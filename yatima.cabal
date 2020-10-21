@@ -9,7 +9,7 @@ version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 homepage:       moonad/yatima
 author:         Gabriel Barreto, John C. Burnham, Victor Maia
-maintainer:     john@sunshinecybernetics.com
+maintainer:     john@yatima.io
 copyright:      2020 Sunshine Cybernetics
 license:        GPL-3
 license-file:   LICENSE
@@ -20,23 +20,25 @@ extra-source-files:
 
 library
   exposed-modules:
-      Language.Yatima.Term
-      Language.Yatima.Constant
-      Language.Yatima.IPLD
-      Language.Yatima.CID
-      Language.Yatima.Uses
-      Language.Yatima.Print
-      Language.Yatima.Parse
-      Language.Yatima.Parse.Integer
-      Language.Yatima.DagJSON
-      Language.Yatima.DagAST
-      Language.Yatima.Package
-      Language.Yatima.Import
-      Language.Yatima.Core
-      Language.Yatima.Ctx
-      Language.Yatima.IPFS
-      Language.Yatima
+      Yatima.Term
+      Yatima.Constant
+      Yatima.IPLD
+      Yatima.CID
+      Yatima.Uses
+      Yatima.Print
+      Yatima.Parse
+      Yatima.DagJSON
+      Yatima.DagAST
+      Yatima.Package
+      Yatima.Import
+      Yatima.Core
+      Yatima.Ctx
+      Yatima.IPFS
+      Yatima
   other-modules:
+      Yatima.Literal
+      Yatima.Prim
+      Yatima.PrimOp
       Paths_yatima
   hs-source-dirs:
       src

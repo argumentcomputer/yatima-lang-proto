@@ -1,14 +1,14 @@
 {-|
-Module      : Language.Yatima.HOAS
+Module      : Yatima.Core
 Description : Evaluate and typecheck expressions in the Yatima Language using
 higher-order-abstract-syntax
 Copyright   : (c) Sunshine Cybernetics, 2020
 License     : GPL-3
-Maintainer  : john@sunshinecybernetics.com
+Maintainer  : john@yatima.io
 Stability   : experimental
 -}
 {-# LANGUAGE DerivingVia #-}
-module Language.Yatima.Core where
+module Yatima.Core where
 
 import           Control.Monad.Except
 import           Control.Monad.Identity
@@ -31,10 +31,10 @@ import qualified Data.Text.Lazy                 as LT
 import qualified Data.Text.Lazy.Builder         as TB
 import qualified Data.Text.Lazy.Builder.Int     as TB
 
-import           Language.Yatima.Ctx            (Ctx (..), (<|))
-import qualified Language.Yatima.Ctx            as Ctx
-import           Language.Yatima.Print
-import           Language.Yatima.Term
+import           Yatima.Ctx            (Ctx (..), (<|))
+import qualified Yatima.Ctx            as Ctx
+import           Yatima.Print
+import           Yatima.Term
 
 import           Debug.Trace
 
@@ -54,7 +54,8 @@ data HOAS where
   UnrH :: Int  -> HOAS -> HOAS -> HOAS
   TypH :: HOAS
   HolH :: Name -> HOAS
-  LitH :: Constant -> HOAS
+  LitH :: Literal -> HOAS
+  OprH :: PrimOp  -> HOAS
 
 type PreContext = Ctx HOAS
 type Context    = Ctx (Uses,HOAS)
@@ -88,7 +89,8 @@ termToHoas ctx t = case t of
   Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
   All nam use typ bod     -> AllH nam use (go typ) (bind nam bod)
   Slf nam bod             -> SlfH nam (bind nam bod)
-  Lit con                 -> LitH con
+  Lit lit                 -> LitH lit
+  Opr opr                 -> OprH opr
   where
     go      t   = termToHoas ctx t
     bind  n t   = (\x   -> termToHoas ((n,x)<|ctx) t)
@@ -111,7 +113,8 @@ hoasToTerm ctx t = case t of
   FixH nam bod             -> bind nam bod
   AnnH trm typ             -> Ann (go trm) (go typ)
   UnrH _   trm _           -> go trm
-  LitH con                 -> Lit con
+  LitH lit                 -> Lit lit
+  OprH opr                 -> Opr opr
   where
     dep          = Ctx.depth ctx
     go t         = hoasToTerm ctx t
@@ -141,6 +144,7 @@ whnf defs trm = case trm of
   AnnH a _     -> go a
   UnrH _ a _   -> go a
   LetH _ _ _ exp bod -> go (bod exp)
+
   x                  -> x
   where
     go x = whnf defs x
@@ -520,10 +524,10 @@ prettyError e = case e of
 instance Show CheckErr where
   show e = T.unpack $ prettyError e
 
-expandConstant :: Constant -> HOAS
-expandConstant t = case t of
-  TUni -> LitH TUni
-  CUni -> LitH CUni
+--expandConstant :: Constant -> HOAS
+--expandConstant t = case t of
+--  TUni -> LitH TUni
+--  CUni -> LitH CUni
   --TStr -> termToHoas $
 
 

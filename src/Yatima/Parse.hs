@@ -1,9 +1,9 @@
 {-|
-Module      : Language.Yatima.Parse
+Module      : Yatima.Parse
 Description : Parsing expressions in the Yatima Language
 Copyright   : (c) Sunshine Cybernetics, 2020
-License     : AGPL-3
-Maintainer  : john@sunshinecybernetics.com
+License     : GPL-3
+Maintainer  : john@yatima.io
 Stability   : experimental
 
 This library implements a `Megaparsec` parser for the Yatima language using the
@@ -24,42 +24,7 @@ Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE TupleSections #-}
-module Language.Yatima.Parse
-  ( ParseErr(..)
-  , ParseEnv(..)
-  , Parser
-  , parseDefault
-  , parseM
-  , pName
-  , pLam
-  , pAll
-  , pSlf
-  , pNew
-  , pUse
-  , pTyp
-  , pLet
-  , pVar
-  , pBinder
-  , pDecl
-  , pHol
-  , pTerm
-  , pExpr
-  , pDef
-  , pDefs
-  , pConstant
-  , pChar
-  , pEscape
-  , pString
-  , pHexBits
-  , pDoc
-  , symbol
-  , symbol'
-  , space
-  , space'
-  , defaultParseEnv
-  , parseTerm
-  , unsafeParseTerm
-  ) where
+module Yatima.Parse where
 
 import           Control.Monad.Except
 import           Control.Monad.Identity
@@ -70,17 +35,17 @@ import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import           Data.Bits
 import           Data.Word
-import           Data.Char                  (isHexDigit,isDigit, chr, ord)
-import           Data.List                  (unfoldr)
+import           Data.Char                  (isHexDigit,isDigit, chr, ord, digitToInt)
+import           Data.List                  (unfoldr, foldl')
 import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
-import           Data.Ratio
 import qualified Data.ByteString            as BS
-import qualified Data.ByteString.UTF8       as BS
+import qualified Data.ByteString.UTF8       as BS hiding (length)
 import qualified Data.ByteString.Base16     as B16
 import           Data.ByteString            (ByteString)
+import           Data.Proxy
 
 import           Numeric.Natural
 
@@ -88,10 +53,9 @@ import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 
-import           Language.Yatima.Uses
-import           Language.Yatima.Term
-import           Language.Yatima.Print
-import           Language.Yatima.Parse.Integer
+import           Yatima.Uses
+import           Yatima.Term
+import           Yatima.Print
 
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
@@ -116,9 +80,7 @@ data ParseErr e
   | TopLevelRedefinition Name
   | ReservedKeyword Name
   | ReservedLeadingChar Char Name
-  | MalformedWordLength Integer Integer
-  | MalformedBits ByteString
-  | RationalHasZeroDenominator Integer Integer
+  | BitVectorOverflow Integer String
   | LeadingDigit Name
   | ParseEnvironmentError e
   deriving (Eq, Ord,Show)
@@ -135,12 +97,8 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
   showErrorComponent (ReservedLeadingChar c nam) =
     "Illegal leading character " ++ ['"',c,'"'] ++ " in name: " ++ T.unpack nam
   showErrorComponent (ParseEnvironmentError e) = showErrorComponent e
-  showErrorComponent (MalformedWordLength val len) = 
-    "Declared Word constant whose declared value " ++ show val ++ 
-      " overflows its declared length " ++ show len
-  showErrorComponent (RationalHasZeroDenominator x y) = 
-    "Rational number constant " ++ show x ++ "/" ++ show y 
-      ++ " has zero denominator."
+  showErrorComponent (BitVectorOverflow len val) = 
+    "BitVector literal " ++ show val ++ " overflows length " ++ show len
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
@@ -376,7 +334,8 @@ pTerm = do
     , pTyp
     , symbol "(" >> pExpr True <* space <* string ")"
     , pLet
-    , Lit <$> pConstant
+    , Opr <$> pOpr
+    , Lit <$> pLiteral
     , pVar
     ]
 
@@ -436,87 +395,56 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
     ds    <- local (\e -> e { _refs = Set.insert n (_refs e) }) pDefs
     return $ (n,d):ds
 
-pConstant :: (Ord e, Monad m) => Parser e m Constant
-pConstant = choice
-  [ string "#String"   >> return TStr
-  , string "#Char"     >> return TChr
-  , string "#World"    >> return TUni
-  , string "#Word"     >> TWrd <$> pNum
-  , string "#Bits"     >> return TBit
-  , string "#Integer"  >> return TInt
-  , string "#Natural"  >> return TNat
-  , string "#Rational" >> return TRat
-  , string "#world"    >> return CUni
-  , try $ CRat <$> pRationalDot
-  , try $ CRat <$> pRational
-  , try $ CNat <$> pNatural
-  , try $ CInt <$> pInteger
-  , pWord
-  , CStr <$> pString
-  , try $ CChr <$> pChar
-  , CBit <$> pHexBits
+pLiteral :: (Ord e, Monad m) => Parser e m Literal
+pLiteral = choice
+  [ string "#World"     >> return TWorld
+  , string "#world"     >> return VWorld
+  , string "#Natural"   >> return TNatural
+  , try $ pBits
+  , try $ VNatural <$> pNatural
+  , string "#String"    >> return TString
+  , string "#Char"      >> return TChar
+  , string "#BitVector" >> TBitVector . fromIntegral <$> pNatural
+  , string "#BitString" >> return TBitString
+  , VString <$> pString
+  , try $ VChar <$> pChar
   ]
-
-pNum :: (Ord e, Monad m) => Parser e m Integer
-pNum = choice
-  [ string "0x" >> hexadecimal
-  , string "0o" >> octal
-  , string "0b" >> binary
-  , string "0d" >> decimal
-  , notFollowedBy (string "_") >> decimal
-  ]
-
-pInteger :: (Ord e, Monad m) => Parser e m Integer
-pInteger = do
-  val <- L.signed (pure ()) pNum
-  notFollowedBy (string "u")
-  return val
 
 pNatural :: (Ord e, Monad m) => Parser e m Natural
 pNatural = do
-  val <- pNum
-  string "n"
+  val <- notFollowedBy (string "_") >> L.decimal
+  notFollowedBy (string "x")
+  notFollowedBy (string "b")
   return $ fromIntegral val
 
 -- TODO: binary, octal, decimal bitstring literals
-pHexBits :: (Ord e, Monad m) => Parser e m ByteString
-pHexBits = do
-  string "'x"
-  str <- many (pure <$> (satisfy isHexDigit) <|> (string "_" >> return []))
-  let txt = BS.fromString (concat str)
-  case (B16.decodeBase16 txt) of
-    Left x  -> either (\e -> customFailure $ MalformedBits txt)
-                  pure (B16.decodeBase16 ("0" <> txt))
-    Right x -> return x
-
-
-pWord :: (Ord e, Monad m) => Parser e m Constant
-pWord = do
-  val <- pNum
-  string "u"
-  len <- notFollowedBy (string "_") >> decimal
-  when (val >= 2 ^ len) (customFailure $ MalformedWordLength val len)
-  return $ CWrd (fromIntegral len) (fromIntegral val)
-
-pRational :: (Ord e, Monad m) => Parser e m Rational
-pRational = L.signed (pure ()) $ do
-  x <- decimal
-  string "/"
-  y <- decimal
-  when (y == 0) (customFailure $ RationalHasZeroDenominator x y)
-  return $ x % y
-
-pRationalDot :: (Ord e, Monad m) => Parser e m Rational
-pRationalDot = L.signed (pure ()) $ do
-  x <- decimal
-  string "."
-  y <- decimal
-  return $ x % 1 + (mantissa y 10)
+pBits :: (Ord e, Monad m) => Parser e m Literal
+pBits = do
+  len <- notFollowedBy (string "_") >> L.decimal
+  (bitsPer, ds) <- choice
+    [ (4,) <$> (string "x" >> many (satisfy (\x -> isHexDigit x || x == '_')))
+    , (1,) <$> (string "b" >> many (satisfy (\x -> isBinDigit x || x == '_')))
+    ]
+  let bits = fromIntegral $ length ds * bitsPer
+  when (bits > len && len /= 0) (customFailure $ BitVectorOverflow len ds)
+  let words = mkWords bitsPer (digitToInt <$> (filter (/= '_') ds))
+  if | len == 0  -> return $ VBitString (BS.pack words)
+     | otherwise -> return $ VBitVector (fromIntegral len) (BS.pack words)
   where
-    mantissa :: Integer -> Integer -> Rational
-    mantissa num dem
-      | num >= dem = mantissa num (dem * 10)
-      | otherwise  = num % dem
+    mkWords _ [] = []
+    mkWords b cs = let (xs,rs) = splitAt (8 `div` b) cs in 
+      (fromIntegral $ foldl' (step b) 0 xs) : mkWords b rs
+    step b a c = a * 2^b + c
+    isBinDigit x = x == '0' || x == '1'
+
+pOpr :: (Ord e, Monad m) => Parser e m PrimOp
+pOpr = choice $ mkParse <$> [minBound..maxBound]
+  where
+    mkParse :: (Ord e, Monad m) => PrimOp -> Parser e m PrimOp
+    mkParse x = try $ do
+      string ("#" <> primOpName x)
+      notFollowedBy alphaNumChar
+      return x
 
 pString :: (Ord e, Monad m) => Parser e m ByteString
 pString = do

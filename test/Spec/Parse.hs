@@ -12,10 +12,10 @@ import qualified Data.Set                   as Set
 import           Data.List.NonEmpty         (NonEmpty)
 import           Data.List.NonEmpty         as NE
 
-import           Language.Yatima.Term
-import           Language.Yatima.Uses
-import qualified Language.Yatima.Parse as Parse
-import           Language.Yatima.Parse hiding (Parser)
+import           Yatima.Term
+import           Yatima.Uses
+import qualified Yatima.Parse as Parse
+import           Yatima.Parse hiding (Parser)
 
 import qualified Spec.IPLD                            as IPLDSpec
 

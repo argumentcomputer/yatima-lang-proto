@@ -1,4 +1,4 @@
-module Language.Yatima.DagJSON where
+module Yatima.DagJSON where
 
 -- adapted from
 -- https://github.com/joelburget/haskell-ipld/blob/master/src/Network/IPLD/Internal.hs
@@ -19,7 +19,7 @@ import qualified Data.Text                           as T
 import           Data.Text                           (Text)
 import qualified Data.Vector                         as V
 
-import           Language.Yatima.CID
+import           Yatima.CID
 
 data DagJSON
   = DagLink CID
