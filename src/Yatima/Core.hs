@@ -55,6 +55,7 @@ data HOAS where
   TypH :: HOAS
   HolH :: Name -> HOAS
   LitH :: Literal -> HOAS
+  LTyH :: LitType -> HOAS
   OprH :: PrimOp  -> HOAS
 
 type PreContext = Ctx HOAS
@@ -90,6 +91,7 @@ termToHoas ctx t = case t of
   All nam use typ bod     -> AllH nam use (go typ) (bind nam bod)
   Slf nam bod             -> SlfH nam (bind nam bod)
   Lit lit                 -> LitH lit
+  LTy lty                 -> LTyH lty
   Opr opr                 -> OprH opr
   where
     go      t   = termToHoas ctx t
@@ -114,6 +116,7 @@ hoasToTerm ctx t = case t of
   AnnH trm typ             -> Ann (go trm) (go typ)
   UnrH _   trm _           -> go trm
   LitH lit                 -> Lit lit
+  LTyH lty                 -> LTy lty
   OprH opr                 -> Opr opr
   where
     dep          = Ctx.depth ctx
@@ -134,13 +137,18 @@ defToHoas name (Def _ term typ_) =
 
 whnf :: Defs -> HOAS -> HOAS
 whnf defs trm = case trm of
-  RefH nam           -> case defs M.!? nam of
-    Just d  -> go $ fst (defToHoas nam d)
-    Nothing -> RefH nam
-  FixH nam bod       -> go (bod trm)
-  AppH fun arg       -> case go fun of
-    LamH _ bod -> go (bod arg)
-    x          -> AppH fun arg
+  RefH nam     -> case defs M.!? nam of
+    Just d       -> go $ fst (defToHoas nam d)
+    Nothing      -> RefH nam
+  FixH nam bod -> go (bod trm)
+  AppH fun arg -> case go fun of
+    LamH _ bod   -> go (bod arg)
+    OprH opr     -> reduceOpr opr arg
+    x            -> AppH fun arg
+  UseH arg     -> case go arg of
+    NewH exp     -> go exp
+    LitH val     -> expandLit val
+    x            -> UseH arg
   AnnH a _     -> go a
   UnrH _ a _   -> go a
   LetH _ _ _ exp bod -> go (bod exp)
@@ -229,6 +237,9 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
       AnnH trm _               -> go trm lvl ini
       UnrH _ trm _             -> go trm lvl ini
       HolH nam                 -> "?" <> name nam
+      LitH lit                 -> "(" <> TB.fromText (prettyLiteral lit) <> ")"
+      LTyH lit                 -> "<" <> TB.fromText (prettyLitType lit) <> ">"
+      OprH opr                 -> "{" <> TB.fromText (prettyPrimOp opr) <> "}"
 
 equal :: Defs -> HOAS -> HOAS -> Int -> Either Hole Bool
 equal defs a b lvl = go a b lvl Set.empty
@@ -311,6 +322,7 @@ fill hole term = case term of
   UseH exp             -> UseH (go exp)
   AppH fun arg         -> AppH (go fun) (go arg)
   HolH nam             -> if fst hole == nam then snd hole else HolH nam
+  _                    -> term
   where
     go x = fill hole x
 
@@ -524,10 +536,45 @@ prettyError e = case e of
 instance Show CheckErr where
   show e = T.unpack $ prettyError e
 
---expandConstant :: Constant -> HOAS
---expandConstant t = case t of
---  TUni -> LitH TUni
---  CUni -> LitH CUni
-  --TStr -> termToHoas $
+reduceOpr :: PrimOp -> HOAS -> HOAS
+reduceOpr Natural_succ (LitH (VNatural n)) = LitH (VNatural $ n+1)
+
+
+expandLit :: Literal -> HOAS
+expandLit t = case t of
+  VNatural nat ->
+    if nat == 0
+    then LamH "P" $ \p -> LamH "z" $ \z -> LamH "s" $ \s -> z
+    else LamH "P" $ \p -> LamH "z" $ \z -> LamH "s" $ 
+            \s -> AppH s (LitH $ VNatural (nat - 1))
+  _        -> error "TODO"
+
+litInduction :: LitType -> HOAS -> HOAS
+litInduction t val = case t of
+  TNatural ->
+    AllH "P" None (AllH "" Many (LTyH TNatural) $ \_ -> TypH) $ \p ->
+    AllH "" Affi (AppH p (LitH $ VNatural 0))$ \_ ->
+    AllH "" Affi (AllH "pred" Many (LTyH TNatural) $
+      \pred -> AppH p (AppH (OprH Natural_succ) pred)) $ \s ->
+      AppH p val
+  _    -> error "TODO"
+
+typeOfLit :: Literal -> HOAS
+typeOfLit t = case t of
+  VWorld         -> LTyH TWorld
+  VNatural _     -> LTyH TNatural
+  VF64    _      -> LTyH TF64
+  VF32    _      -> LTyH TF32
+  VI64    _      -> LTyH TI64
+  VI32    _      -> LTyH TI32
+  VBitString _   -> LTyH TBitString
+  VBitVector l _ -> LTyH (TBitVector l)
+  VString _      -> LTyH TString
+  VChar _        -> LTyH TChar
+
+typeOfOpr :: PrimOp -> HOAS
+typeOfOpr t = case t of
+  Natural_succ -> AllH "" Many (LTyH TNatural) (\_ -> LTyH TNatural)
+
 
 

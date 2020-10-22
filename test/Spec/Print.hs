@@ -18,8 +18,8 @@ prop_print_literal t = case ParseSpec.parse pLiteral (prettyLiteral t) of
   ParseSpec.Good a -> a == t
   _      -> False
 
-prop_print_literalType :: LiteralType -> Bool
-prop_print_literalType t = case ParseSpec.parse pLiteralType (prettyLiteralType t) of
+prop_print_litType :: LitType -> Bool
+prop_print_litType t = case ParseSpec.parse pLitType (prettyLitType t) of
   ParseSpec.Good a -> a == t
   _      -> False
 
@@ -31,6 +31,6 @@ prop_print_term t = case ParseSpec.parse (pExpr False) (prettyTerm t) of
 spec :: SpecWith ()
 spec = do
   describe "Checking term printing correctness: `x == parse (print x)`" $ do
-    it "" $ (withMaxSuccess 1000  $ property $ prop_print_literalType)
+    it "" $ (withMaxSuccess 1000  $ property $ prop_print_litType)
     it "" $ (withMaxSuccess 10000 $ property $ prop_print_literal)
     it "" $ (withMaxSuccess 10000 $ property $ prop_print_term)

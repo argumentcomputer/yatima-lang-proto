@@ -62,7 +62,7 @@ data Term where
   -- | a primitive literal
   Lit :: Literal -> Term
   -- | the type of a primitive literal
-  LTy :: LiteralType -> Term
+  LTy :: LitType -> Term
   -- | a primitive operation
   Opr :: PrimOp -> Term
 

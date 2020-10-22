@@ -27,7 +27,7 @@ data Literal
   | VChar      Char
   deriving (Eq,Show)
 
-data LiteralType
+data LitType
   = TWorld
   | TNatural
   | TF64
@@ -80,8 +80,8 @@ instance Serialise Literal where
   encode = encodeLiteral
   decode = decodeLiteral
 
-encodeLiteralType :: LiteralType -> Encoding
-encodeLiteralType t = case t of
+encodeLitType :: LitType -> Encoding
+encodeLitType t = case t of
   TWorld         -> encodeListLen 1 <> ctor <> tag 0
   TNatural       -> encodeListLen 1 <> ctor <> tag 1
   TF64           -> encodeListLen 1 <> ctor <> tag 2
@@ -96,11 +96,11 @@ encodeLiteralType t = case t of
     ctor = encodeString "LTy"
     tag  = encodeInt
 
-decodeLiteralType :: Decoder s LiteralType
-decodeLiteralType = do
+decodeLitType :: Decoder s LitType
+decodeLitType = do
   size <- decodeListLen
   ctor <- decodeString
-  when (ctor /= "LTy") (fail $ "invalid LiteralType tag: " ++ show ctor)
+  when (ctor /= "LTy") (fail $ "invalid LitType tag: " ++ show ctor)
   tag  <- decodeInt
   case (size,tag) of
     (1,0) -> return TWorld
@@ -114,8 +114,8 @@ decodeLiteralType = do
     (1,8) -> return TString
     (1,9) -> return TChar
     _     -> fail $ concat
-       ["invalid Literal with size: ", show size, " and tag: ", show tag]
+       ["invalid LitType with size: ", show size, " and tag: ", show tag]
 
-instance Serialise LiteralType where
-  encode = encodeLiteralType
-  decode = decodeLiteralType
+instance Serialise LitType where
+  encode = encodeLitType
+  decode = decodeLitType

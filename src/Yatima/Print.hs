@@ -61,7 +61,7 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
         ["let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
       Typ                     -> "Type"
       Lit lit                 -> TB.fromText (prettyLiteral lit)
-      LTy lit                 -> TB.fromText (prettyLiteralType lit)
+      LTy lit                 -> TB.fromText (prettyLitType lit)
       Opr pri                 -> TB.fromText (prettyPrimOp pri)
 
     lams :: Name -> Term -> TB.Builder
@@ -110,8 +110,8 @@ prettyLiteral t = case t of
   VString  x     -> (T.pack $ show $ UTF8.toString x)
   VChar    x     -> T.pack $ show x
 
-prettyLiteralType :: LiteralType -> Text
-prettyLiteralType t = case t of
+prettyLitType :: LitType -> Text
+prettyLitType t = case t of
   TWorld       -> "#World"
   TNatural     -> "#Natural"
   TF64         -> "#F64"

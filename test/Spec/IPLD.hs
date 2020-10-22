@@ -117,7 +117,7 @@ literal_gen = oneof
   , VF32 <$> arbitrary
   ]
 
-literalType_gen :: Gen LiteralType
+literalType_gen :: Gen LitType
 literalType_gen = oneof
   [ return TWorld
   , return TNatural
@@ -134,7 +134,7 @@ literalType_gen = oneof
 instance Arbitrary Literal where
   arbitrary = literal_gen
 
-instance Arbitrary LiteralType where
+instance Arbitrary LitType where
   arbitrary = literalType_gen
 
 instance Arbitrary PrimOp where
@@ -179,7 +179,7 @@ spec = do
     it "Meta" $ property $ prop_serial @Meta
     it "Anon" $ property $ prop_serial @AnonAST
     it "Literal" $ property $ prop_serial @Literal
-    it "LiteralType" $ property $ prop_serial @LiteralType
+    it "LitType" $ property $ prop_serial @LitType
     it "PrimOp" $ property $ prop_serial @PrimOp
     it "ASTDef" $ property $ prop_serial @AnonDef
     it "DagDef" $ property $ prop_serial @DagDef

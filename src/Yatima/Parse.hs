@@ -348,7 +348,7 @@ pTerm = do
     , symbol "(" >> pExpr True <* space <* string ")"
     , pLet
     , Opr <$> pOpr
-    , LTy <$> pLiteralType
+    , LTy <$> pLitType
     , Lit <$> pLiteral
     , pVar
     ]
@@ -420,8 +420,8 @@ pLiteral = choice
   , VChar <$> pChar
   ]
 
-pLiteralType :: (Ord e, Monad m) => Parser e m LiteralType
-pLiteralType = choice
+pLitType :: (Ord e, Monad m) => Parser e m LitType
+pLitType = choice
   [ string "#World"     >> return TWorld
   , string "#Natural"   >> return TNatural
   , string "#String"    >> return TString
