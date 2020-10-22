@@ -51,6 +51,7 @@ library
     , containers
     , cryptonite
     , exceptions
+    , file-embed
     , http-client
     , http-client-tls
     , http-types

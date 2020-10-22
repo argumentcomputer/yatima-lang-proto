@@ -12,7 +12,9 @@ module Yatima.Print where
 
 import           Data.Map                (Map)
 import qualified Data.Map                as M
-import           Data.Ratio
+import           Data.Word
+import           Data.Char
+import           Data.Bits
 
 import           Data.Text               (Text)
 import qualified Data.Text               as T hiding (find)
@@ -27,6 +29,9 @@ import qualified Data.ByteString.UTF8    as UTF8
 import qualified Data.ByteString.Base16  as B16
 
 import           Control.Monad.Except
+
+import           Numeric
+import           Numeric.Natural
 
 import           Yatima.IPLD
 import           Yatima.Term
@@ -106,9 +111,25 @@ prettyLiteral t = case t of
   VI64 x         -> (T.pack $ show x) <> "u64"
   VI32 x         -> (T.pack $ show x) <> "u32"
   VBitString x   -> "#0x" <> (B16.encodeBase16 x)
-  VBitVector l x -> "#x" <> (B16.encodeBase16 x)
+  VBitVector l x -> 
+    if l `mod` 4 == 0 
+    then "#x" <> (B16.encodeBase16 x)
+    else "#b" <> (bits l . roll . B.unpack) x
+
   VString  x     -> (T.pack $ show $ UTF8.toString x)
   VChar    x     -> T.pack $ show x
+
+roll :: [Word8] -> Integer
+roll bs = foldr (\ b a -> a `shiftL` 8 .|. fromIntegral b) 0 bs
+
+bits :: Natural -> Integer -> Text
+bits n x
+  | length digs < n' = T.pack $ replicate (n' - length digs) '0' <> digs
+  | otherwise        = T.pack $ digs
+  where
+    n' = fromIntegral n
+    digs :: [Char]
+    digs = showIntAtBase 2 intToDigit x ""
 
 prettyLitType :: LitType -> Text
 prettyLitType t = case t of

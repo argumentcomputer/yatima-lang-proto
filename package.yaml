@@ -38,11 +38,10 @@ library:
     - text
     - mtl
     - megaparsec
-
     - path
     - path-io
     - exceptions
-
+    - file-embed
     - serialise
     - bytestring
     - base16

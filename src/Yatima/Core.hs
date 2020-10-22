@@ -57,6 +57,7 @@ data HOAS where
   LitH :: Literal -> HOAS
   LTyH :: LitType -> HOAS
   OprH :: PrimOp  -> HOAS
+  WhnH :: HOAS    -> HOAS
 
 type PreContext = Ctx HOAS
 type Context    = Ctx (Uses,HOAS)
@@ -137,21 +138,22 @@ defToHoas name (Def _ term typ_) =
 
 whnf :: Defs -> HOAS -> HOAS
 whnf defs trm = case trm of
-  RefH nam     -> case defs M.!? nam of
-    Just d       -> go $ fst (defToHoas nam d)
-    Nothing      -> RefH nam
-  FixH nam bod -> go (bod trm)
-  AppH fun arg -> case go fun of
-    LamH _ bod   -> go (bod arg)
-    OprH opr     -> reduceOpr opr arg
-    x            -> AppH fun arg
-  UseH arg     -> case go arg of
+  RefH nam           -> case defs M.!? nam of
+    Just d  -> go $ fst (defToHoas nam d)
+    Nothing -> RefH nam
+  FixH nam bod       -> go (bod trm)
+  AppH fun arg       -> case go fun of
+    LamH _ bod -> go (bod arg)
+    OprH opr   -> reduceOpr opr arg
+    x          -> AppH fun arg
+  UseH arg           -> case go arg of
     NewH exp     -> go exp
     LitH val     -> expandLit val
     x            -> UseH arg
-  AnnH a _     -> go a
-  UnrH _ a _   -> go a
+  AnnH a _           -> go a
+  UnrH _ a _         -> go a
   LetH _ _ _ exp bod -> go (bod exp)
+  WhnH x             -> x
 
   x                  -> x
   where
@@ -537,7 +539,38 @@ instance Show CheckErr where
   show e = T.unpack $ prettyError e
 
 reduceOpr :: PrimOp -> HOAS -> HOAS
-reduceOpr Natural_succ (LitH (VNatural n)) = LitH (VNatural $ n+1)
+reduceOpr op arg = case (op,arg) of
+  (Natural_succ, LitH (VNatural n)) -> LitH (VNatural $ n+1)
+  (Natural_pred, LitH (VNatural 0)) -> LitH (VNatural 0)
+  (Natural_pred, LitH (VNatural n)) -> LitH (VNatural $ n-1)
+  (Natural_add, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural b) -> LitH (VNatural $ a + b)
+    _                 -> WhnH $ AppH (AppH (OprH op) arg) x
+  (Natural_sub, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural b) -> LitH (VNatural $ ite (a < b) 0 (a - b))
+    _                 -> WhnH $ AppH (AppH (OprH op) arg) x
+  (Natural_mul, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural b) -> LitH (VNatural $ a * b)
+    _                 -> WhnH $ AppH (AppH (OprH op) arg) x
+  (Natural_div, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural b) -> LitH (VNatural $ a `div` b)
+    _                 -> WhnH $ AppH (AppH (OprH op) arg) x
+  (Natural_gt, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural b) -> LitH (bool (a > b))
+    _                 -> WhnH $ AppH (AppH (OprH op) arg) x
+  (Natural_ge, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural b) -> LitH (bool (a >= b))
+    _                 -> WhnH $ AppH (AppH (OprH op) arg) x
+  (Natural_eq, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural b) -> LitH (bool (a == b))
+    _                 -> WhnH $ AppH (AppH (OprH op) arg) x
+  _                                 -> WhnH $ AppH (OprH op) arg
+  where
+    ite c t f = if c then t else f
+    true   = VBitVector 1 (BS.pack [1])
+    false  = VBitVector 1 (BS.pack [0])
+    bool c = ite c true false
+
 
 
 expandLit :: Literal -> HOAS

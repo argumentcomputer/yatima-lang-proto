@@ -37,7 +37,7 @@ import           Data.Bits
 import           Data.Word
 import           Data.Int
 import           Data.Char                  (isHexDigit,isDigit, chr, ord, digitToInt)
-import           Data.List                  (unfoldr, foldl')
+import           Data.List                  (foldl')
 import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
 import           Data.Map                   (Map)
