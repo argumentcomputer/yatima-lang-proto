@@ -35,6 +35,7 @@ import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import           Data.Bits
 import           Data.Word
+import           Data.Int
 import           Data.Char                  (isHexDigit,isDigit, chr, ord, digitToInt)
 import           Data.List                  (unfoldr, foldl')
 import           Data.Set                   (Set)
@@ -56,6 +57,7 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import           Yatima.Uses
 import           Yatima.Term
 import           Yatima.Print
+import           Yatima.Parse.Integer
 
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
@@ -80,25 +82,36 @@ data ParseErr e
   | TopLevelRedefinition Name
   | ReservedKeyword Name
   | ReservedLeadingChar Char Name
-  | BitVectorOverflow Integer String
+  | I64Overflow Integer
+  | I32Overflow Integer
+  | I64Underflow Integer
+  | I32Underflow Integer
+  | U64Overflow Integer
+  | U32Overflow Integer
+  | U64Underflow Integer
+  | U32Underflow Integer
   | LeadingDigit Name
   | ParseEnvironmentError e
   deriving (Eq, Ord,Show)
 
 instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
-  showErrorComponent (UndefinedReference nam) =
-    "Undefined reference: " ++ T.unpack nam
-  showErrorComponent (TopLevelRedefinition nam) =
-    "illegal redefinition of " ++ T.unpack nam
-  showErrorComponent (ReservedKeyword nam) =
-    "Reserved keyword: " ++ T.unpack nam
-  showErrorComponent (LeadingDigit nam) =
-    "Illegal leading digit in name: " ++ T.unpack nam
-  showErrorComponent (ReservedLeadingChar c nam) =
-    "Illegal leading character " ++ ['"',c,'"'] ++ " in name: " ++ T.unpack nam
-  showErrorComponent (ParseEnvironmentError e) = showErrorComponent e
-  showErrorComponent (BitVectorOverflow len val) = 
-    "BitVector literal " ++ show val ++ " overflows length " ++ show len
+  showErrorComponent e = case e of
+    UndefinedReference nam    -> "Undefined reference: " <> T.unpack nam
+    TopLevelRedefinition nam  -> "Illegal redefinition of " <> T.unpack nam
+    ReservedKeyword nam       -> "Reserved keyword: " <> T.unpack nam
+    LeadingDigit nam          ->
+      "Illegal leading digit in name: " <> T.unpack nam
+    ReservedLeadingChar c nam ->
+      "Illegal leading character " <> show c <> " in name: " <> T.unpack nam
+    I64Overflow  i            -> "Overflow: "  <> show i <> "i64"
+    I64Underflow i            -> "Underflow: " <> show i <> "i64"
+    I32Overflow  i            -> "Overflow: "  <> show i <> "i32"
+    I32Underflow i            -> "Underflow: " <> show i <> "i32"
+    U64Overflow  i            -> "Overflow: "  <> show i <> "u64"
+    U64Underflow i            -> "Underflow: " <> show i <> "u64"
+    U32Overflow  i            -> "Overflow: "  <> show i <> "u32"
+    U32Underflow i            -> "Underflow: " <> show i <> "u32"
+    ParseEnvironmentError e -> showErrorComponent e
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
@@ -335,6 +348,7 @@ pTerm = do
     , symbol "(" >> pExpr True <* space <* string ")"
     , pLet
     , Opr <$> pOpr
+    , LTy <$> pLiteralType
     , Lit <$> pLiteral
     , pVar
     ]
@@ -397,39 +411,93 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
 
 pLiteral :: (Ord e, Monad m) => Parser e m Literal
 pLiteral = choice
-  [ string "#World"     >> return TWorld
-  , string "#world"     >> return VWorld
-  , string "#Natural"   >> return TNatural
+  [ string "#world"     >> return VWorld
+  , try $ VString <$> pString
   , try $ pBits
+  , try $ pFloat
+  , try $ pInt
   , try $ VNatural <$> pNatural
+  , VChar <$> pChar
+  ]
+
+pLiteralType :: (Ord e, Monad m) => Parser e m LiteralType
+pLiteralType = choice
+  [ string "#World"     >> return TWorld
+  , string "#Natural"   >> return TNatural
   , string "#String"    >> return TString
   , string "#Char"      >> return TChar
+  , string "#I64"       >> return TI64
+  , string "#I32"       >> return TI32
+  , string "#F64"       >> return TF64
+  , string "#F32"       >> return TF32
   , string "#BitVector" >> TBitVector . fromIntegral <$> pNatural
   , string "#BitString" >> return TBitString
-  , VString <$> pString
-  , try $ VChar <$> pChar
   ]
+  
+
+pNum :: (Ord e, Monad m) => Parser e m Integer
+pNum = choice
+  [ string "0x" >> hexadecimal
+  , string "0b" >> binary
+  , decimal
+  ]
+
+pIntType :: (Ord e, Monad m) => Parser e m Text
+pIntType = choice [string "i32",string "i64", string "u32",string "u64"]
 
 pNatural :: (Ord e, Monad m) => Parser e m Natural
 pNatural = do
-  val <- notFollowedBy (string "_") >> L.decimal
-  notFollowedBy (string "x")
-  notFollowedBy (string "b")
+  val <- notFollowedBy (string "_") >> pNum
+  notFollowedBy (pIntType <|> choice [string "f32",string "f64"])
   return $ fromIntegral val
 
--- TODO: binary, octal, decimal bitstring literals
+pInt :: (Ord e, Monad m) => Parser e m Literal
+pInt = do
+  val <- L.signed (pure ()) $ notFollowedBy (string "_") >> pNum
+  typ  <- pIntType
+  case typ of
+    "i64" -> do
+      when (val > (fromIntegral (maxBound :: Int64)))
+        (customFailure $ I64Overflow val)
+      when (val < (fromIntegral (minBound :: Int64)))
+        (customFailure $ I64Underflow val)
+      return $ VI64 $ fromIntegral val
+    "i32" -> do
+      when (val > (fromIntegral (maxBound :: Int32)))
+        (customFailure $ I32Overflow val)
+      when (val < (fromIntegral (minBound :: Int32)))
+        (customFailure $ I32Underflow val)
+      return $ VI32 $ fromIntegral val
+    "u64" -> do
+      when (val > (fromIntegral (maxBound :: Word64)))
+        (customFailure $ U64Overflow val)
+      when (val < (fromIntegral (minBound :: Word64)))
+        (customFailure $ U64Underflow val)
+      return $ VI64 $ fromIntegral val
+    "u32" -> do
+      when (val > (fromIntegral (maxBound :: Word32)))
+        (customFailure $ U32Overflow val)
+      when (val < (fromIntegral (minBound :: Word32)))
+        (customFailure $ U32Underflow val)
+      return $ VI32 $ fromIntegral val
+
+pFloat :: (Ord e, Monad m) => Parser e m Literal
+pFloat = choice
+  [ try $ VF64 <$> (L.signed (pure ()) L.float <* string "f64")
+  , try $ VF32 <$> (L.signed (pure ()) L.float <* string "f32")
+  ]
+
 pBits :: (Ord e, Monad m) => Parser e m Literal
 pBits = do
-  len <- notFollowedBy (string "_") >> L.decimal
+  vec <- (string "#0" >> return False) <|> (string "#" >> return True)
   (bitsPer, ds) <- choice
     [ (4,) <$> (string "x" >> many (satisfy (\x -> isHexDigit x || x == '_')))
     , (1,) <$> (string "b" >> many (satisfy (\x -> isBinDigit x || x == '_')))
     ]
   let bits = fromIntegral $ length ds * bitsPer
-  when (bits > len && len /= 0) (customFailure $ BitVectorOverflow len ds)
   let words = mkWords bitsPer (digitToInt <$> (filter (/= '_') ds))
-  if | len == 0  -> return $ VBitString (BS.pack words)
-     | otherwise -> return $ VBitVector (fromIntegral len) (BS.pack words)
+  if | vec       -> return $ VBitVector bits (BS.pack words)
+     | otherwise -> return $ VBitString (BS.pack words)
   where
     mkWords _ [] = []
     mkWords b cs = let (xs,rs) = splitAt (8 `div` b) cs in 

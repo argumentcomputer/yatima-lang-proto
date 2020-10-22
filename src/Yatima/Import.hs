@@ -173,7 +173,7 @@ pImport env = label "an import" $ do
         Just cid -> do
           root <- _root <$> (liftIO $ readIORef env)
           bs <- liftIO $ BS.readFile (toFilePath $ root </> path)
-          p  <- either (customIOFailure . CorruptDefs . NoDeserial) pure
+          p  <- either (customIOFailure . CorruptDefs . NoDeserial . pure) pure
                   (deserialiseOrFail $ BSL.fromStrict bs)
           return (cid,p)
       unless (name == (_title p))

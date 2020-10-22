@@ -103,24 +103,39 @@ name_gen = do
 literal_gen :: Gen Literal
 literal_gen = oneof
   [ return VWorld
-  , return TWorld
   , VNatural <$> arbitrarySizedNatural
   , VBitString <$> arbitrary
-  , do 
-    len <- choose (1,64) :: Gen Int
-    val <- BS.pack <$> vectorOf len arbitrary
-    return $ VBitVector (fromIntegral len*8) val
+  , do
+      len <- choose (1,64) :: Gen Int
+      val <- BS.pack <$> vectorOf len arbitrary
+      return $ VBitVector (fromIntegral len*8) val
   , VString . UTF8.fromString <$> arbitrary
   , VChar <$> arbitrary
+  , VI64 <$> arbitrary
+  , VI32 <$> arbitrary
+  , VF64 <$> arbitrary
+  , VF32 <$> arbitrary
+  ]
+
+literalType_gen :: Gen LiteralType
+literalType_gen = oneof
+  [ return TWorld
   , return TNatural
   , return TBitString
   , TBitVector <$> arbitrarySizedNatural
   , return TString
   , return TChar
+  , return TI64
+  , return TI32
+  , return TF64
+  , return TF64
   ]
 
 instance Arbitrary Literal where
   arbitrary = literal_gen
+
+instance Arbitrary LiteralType where
+  arbitrary = literalType_gen
 
 instance Arbitrary PrimOp where
   arbitrary = arbitraryBoundedEnum
@@ -131,6 +146,7 @@ term_gen ctx = frequency
   , (100, Ref <$> elements (M.keys (_byName test_index)))
   , (100, return Typ)
   , (100, Lit <$> arbitrary)
+  , (100, LTy <$> arbitrary)
   , (100, Opr <$> arbitrary)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, (name_gen >>= \n -> Slf n <$> term_gen (n:ctx)))
@@ -163,6 +179,7 @@ spec = do
     it "Meta" $ property $ prop_serial @Meta
     it "Anon" $ property $ prop_serial @AnonAST
     it "Literal" $ property $ prop_serial @Literal
+    it "LiteralType" $ property $ prop_serial @LiteralType
     it "PrimOp" $ property $ prop_serial @PrimOp
     it "ASTDef" $ property $ prop_serial @AnonDef
     it "DagDef" $ property $ prop_serial @DagDef

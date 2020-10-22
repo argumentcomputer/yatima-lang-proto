@@ -33,7 +33,7 @@ import           Yatima.DagAST
 newtype Cache = Cache { _data :: Map CID BS.ByteString }
 
 data IPLDErr
-  = NoDeserial DeserialiseFailure
+  = NoDeserial [DeserialiseFailure]
   | NotInIndex Name
   | NotInCache CID
   | CIDMismatch Name CID CID
@@ -101,7 +101,8 @@ cacheLookup c (Cache d) = maybe (throwError $ NotInCache c) pure (d M.!? c)
 deserial :: (Serialise a, Monad m) => CID -> Cache -> ExceptT IPLDErr m a
 deserial cid cache = do
   bs <- cacheLookup cid cache
-  either (throwError . NoDeserial) pure (deserialiseOrFail $ BSL.fromStrict bs)
+  either (throwError . NoDeserial . pure) pure
+    (deserialiseOrFail $ BSL.fromStrict bs)
 
 makeLink :: Monad m => Name -> Index -> Cache -> ExceptT IPLDErr m (CID,CID)
 makeLink n index cache = do
@@ -162,64 +163,61 @@ termToAST n t index cache =
 
     go :: Term -> [Name] -> ExceptT IPLDErr (State (Meta,Int)) AnonAST
     go t ctx = case t of
-      Var n                 -> do
+      Var n                -> do
         bump
         case find n ctx of
           Just i -> return $ Vari i
           _      -> throwError $ FreeVariable n ctx
-      Ref n                 -> do
+      Ref n                -> do
         (metaCID, anonCID) <- liftEither . runExcept $ makeLink n index cache
         entry (Right metaCID)
         bump
         return (Link anonCID)
-      Lam n b               -> do
+      Lam n b              -> do
         bind n
         bump
         b' <- go b (n:ctx)
         return $ Ctor "Lam" [Bind b']
-      App f a               -> do
+      App f a              -> do
         bump
         f' <- go f ctx
         a' <- go a ctx
         return $ Ctor "App" [f', a']
-      New e                 -> do
+      New e                -> do
         bump
         e' <- go e ctx
         return $ Ctor "New" [e']
-      Use e                 -> do
+      Use e                -> do
         bump
         e' <- go e ctx
         return $ Ctor "Use" [e']
-      Ann v t               -> do
+      Ann v t              -> do
         bump
         v' <- go v ctx
         t' <- go t ctx
         return $ Ctor "Ann" [v', t']
-      Let n u t x b         -> do
+      Let n u t x b        -> do
         bind n
         bump
         t' <- go t ctx
         x' <- go x (n:ctx)
         b' <- go b (n:ctx)
         return $ Ctor "Let" [usesToAST u, t', Bind x', Bind b']
-      Typ                   -> bump >> return (Ctor "Typ" [])
-      All n u t b         -> do
+      Typ                  -> bump >> return (Ctor "Typ" [])
+      All n u t b          -> do
         bind n
         bump
         t' <- go t ctx
         b' <- go b (n:ctx)
         return $ Ctor "All" [usesToAST u, t', Bind (Bind b')]
-      Slf n b               -> do
+      Slf n b              -> do
         bind n
         bump
         b' <- go b (n:ctx)
         return $ Ctor "Slf" [Bind b']
-      Lit x                -> do
-        bump
-        return $ Data (BSL.toStrict $ serialise x)
-      Opr x                -> do
-        bump
-        return $ Data (BSL.toStrict $ serialise x)
+      Lit x                -> bump >> return (Data (BSL.toStrict $ serialise x))
+      LTy x                -> bump >> return (Data (BSL.toStrict $ serialise x))
+      Opr x                -> bump >> return (Data (BSL.toStrict $ serialise x))
 
 -- | Find a name in the binding context and return its index
 lookupNameCtx :: Int -> [Name] -> Maybe Name
@@ -228,6 +226,17 @@ lookupNameCtx i (x:xs)
   | i < 0     = Nothing
   | i == 0    = Just x
   | otherwise = lookupNameCtx (i - 1) xs
+
+deserialiseData :: (Monad m) => BS.ByteString -> ExceptT IPLDErr m Term
+deserialiseData bs = do
+  let bs' = BSL.fromStrict bs
+  case (deserialiseOrFail bs') of
+    Right x -> return $ Lit x
+    Left  e1 -> case (deserialiseOrFail bs') of
+      Right x -> return $ LTy x
+      Left  e2 -> case (deserialiseOrFail bs') of
+        Right x -> return $ Opr x
+        Left e3  -> throwError $ NoDeserial [e1,e2,e3]
 
 astToTerm :: Monad m => Name -> Index -> AnonAST -> Meta -> ExceptT IPLDErr m Term
 astToTerm n index anon meta = do
@@ -272,14 +281,7 @@ astToTerm n index anon meta = do
         bump
         return $ Ref n
       Bind b  -> get >>= \i -> throwError $ UnexpectedBind b ctx i
-      Data bs -> do
-        bump
-        let bs' = BSL.fromStrict bs
-        case (deserialiseOrFail bs') of
-          Right x -> return $ Lit x
-          Left e  -> case (deserialiseOrFail bs') of
-            Right x -> return $ Opr x
-            Left e  -> throwError $ NoDeserial e
+      Data bs -> bump >> deserialiseData bs
       Ctor nam args -> case (nam,args) of
         ("Lam",[Bind b]) -> do
           n <- get >>= name

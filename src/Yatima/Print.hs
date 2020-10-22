@@ -61,6 +61,7 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
         ["let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
       Typ                     -> "Type"
       Lit lit                 -> TB.fromText (prettyLiteral lit)
+      LTy lit                 -> TB.fromText (prettyLiteralType lit)
       Opr pri                 -> TB.fromText (prettyPrimOp pri)
 
     lams :: Name -> Term -> TB.Builder
@@ -98,18 +99,29 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
 
 prettyLiteral :: Literal -> Text
 prettyLiteral t = case t of
-  VString  x     -> (T.pack $ show $ UTF8.toString x)
-  TString        -> "#String"
-  TWorld         -> "#World"
   VWorld         -> "#world"
   VNatural x     -> (T.pack $ show x)
-  TNatural       -> "#Natural"
+  VF64 x         -> (T.pack $ show x) <> "f64"
+  VF32 x         -> (T.pack $ show x) <> "f32"
+  VI64 x         -> (T.pack $ show x) <> "u64"
+  VI32 x         -> (T.pack $ show x) <> "u32"
+  VBitString x   -> "#0x" <> (B16.encodeBase16 x)
+  VBitVector l x -> "#x" <> (B16.encodeBase16 x)
+  VString  x     -> (T.pack $ show $ UTF8.toString x)
   VChar    x     -> T.pack $ show x
-  VBitString x   -> "0x" <> (B16.encodeBase16 x)
-  VBitVector l x -> (T.pack $ show l) <> "x" <> (B16.encodeBase16 x)
-  TBitVector l   -> "#BitVector" <> (T.pack $ show l)
-  TChar          -> "#Char"
-  TBitString     -> "#BitString"
+
+prettyLiteralType :: LiteralType -> Text
+prettyLiteralType t = case t of
+  TWorld       -> "#World"
+  TNatural     -> "#Natural"
+  TF64         -> "#F64"
+  TF32         -> "#F32"
+  TI64         -> "#I64"
+  TI32         -> "#I32"
+  TBitString   -> "#BitString"
+  TBitVector l -> "#BitVector" <> (T.pack $ show l)
+  TString      -> "#String"
+  TChar        -> "#Char"
 
 prettyPrimOp :: PrimOp -> Text
 prettyPrimOp p = "#" <> primOpName p

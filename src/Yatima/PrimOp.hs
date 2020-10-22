@@ -4,6 +4,8 @@ import           Codec.Serialise
 import           Codec.Serialise.Decoding
 import           Codec.Serialise.Encoding
 
+import           Control.Monad
+
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 
@@ -175,10 +177,15 @@ data PrimOp
   deriving (Eq,Ord,Show,Enum,Bounded)
 
 encodePrimOp :: PrimOp -> Encoding
-encodePrimOp x = encodeInt (fromEnum x)
+encodePrimOp x = encodeListLen 2 <> encodeString "Opr" <> encodeInt (fromEnum x)
 
 decodePrimOp :: Decoder s PrimOp
-decodePrimOp = toEnum <$> decodeInt
+decodePrimOp = do
+  size <- decodeListLen
+  ctor <- decodeString
+  when (size /=  2)    (fail $ "invalid PrimOp size: " ++ show size)
+  when (ctor /= "Opr") (fail $ "invalid PrimOp tag: "  ++ show ctor)
+  toEnum <$> decodeInt
 
 instance Serialise PrimOp where
   encode = encodePrimOp

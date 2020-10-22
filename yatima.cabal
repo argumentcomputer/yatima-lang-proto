@@ -21,7 +21,8 @@ extra-source-files:
 library
   exposed-modules:
       Yatima.Term
-      Yatima.Constant
+      Yatima.Literal
+      Yatima.PrimOp
       Yatima.IPLD
       Yatima.CID
       Yatima.Uses
@@ -36,9 +37,8 @@ library
       Yatima.IPFS
       Yatima
   other-modules:
-      Yatima.Literal
+      Yatima.Constant
       Yatima.Prim
-      Yatima.PrimOp
       Paths_yatima
   hs-source-dirs:
       src

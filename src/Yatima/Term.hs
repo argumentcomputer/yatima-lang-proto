@@ -61,6 +61,8 @@ data Term where
   Ann :: Term -> Term -> Term
   -- | a primitive literal
   Lit :: Literal -> Term
+  -- | the type of a primitive literal
+  LTy :: LiteralType -> Term
   -- | a primitive operation
   Opr :: PrimOp -> Term
 
