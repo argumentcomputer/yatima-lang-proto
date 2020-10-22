@@ -37,8 +37,7 @@ library
       Yatima.IPFS
       Yatima
   other-modules:
-      Yatima.Constant
-      Yatima.Prim
+      Yatima.Parse.Integer
       Paths_yatima
   hs-source-dirs:
       src
