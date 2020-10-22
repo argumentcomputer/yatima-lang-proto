@@ -32,6 +32,7 @@ library
       Yatima.DagAST
       Yatima.Package
       Yatima.Import
+      Yatima.IR
       Yatima.Core
       Yatima.Ctx
       Yatima.IPFS

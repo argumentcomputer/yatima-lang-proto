@@ -21,6 +21,7 @@ import           Yatima.Parse  (parseTerm, unsafeParseTerm)
 import qualified Yatima.Parse  as Parse
 import           Yatima.Term   (Def (..), Defs, Name, Term (..))
 import qualified Yatima.Term   as Term
+import qualified Yatima.IR     as IR
 
 import           Control.Monad.Except
 import           Control.Monad.Catch
@@ -110,8 +111,28 @@ checkRef index cache (name,cid) = do
         ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
         , printCIDBase32 cid, "\n"
         , T.pack $ show e]
-    Right (_,t) -> putStrLn $ T.unpack $ T.concat
+    Right (_,t,_) -> putStrLn $ T.unpack $ T.concat
         ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
+
+compileFile :: FilePath -> FilePath -> IO ()
+compileFile root file = do
+  (r,c,p) <- loadFile file
+  let index = _index p
+  cache <- readCache r
+  codes <- forM (M.toList $ (_byName index)) (compileRef index cache)
+  putStrLn $ T.unpack $ T.concat codes
+
+compileRef ::  Index -> Cache -> (Name, CID) -> IO Text
+compileRef index cache (name,cid) = do
+  def  <- liftIO $ catchErr $ derefDagDefCID name cid index cache
+  defs <- liftIO $ catchErr $ indexToDefs index cache
+  let (trm,typ) = defToHoas name def
+  case runExcept $ Core.check defs Ctx.empty Once trm typ of
+    Left  e -> ioError $ userError $ T.unpack $ T.concat
+        ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
+        , printCIDBase32 cid, "\n"
+        , T.pack $ show e]
+    Right (_,_,c) -> return $ IR.defToScheme name c
 
 -- | Evaluate a `HOAS` from a file
 normDef :: Name -> FilePath -> IO HOAS
@@ -147,7 +168,7 @@ infer defs term =
   let hTerm = Core.termToHoas Ctx.empty term in
   case runExcept (Core.infer defs Ctx.empty Once hTerm) of
     Left err -> Left err
-    Right (_,ty) -> Right (Core.hoasToTerm Ctx.empty ty)
+    Right (_,ty,_) -> Right (Core.hoasToTerm Ctx.empty ty)
 
 check :: Defs -> Term -> Term -> Either CheckErr Term
 check defs term typ_ =
@@ -155,7 +176,7 @@ check defs term typ_ =
   let hType = Core.termToHoas Ctx.empty typ_ in
   case runExcept (Core.check defs Ctx.empty Once hTerm hType) of
     Left err     -> Left err
-    Right (_,ty) -> Right (Core.hoasToTerm Ctx.empty ty)
+    Right (_,ty,_) -> Right (Core.hoasToTerm Ctx.empty ty)
 
 synth :: Defs -> Term -> Term -> Either CheckErr (Term, Term)
 synth defs term typ_ =
