@@ -8,7 +8,7 @@ name:           yatima
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/moonad/yatima#readme>
 homepage:       moonad/yatima
-author:         Gabriel Barreto, John C. Burnham, Victor Maia
+author:         Gabriel Barreto, John C. Burnham
 maintainer:     john@yatima.io
 copyright:      2020 Sunshine Cybernetics
 license:        GPL-3
@@ -28,26 +28,29 @@ library
       Yatima.Uses
       Yatima.Print
       Yatima.Parse
+      Yatima.Parse.Integer
       Yatima.DagJSON
       Yatima.DagAST
       Yatima.Package
       Yatima.Import
       Yatima.Core
+      Yatima.Core.Wasm
       Yatima.Ctx
       Yatima.IPFS
       Yatima
   other-modules:
-      Yatima.Parse.Integer
       Paths_yatima
   hs-source-dirs:
       src
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TupleSections
   build-depends:
       aeson
+    , array
     , base >=4.7 && <5
     , base16
     , bytestring
     , cborg
+    , cereal
     , containers
     , cryptonite
     , exceptions
@@ -55,12 +58,14 @@ library
     , http-client
     , http-client-tls
     , http-types
+    , ieee754
     , ipfs-api
     , ipld-cid
     , megaparsec
     , mtl
     , multibase
     , multihash-cryptonite
+    , numeric-extras
     , path
     , path-io
     , scientific

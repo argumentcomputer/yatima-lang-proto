@@ -1,7 +1,7 @@
 name:           yatima
 version:        0.1.0.0
 homepage:       "moonad/yatima"
-author:         "Gabriel Barreto, John C. Burnham, Victor Maia"
+author:         "Gabriel Barreto, John C. Burnham"
 maintainer:     john@yatima.io
 copyright:      2020 Sunshine Cybernetics
 
@@ -23,11 +23,13 @@ library:
     - Yatima.Uses
     - Yatima.Print
     - Yatima.Parse
+    - Yatima.Parse.Integer
     - Yatima.DagJSON
     - Yatima.DagAST
     - Yatima.Package
     - Yatima.Import
     - Yatima.Core
+    - Yatima.Core.Wasm
     - Yatima.Ctx
     - Yatima.IPFS
     - Yatima
@@ -54,9 +56,7 @@ library:
     - vector
     - scientific
     - unordered-containers
-
     - unsafeperformst
-
     - servant
     - servant-client
     - http-client
@@ -64,6 +64,10 @@ library:
     - http-types
     - aeson
     - ipfs-api
+    - numeric-extras
+    - ieee754
+    - cereal
+    - array
 
   default-extensions:
     - OverloadedStrings

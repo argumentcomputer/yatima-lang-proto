@@ -9,6 +9,15 @@ import           Control.Monad
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 
+
+-- WARNING: CHANGING PRIMITIVES BREAKS THE PACKAGE UNIVERSE
+--
+-- Changing PrimOp creates a new *incompatible* Yatima serialization
+-- format version. Old serializations WILL NOT deserialize correctly.
+-- Thus, changing this type requires a new *MAJOR* Yatima version number.
+--
+-- Don't touch PrimOp unless you're *sure* you know what you're doing.
+
 data PrimOp
   -- WASMNumeric
   = I32_const
@@ -23,6 +32,7 @@ data PrimOp
   | I32_gt_s
   | I32_gt_u
   | I32_le_s
+  | I32_le_u
   | I32_ge_s
   | I32_ge_u
   | I64_eqz
@@ -33,6 +43,7 @@ data PrimOp
   | I64_gt_s
   | I64_gt_u
   | I64_le_s
+  | I64_le_u
   | I64_ge_s
   | I64_ge_u
   | F32_eq
@@ -136,31 +147,6 @@ data PrimOp
   | I64_reinterpret_F64
   | F32_reinterpret_I32
   | F64_reinterpret_I64
-  | I32_extend8_s
-  | I32_extend16_s
-  | I64_extend8_s
-  | I64_extend32_s
-  | I32_trunc_sat_f32_s
-  | I32_trunc_sat_f32_u
-  | I32_trunc_sat_f64_s
-  | I32_trunc_sat_f64_u
-  | I64_trunc_sat_f32_s
-  | I64_trunc_sat_f32_u
-  | I64_trunc_sat_f64_s
-  | I64_trunc_sat_f64_u
-  -- WASM Extended Trigonometric
-  | F32_sin
-  | F32_cos
-  | F32_tan
-  | F32_asin
-  | F32_acos
-  | F32_atan
-  | F64_sin
-  | F64_cos
-  | F64_tan
-  | F64_asin
-  | F64_acos
-  | F64_atan
   -- Natural number
   | Natural_succ
   | Natural_pred
@@ -318,30 +304,6 @@ primOpName p = case p of
    I64_reinterpret_F64 -> "I64_reinterpret_F64"
    F32_reinterpret_I32 -> "F32_reinterpret_I32"
    F64_reinterpret_I64 -> "F64_reinterpret_I64"
-   I32_extend8_s       -> "I32_extend8_s"
-   I32_extend16_s      -> "I32_extend16_s"
-   I64_extend8_s       -> "I64_extend8_s"
-   I64_extend32_s      -> "I64_extend32_s"
-   I32_trunc_sat_f32_s -> "I32_trunc_sat_f32_s"
-   I32_trunc_sat_f32_u -> "I32_trunc_sat_f32_u"
-   I32_trunc_sat_f64_s -> "I32_trunc_sat_f64_s"
-   I32_trunc_sat_f64_u -> "I32_trunc_sat_f64_u"
-   I64_trunc_sat_f32_s -> "I64_trunc_sat_f32_s"
-   I64_trunc_sat_f32_u -> "I64_trunc_sat_f32_u"
-   I64_trunc_sat_f64_s -> "I64_trunc_sat_f64_s"
-   I64_trunc_sat_f64_u -> "I64_trunc_sat_f64_u"
-   F32_sin             -> "F32_sin"
-   F32_cos             -> "F32_cos"
-   F32_tan             -> "F32_tan"
-   F32_asin            -> "F32_asin"
-   F32_acos            -> "F32_acos"
-   F32_atan            -> "F32_atan"
-   F64_sin             -> "F64_sin"
-   F64_cos             -> "F64_cos"
-   F64_tan             -> "F64_tan"
-   F64_asin            -> "F64_asin"
-   F64_acos            -> "F64_acos"
-   F64_atan            -> "F64_atan"
    Natural_succ        -> "Natural_succ"
    Natural_pred        -> "Natural_pred"
    Natural_add         -> "Natural_add"
