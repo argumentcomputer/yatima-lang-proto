@@ -362,6 +362,7 @@ validateTerm trm ctx index cache = case trm of
   All nam use typ bod     -> All nam use <$> go typ <*> bind nam bod
   Slf nam bod             -> Slf nam <$> bind nam bod
   Ann trm typ             -> Ann <$> go trm <*> go typ
+  x                       -> return x
   where
     go t        = validateTerm t ctx index cache
     bind    n t = validateTerm t (n:ctx) index cache

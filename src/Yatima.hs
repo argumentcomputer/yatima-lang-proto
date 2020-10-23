@@ -114,8 +114,8 @@ checkRef index cache (name,cid) = do
     Right (_,t,_) -> putStrLn $ T.unpack $ T.concat
         ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
 
-compileFile :: FilePath -> FilePath -> IO ()
-compileFile root file = do
+compileFile :: FilePath -> IO ()
+compileFile file = do
   (r,c,p) <- loadFile file
   let index = _index p
   cache <- readCache r

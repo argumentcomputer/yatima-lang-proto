@@ -13,26 +13,26 @@ module Yatima.Core where
 import           Control.Monad.Except
 import           Control.Monad.Identity
 
-import           Data.ByteString                (ByteString)
-import qualified Data.ByteString                as BS
+import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as BS
 import           Data.Word
 
-import           Data.Map                       (Map)
-import qualified Data.Map                       as M
-import           Data.Sequence                  (Seq (..))
-import qualified Data.Sequence                  as Seq
-import           Data.Set                       (Set)
-import qualified Data.Set                       as Set
+import           Data.Map                   (Map)
+import qualified Data.Map                   as M
+import           Data.Sequence              (Seq (..))
+import qualified Data.Sequence              as Seq
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
 
-import           Data.Text                      (Text)
-import qualified Data.Text                      as T
+import           Data.Text                  (Text)
+import qualified Data.Text                  as T
 
-import qualified Data.Text.Lazy                 as LT
-import qualified Data.Text.Lazy.Builder         as TB
-import qualified Data.Text.Lazy.Builder.Int     as TB
+import qualified Data.Text.Lazy             as LT
+import qualified Data.Text.Lazy.Builder     as TB
+import qualified Data.Text.Lazy.Builder.Int as TB
 
-import           Yatima.Ctx            (Ctx (..), (<|))
-import qualified Yatima.Ctx            as Ctx
+import           Yatima.Ctx                 (Ctx (..), (<|))
+import qualified Yatima.Ctx                 as Ctx
 import           Yatima.Print
 import           Yatima.Term
 import           Yatima.IR
@@ -405,7 +405,9 @@ infer defs pre use term = case term of
     (exprCtx,exprTyp,exprIR) <- infer defs pre use expr
     case whnf defs exprTyp of
       SlfH _ body -> do
-        return (exprCtx,body expr,UseI exprIR)
+        return (exprCtx,body expr,UseI exprIR Nothing)
+      LTyH typ -> do
+        return (exprCtx, litInduction typ expr,UseI exprIR (Just typ))
       x -> throwError $ NonSelfUse exprCtx expr exprTyp x
   AllH name bindUse bind body -> do
     let nameVar = VarH name $ Ctx.depth pre
@@ -441,7 +443,10 @@ infer defs pre use term = case term of
         return (ctx,typ,ir)
   AnnH val typ -> do
     check defs pre use val typ
-  (HolH name) -> return (toContext pre,TypH,TypI)
+  LitH lit  -> return (toContext pre, typeOfLit lit, LitI lit)
+  LTyH lty  -> return (toContext pre, TypH, LTyI lty)
+  OprH opr  -> return (toContext pre, typeOfOpr opr, OprI opr)
+  HolH name -> return (toContext pre,TypH,TypI)
   _ -> throwError $ CustomErr pre "can't infer type"
 
 ---- * Pretty Printing Errors
@@ -548,7 +553,6 @@ instance Show CheckErr where
 
 reduceOpr :: PrimOp -> HOAS -> HOAS
 reduceOpr Natural_succ (LitH (VNatural n)) = LitH (VNatural $ n+1)
-
 
 expandLit :: Literal -> HOAS
 expandLit t = case t of
