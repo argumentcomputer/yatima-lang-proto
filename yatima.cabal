@@ -33,6 +33,7 @@ library
       Yatima.Package
       Yatima.Import
       Yatima.IR
+      Yatima.Compiler.Scheme
       Yatima.Core
       Yatima.Ctx
       Yatima.IPFS

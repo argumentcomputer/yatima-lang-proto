@@ -11,17 +11,18 @@ import           Yatima.Import
 --import           Language.Yatima.IPFS
 import           Yatima.IPLD
 import           Yatima.Uses
-import           Yatima.Ctx    (Ctx, (<|))
-import qualified Yatima.Ctx    as Ctx
-import           Yatima.Core   (CheckErr,HOAS (..),PreContext,defToHoas)
-import qualified Yatima.Core   as Core
-import           Yatima.Print  (prettyTerm)
-import qualified Yatima.Print  as Print
-import           Yatima.Parse  (parseTerm, unsafeParseTerm)
-import qualified Yatima.Parse  as Parse
-import           Yatima.Term   (Def (..), Defs, Name, Term (..))
-import qualified Yatima.Term   as Term
-import qualified Yatima.IR     as IR
+import           Yatima.Ctx             (Ctx, (<|))
+import qualified Yatima.Ctx             as Ctx
+import           Yatima.Core            (CheckErr,HOAS (..),PreContext,defToHoas)
+import qualified Yatima.Core            as Core
+import           Yatima.Print           (prettyTerm)
+import qualified Yatima.Print           as Print
+import           Yatima.Parse           (parseTerm, unsafeParseTerm)
+import qualified Yatima.Parse           as Parse
+import           Yatima.Term            (Def (..), Defs, Name, Term (..))
+import qualified Yatima.Term            as Term
+import qualified Yatima.IR              as IR
+import qualified Yatima.Compiler.Scheme as Scheme
 
 import           Control.Monad.Except
 import           Control.Monad.Catch
@@ -132,7 +133,7 @@ compileRef index cache (name,cid) = do
         ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
         , printCIDBase32 cid, "\n"
         , T.pack $ show e]
-    Right (_,_,c) -> return $ IR.defToScheme name c
+    Right (_,_,c) -> return $ Scheme.defToCode name c
 
 -- | Evaluate a `HOAS` from a file
 normDef :: Name -> FilePath -> IO HOAS
