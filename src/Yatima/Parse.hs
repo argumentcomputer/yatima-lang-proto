@@ -110,7 +110,10 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseErr e) where
     U64Underflow i            -> "Underflow: " <> show i <> "u64"
     U32Overflow  i            -> "Overflow: "  <> show i <> "u32"
     U32Underflow i            -> "Underflow: " <> show i <> "u32"
-    ParseEnvironmentError e -> showErrorComponent e
+    ParseEnvironmentError e   -> showErrorComponent e
+
+instance ShowErrorComponent () where
+  showErrorComponent () = "()"
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
@@ -173,8 +176,6 @@ keywords = Set.fromList $
   , "def"
   , "Type"
   ]
-
-
 
 -- | Consume whitespace, while skipping comments. Yatima line comments begin
 -- with @--@, and block comments are bracketed by @{-@ and @-}@ symbols.
@@ -355,7 +356,7 @@ pTerm = do
 -- | Parse a sequence of terms as an expression. The `Bool` switches whether or
 -- not the sequence must be wrapped in parentheses.
 pExpr :: (Ord e, Monad m) => Bool -> Parser e m Term
-pExpr annotatable = do
+pExpr annotatable = label "an expression" $ do
   fun  <- pTerm <* space
   args <- args
   let tele = foldl (\t a -> App t a) fun args
@@ -378,7 +379,7 @@ pExpr annotatable = do
       ]
 
 pAnn :: (Ord e, Monad m) => Parser e m Term
-pAnn = do
+pAnn = label "an annotation" $ do
   symbol "("
   val <- pExpr False <* space
   symbol "::"
@@ -409,7 +410,7 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
     return $ (n,d):ds
 
 pLiteral :: (Ord e, Monad m) => Parser e m Literal
-pLiteral = choice
+pLiteral = label "a literal" $ choice
   [ string "#world"     >> return VWorld
   , try $ VString <$> pString
   , try $ pBits
@@ -420,7 +421,7 @@ pLiteral = choice
   ]
 
 pLitType :: (Ord e, Monad m) => Parser e m LitType
-pLitType = choice
+pLitType = label "the type of a literal" $ choice
   [ string "#World"     >> return TWorld
   , string "#Natural"   >> return TNatural
   , string "#String"    >> return TString
@@ -503,7 +504,7 @@ pBits = do
     isBinDigit x = x == '0' || x == '1'
 
 pOpr :: (Ord e, Monad m) => Parser e m PrimOp
-pOpr = choice $ mkParse <$> [minBound..maxBound]
+pOpr = label "a primitive operation" $ choice $ mkParse <$> [minBound..maxBound]
   where
     mkParse :: (Ord e, Monad m) => PrimOp -> Parser e m PrimOp
     mkParse x = try $ do

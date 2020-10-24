@@ -36,6 +36,7 @@ library
       Yatima.Parse.Integer
       Yatima.PrimOp
       Yatima.Print
+      Yatima.QuasiQuoter
       Yatima.Term
       Yatima.Uses
       Yatima
@@ -74,6 +75,7 @@ library
     , serialise
     , servant
     , servant-client
+    , template-haskell
     , text
     , unordered-containers
     , unsafeperformst

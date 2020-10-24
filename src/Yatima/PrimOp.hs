@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Yatima.PrimOp where
 
 import           Codec.Serialise
@@ -8,6 +9,7 @@ import           Control.Monad
 
 import           Data.Text                (Text)
 import qualified Data.Text                as T
+import           Data.Data
 
 
 -- WARNING: CHANGING PRIMITIVES BREAKS THE PACKAGE UNIVERSE
@@ -175,7 +177,7 @@ data PrimOp
   -- Char
   | Char_chr
   | Char_ord
-  deriving (Eq,Ord,Show,Enum,Bounded)
+  deriving (Eq,Ord,Show,Enum,Bounded,Data)
 
 encodePrimOp :: PrimOp -> Encoding
 encodePrimOp x = encodeListLen 2 <> encodeString "Opr" <> encodeInt (fromEnum x)

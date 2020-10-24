@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Yatima.Core.Prim where
 
 import           Data.ByteString                (ByteString)
@@ -8,12 +10,14 @@ import           Data.Word
 import           Data.Int
 import           Data.Bits
 import           Data.Char
+import           Data.FileEmbed
 
 import           Numeric.IEEE
 
 import           Yatima.Core.Hoas
 import           Yatima.Core.Wasm
 import           Yatima.Term
+import           Yatima.QuasiQuoter
 
 reduceOpr :: PrimOp -> Hoas -> Hoas
 reduceOpr op arg = case (op,arg) of
@@ -432,6 +436,9 @@ litInduction t val = case t of
       \pred -> AppH p (AppH (OprH Natural_succ) pred)) $ \s ->
       AppH p val
   _    -> error "TODO"
+
+foo :: Hoas
+foo = termToHoas $ [yatima| λ x => x|]
 
 typeOfLit :: Literal -> Hoas
 typeOfLit t = case t of

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Yatima.Literal where
 
 import           Codec.Serialise
@@ -12,6 +13,7 @@ import           Data.Text                (Text)
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
 import           Data.Word
+import           Data.Data
 
 import           Numeric.Natural
 
@@ -25,7 +27,7 @@ data Literal
   | VBitVector Natural ByteString
   | VString    Text
   | VChar      Char
-  deriving (Eq,Show)
+  deriving (Eq,Show,Data)
 
 data LitType
   = TWorld
@@ -37,7 +39,7 @@ data LitType
   | TBitVector Natural
   | TString
   | TChar
-  deriving (Eq,Show)
+  deriving (Eq,Show,Data)
 
 encodeLiteral :: Literal -> Encoding
 encodeLiteral t = case t of

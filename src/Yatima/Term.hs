@@ -9,6 +9,8 @@ Stability   : experimental
 This module defines `Term`, the type of expressions in the Yatima language.
 
 -}
+
+{-# LANGUAGE DeriveDataTypeable #-}
 module Yatima.Term
   ( module Yatima.Uses
   , module Yatima.Literal
@@ -23,6 +25,8 @@ import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
+
+import           Data.Data
 
 import           Yatima.Uses
 import           Yatima.PrimOp
@@ -68,6 +72,7 @@ data Term where
 
 deriving instance Show Term
 deriving instance Eq Term
+deriving instance Data Term
 
 -- | A type annotated definition
 data Def = Def

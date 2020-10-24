@@ -31,6 +31,7 @@ library:
     - Yatima.Parse.Integer
     - Yatima.PrimOp
     - Yatima.Print
+    - Yatima.QuasiQuoter
     - Yatima.Term
     - Yatima.Uses
     - Yatima
@@ -68,6 +69,7 @@ library:
     - ieee754
     - cereal
     - array
+    - template-haskell
 
   default-extensions:
     - OverloadedStrings

@@ -1,6 +1,9 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Yatima.Uses where
 
-data Uses = None | Affi | Once | Many deriving (Eq, Show, Enum)
+import           Data.Data
+
+data Uses = None | Affi | Once | Many deriving (Eq, Show, Enum, Data)
 
 (+#) :: Uses -> Uses -> Uses
 None +# x    = x
