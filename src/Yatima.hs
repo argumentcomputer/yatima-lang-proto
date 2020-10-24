@@ -6,36 +6,32 @@
 module Yatima where
 
 import           Yatima.CID
-import           Yatima.Package
 import           Yatima.Import
+import           Yatima.Package
 --import           Language.Yatima.IPFS
+import qualified Yatima.Core as Core
+import qualified Yatima.Core.Ctx as Ctx
+import           Yatima.Core.Hoas
 import           Yatima.IPLD
+import           Yatima.Parse
+import           Yatima.Print
+import           Yatima.Term
 import           Yatima.Uses
-import           Yatima.Ctx    (Ctx, (<|))
-import qualified Yatima.Ctx    as Ctx
-import           Yatima.Core   (CheckErr,HOAS (..),PreContext,defToHoas)
-import qualified Yatima.Core   as Core
-import           Yatima.Print  (prettyTerm)
-import qualified Yatima.Print  as Print
-import           Yatima.Parse  (parseTerm, unsafeParseTerm)
-import qualified Yatima.Parse  as Parse
-import           Yatima.Term   (Def (..), Defs, Name, Term (..))
-import qualified Yatima.Term   as Term
 
-import           Control.Monad.Except
 import           Control.Monad.Catch
+import           Control.Monad.Except
 
-import           Data.ByteString        (ByteString)
-import qualified Data.ByteString        as BS
+import           Data.ByteString      (ByteString)
+import qualified Data.ByteString      as BS
 import           Data.IORef
-import           Data.Map               (Map)
-import qualified Data.Map               as M
-import           Data.Sequence          (Seq (..))
-import qualified Data.Sequence          as Seq
-import           Data.Set               (Set)
-import qualified Data.Set               as Set
-import           Data.Text              (Text)
-import qualified Data.Text              as T
+import           Data.Map             (Map)
+import qualified Data.Map             as M
+import           Data.Sequence        (Seq (..))
+import qualified Data.Sequence        as Seq
+import           Data.Set             (Set)
+import qualified Data.Set             as Set
+import           Data.Text            (Text)
+import qualified Data.Text            as T
 
 import           Debug.Trace
 
@@ -89,7 +85,7 @@ prettyFile file = do
     go index nam def = do
       putStrLn ""
       putStrLn $ T.unpack $ printCIDBase32 $ (_byName index) M.! nam
-      putStrLn $ T.unpack $ Print.prettyDef nam def
+      putStrLn $ T.unpack $ prettyDef nam def
       return ()
 
 checkFile :: FilePath -> IO (CID,Package)
@@ -111,10 +107,10 @@ checkRef index cache (name,cid) = do
         , printCIDBase32 cid, "\n"
         , T.pack $ show e]
     Right (_,t) -> putStrLn $ T.unpack $ T.concat
-        ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", Core.printHOAS t]
+        ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHoas t]
 
--- | Evaluate a `HOAS` from a file
-normDef :: Name -> FilePath -> IO HOAS
+-- | Evaluate a `Hoas` from a file
+normDef :: Name -> FilePath -> IO Hoas
 normDef name file = do
   (r,c,p) <- loadFile file
   let index = _index p
@@ -124,7 +120,7 @@ normDef name file = do
   defs  <- catchErr (indexToDefs index cache)
   return $ Core.norm defs (fst $ defToHoas name def)
 
-whnfDef :: Name -> FilePath -> IO HOAS
+whnfDef :: Name -> FilePath -> IO Hoas
 whnfDef name file = do
   (r,c,p) <- loadFile file
   let index = _index p
@@ -136,50 +132,50 @@ whnfDef name file = do
 
 whnf :: Defs -> Term -> Term
 whnf defs =
-  Core.hoasToTerm Ctx.empty . Core.whnf defs . Core.termToHoas Ctx.empty
+  hoasToTerm Ctx.empty . Core.whnf defs . termToHoas Ctx.empty
 
 norm :: Defs -> Term -> Term
 norm defs =
-  Core.hoasToTerm Ctx.empty . Core.norm defs . Core.termToHoas Ctx.empty
+  hoasToTerm Ctx.empty . Core.norm defs . termToHoas Ctx.empty
 
-infer :: Defs -> Term -> Either CheckErr Term
+infer :: Defs -> Term -> Either Core.CheckErr Term
 infer defs term =
-  let hTerm = Core.termToHoas Ctx.empty term in
+  let hTerm = termToHoas Ctx.empty term in
   case runExcept (Core.infer defs Ctx.empty Once hTerm) of
     Left err -> Left err
-    Right (_,ty) -> Right (Core.hoasToTerm Ctx.empty ty)
+    Right (_,ty) -> Right (hoasToTerm Ctx.empty ty)
 
-check :: Defs -> Term -> Term -> Either CheckErr Term
+check :: Defs -> Term -> Term -> Either Core.CheckErr Term
 check defs term typ_ =
-  let hTerm = Core.termToHoas Ctx.empty term in
-  let hType = Core.termToHoas Ctx.empty typ_ in
+  let hTerm = termToHoas Ctx.empty term in
+  let hType = termToHoas Ctx.empty typ_ in
   case runExcept (Core.check defs Ctx.empty Once hTerm hType) of
     Left err     -> Left err
-    Right (_,ty) -> Right (Core.hoasToTerm Ctx.empty ty)
+    Right (_,ty) -> Right (hoasToTerm Ctx.empty ty)
 
-synth :: Defs -> Term -> Term -> Either CheckErr (Term, Term)
+synth :: Defs -> Term -> Term -> Either Core.CheckErr (Term, Term)
 synth defs term typ_ =
-  let hTerm = Core.termToHoas Ctx.empty term in
-  let hType = Core.termToHoas Ctx.empty typ_ in
+  let hTerm = termToHoas Ctx.empty term in
+  let hType = termToHoas Ctx.empty typ_ in
   case runExcept (Core.synth defs hTerm hType) of
     Left err -> Left err
     Right tt -> Right $
-      (Core.hoasToTerm Ctx.empty (fst tt), Core.hoasToTerm Ctx.empty (snd tt))
+      (hoasToTerm Ctx.empty (fst tt), hoasToTerm Ctx.empty (snd tt))
 
 prettyInfer :: Defs -> Term -> Text
 prettyInfer defs term = case infer defs term of
   Left err -> Core.prettyError err
-  Right ty -> Print.prettyTerm ty
+  Right ty -> prettyTerm ty
 
 prettyCheck :: Defs -> Term -> Term -> Text
 prettyCheck defs term typ_ = case check defs term typ_ of
   Left err -> Core.prettyError err
-  Right ty -> Print.prettyTerm ty
+  Right ty -> prettyTerm ty
 
 prettySynth :: Defs -> Term -> Term -> Text
 prettySynth defs term typ_ = case synth defs term typ_ of
   Left err -> Core.prettyError err
-  Right (ty,tr) -> T.concat [Print.prettyTerm tr, " :: ", Print.prettyTerm ty]
+  Right (ty,tr) -> T.concat [prettyTerm tr, " :: ", prettyTerm ty]
 
 testSynth :: Defs -> Text -> Text -> IO ()
 testSynth defs termCode typeCode = do

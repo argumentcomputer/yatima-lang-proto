@@ -24,7 +24,6 @@ import qualified Data.Text.Lazy.Builder  as TB
 
 import           Data.ByteString         (ByteString)
 import qualified Data.ByteString         as B
-import qualified Data.ByteString.UTF8    as UTF8
 
 import qualified Data.ByteString.Base16  as B16
 
@@ -110,13 +109,12 @@ prettyLiteral t = case t of
   VF32 x         -> (T.pack $ show x) <> "f32"
   VI64 x         -> (T.pack $ show x) <> "u64"
   VI32 x         -> (T.pack $ show x) <> "u32"
-  VBitString x   -> "#0x" <> (B16.encodeBase16 x)
   VBitVector l x -> 
     if l `mod` 4 == 0 
     then "#x" <> (B16.encodeBase16 x)
     else "#b" <> (bits l . roll . B.unpack) x
 
-  VString  x     -> (T.pack $ show $ UTF8.toString x)
+  VString  x     -> (T.pack $ show x)
   VChar    x     -> T.pack $ show x
 
 roll :: [Word8] -> Integer
@@ -139,7 +137,6 @@ prettyLitType t = case t of
   TF32         -> "#F32"
   TI64         -> "#I64"
   TI32         -> "#I32"
-  TBitString   -> "#BitString"
   TBitVector l -> "#BitVector" <> (T.pack $ show l)
   TString      -> "#String"
   TChar        -> "#Char"

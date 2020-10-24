@@ -20,25 +20,27 @@ extra-source-files:
 
 library
   exposed-modules:
-      Yatima.Term
-      Yatima.Literal
-      Yatima.PrimOp
-      Yatima.IPLD
       Yatima.CID
-      Yatima.Uses
-      Yatima.Print
-      Yatima.Parse
-      Yatima.Parse.Integer
-      Yatima.DagJSON
-      Yatima.DagAST
-      Yatima.Package
-      Yatima.Import
       Yatima.Core
       Yatima.Core.Wasm
-      Yatima.Ctx
+      Yatima.Core.Ctx
+      Yatima.Core.Hoas
+      Yatima.DagAST
+      Yatima.DagJSON
+      Yatima.Import
       Yatima.IPFS
+      Yatima.IPLD
+      Yatima.Literal
+      Yatima.Package
+      Yatima.Parse
+      Yatima.Parse.Integer
+      Yatima.PrimOp
+      Yatima.Print
+      Yatima.Term
+      Yatima.Uses
       Yatima
   other-modules:
+      Yatima.Core.Prim
       Paths_yatima
   hs-source-dirs:
       src
@@ -75,7 +77,6 @@ library
     , text
     , unordered-containers
     , unsafeperformst
-    , utf8-string
     , vector
   default-language: Haskell2010
 
@@ -108,6 +109,7 @@ test-suite spec
       Spec.IPLD
       Spec.Parse
       Spec.Print
+      Spec.Instances
   hs-source-dirs:
       test
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables

@@ -13,12 +13,6 @@ module Yatima.Core where
 import           Control.Monad.Except
 import           Control.Monad.Identity
 
-import           Data.ByteString                (ByteString)
-import qualified Data.ByteString                as BS
-import           Data.Word
-import           Data.Int
-import           Data.Bits
-
 import           Data.Map                       (Map)
 import qualified Data.Map                       as M
 import           Data.Sequence                  (Seq (..))
@@ -33,115 +27,14 @@ import qualified Data.Text.Lazy                 as LT
 import qualified Data.Text.Lazy.Builder         as TB
 import qualified Data.Text.Lazy.Builder.Int     as TB
 
-import           Numeric.IEEE
-
-import           Yatima.Ctx            (Ctx (..), (<|))
-import qualified Yatima.Ctx            as Ctx
-import           Yatima.Core.Wasm
+import           Yatima.Core.Ctx            (Ctx (..), (<|))
+import qualified Yatima.Core.Ctx            as Ctx
+import           Yatima.Core.Hoas
+import           Yatima.Core.Prim
 import           Yatima.Print
 import           Yatima.Term
 
-import           Debug.Trace
-
--- | Higher-Order Abstract Syntax
-data HOAS where
-  VarH :: Name -> Int -> HOAS
-  RefH :: Name -> HOAS
-  LamH :: Name -> (HOAS -> HOAS) -> HOAS
-  AppH :: HOAS -> HOAS -> HOAS
-  NewH :: HOAS -> HOAS
-  UseH :: HOAS -> HOAS
-  LetH :: Name -> Uses -> HOAS -> HOAS -> (HOAS -> HOAS) -> HOAS
-  AllH :: Name -> Uses -> HOAS -> (HOAS -> HOAS) -> HOAS
-  SlfH :: Name -> (HOAS -> HOAS) -> HOAS
-  FixH :: Name -> (HOAS -> HOAS) -> HOAS
-  AnnH :: HOAS -> HOAS -> HOAS
-  UnrH :: Int  -> HOAS -> HOAS -> HOAS
-  TypH :: HOAS
-  HolH :: Name -> HOAS
-  LitH :: Literal -> HOAS
-  LTyH :: LitType -> HOAS
-  OprH :: PrimOp  -> HOAS
-  WhnH :: HOAS    -> HOAS
-
-type PreContext = Ctx HOAS
-type Context    = Ctx (Uses,HOAS)
-
-mulCtx :: Uses -> Context -> Context
-mulCtx Once ctx = ctx
-mulCtx uses ctx = fmap (\(uses', typ) -> (uses *# uses', typ)) ctx
-
--- Assumes both context are compatible
-addCtx :: Context -> Context -> Context
-addCtx = Ctx.zipWith (\(uses,typ) (uses',_) -> (uses +# uses', typ))
-
-toContext :: PreContext -> Context
-toContext = fmap (\(term) -> (None, term))
-
--- | A filled hole
-type Hole = (Name, HOAS)
-
--- | Convert a lower-order `Term` to a GHC higher-order one
-termToHoas :: PreContext -> Term -> HOAS
-termToHoas ctx t = case t of
-  Typ                     -> TypH
-  Hol nam                 -> HolH nam
-  Var nam                 -> maybe (VarH nam 0) id (Ctx.find nam ctx)
-  Ref nam                 -> RefH nam
-  Lam nam bod             -> LamH nam (bind nam bod)
-  App fun arg             -> AppH (go fun) (go arg)
-  New exp                 -> NewH (go exp)
-  Use exp                 -> UseH (go exp)
-  Ann val typ             -> AnnH (go val) (go typ)
-  Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
-  All nam use typ bod     -> AllH nam use (go typ) (bind nam bod)
-  Slf nam bod             -> SlfH nam (bind nam bod)
-  Lit lit                 -> LitH lit
-  LTy lty                 -> LTyH lty
-  Opr opr                 -> OprH opr
-  where
-    go      t   = termToHoas ctx t
-    bind  n t   = (\x   -> termToHoas ((n,x)<|ctx) t)
-    rec n t = FixH n (bind n t)
-
--- | Convert a GHC higher-order representation to a lower-order one
-hoasToTerm :: PreContext -> HOAS -> Term
-hoasToTerm ctx t = case t of
-  TypH                     -> Typ
-  HolH nam                 -> Hol nam
-  RefH nam                 -> Ref nam
-  VarH nam idx             -> Var nam
-  LamH nam bod             -> Lam nam (bind nam bod)
-  AppH fun arg             -> App (go fun) (go arg)
-  UseH exp                 -> Use (go exp)
-  NewH exp                 -> New (go exp)
-  LetH nam use typ exp bod -> Let nam use (go typ) (go exp) (bind nam bod)
-  AllH nam use typ bod     -> All nam use (go typ) (bind nam bod)
-  SlfH nam bod             -> Slf nam (bind nam bod)
-  FixH nam bod             -> bind nam bod
-  AnnH trm typ             -> Ann (go trm) (go typ)
-  UnrH _   trm _           -> go trm
-  LitH lit                 -> Lit lit
-  LTyH lty                 -> LTy lty
-  OprH opr                 -> Opr opr
-  where
-    dep          = Ctx.depth ctx
-    go t         = hoasToTerm ctx t
-    bind n b     = hoasToTerm ((n,TypH)<|ctx) (b (VarH n dep))
-
-printHOAS :: HOAS -> Text
-printHOAS = prettyTerm . (hoasToTerm Ctx.empty)
-
-instance Show HOAS where
- show t = T.unpack $ printHOAS t
-
-defToHoas :: Name -> Def -> (HOAS,HOAS)
-defToHoas name (Def _ term typ_) =
-  ( FixH name (\s -> termToHoas (Ctx.singleton (name,s)) term)
-  , FixH name (\s -> termToHoas (Ctx.singleton (name,s)) typ_)
-  )
-
-whnf :: Defs -> HOAS -> HOAS
+whnf :: Defs -> Hoas -> Hoas
 whnf defs trm = case trm of
   RefH nam           -> case defs M.!? nam of
     Just d  -> go $ fst (defToHoas nam d)
@@ -164,8 +57,8 @@ whnf defs trm = case trm of
   where
     go x = whnf defs x
 
--- | Normalize a HOAS term
---norm :: Defs -> HOAS -> HOAS
+-- | Normalize a Hoas term
+--norm :: Defs -> Hoas -> Hoas
 --norm defs term = case whnf defs term of
 --  AllH nam use typ bod -> AllH nam use (go typ) (\x -> go (bod x))
 --  LamH nam bod         -> LamH nam (\x -> go (bod x))
@@ -176,10 +69,10 @@ whnf defs trm = case trm of
 --  UseH exp             -> UseH (go exp)
 --  step                 -> step
 
-norm :: Defs -> HOAS -> HOAS
+norm :: Defs -> Hoas -> Hoas
 norm defs term = go term 0 Set.empty
   where
-    go :: HOAS -> Int -> Set LT.Text -> HOAS
+    go :: Hoas -> Int -> Set LT.Text -> Hoas
     go term lvl seen =
       let step  = whnf defs term
           hash  = serialize lvl term
@@ -189,7 +82,7 @@ norm defs term = go term 0 Set.empty
           | hash' `Set.member` seen -> step
           | otherwise -> next step lvl (Set.insert hash' (Set.insert hash seen))
 
-    next :: HOAS -> Int -> Set LT.Text -> HOAS
+    next :: Hoas -> Int -> Set LT.Text -> Hoas
     next step lvl seen = case step of
       AllH nam use typ bod -> 
         AllH nam use (go typ lvl seen) (\x -> go (bod x) (lvl+1) seen)
@@ -203,7 +96,7 @@ norm defs term = go term 0 Set.empty
 
 -- Converts a term to a unique string representation. This is used by equal.
 -- TODO: use a hash function instead
-serialize :: Int -> HOAS -> LT.Text
+serialize :: Int -> Hoas -> LT.Text
 serialize lvl term = TB.toLazyText (go term lvl lvl)
   where
     name :: Name -> TB.Builder
@@ -216,7 +109,7 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
     uses Once = "1"
     uses Many = "ω"
 
-    go :: HOAS -> Int -> Int -> TB.Builder
+    go :: Hoas -> Int -> Int -> TB.Builder
     go term lvl ini = case term of
       TypH                     -> "*"
       VarH _ idx               ->
@@ -248,10 +141,10 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
       LTyH lit                 -> "<" <> TB.fromText (prettyLitType lit) <> ">"
       OprH opr                 -> "{" <> TB.fromText (prettyPrimOp opr) <> "}"
 
-equal :: Defs -> HOAS -> HOAS -> Int -> Either Hole Bool
+equal :: Defs -> Hoas -> Hoas -> Int -> Either Hole Bool
 equal defs a b lvl = go a b lvl Set.empty
   where
-    go :: HOAS -> HOAS -> Int -> Set (LT.Text,LT.Text) -> Either Hole Bool
+    go :: Hoas -> Hoas -> Int -> Set (LT.Text,LT.Text) -> Either Hole Bool
     go a b lvl seen = do
       let aWhnf = whnf defs a
       let bWhnf = whnf defs b
@@ -264,7 +157,7 @@ equal defs a b lvl = go a b lvl Set.empty
              let seen' = Set.insert (aHash,bHash) seen
              next aWhnf bWhnf lvl seen'
 
-    next :: HOAS -> HOAS -> Int -> Set (LT.Text, LT.Text) -> Either Hole Bool
+    next :: Hoas -> Hoas -> Int -> Set (LT.Text, LT.Text) -> Either Hole Bool
     next a b lvl seen = case (a, b) of
       (AllH aNam aUse aTyp aBod, AllH bNam bUse bTyp bBod) -> do
         let aBod' = aBod (VarH aNam lvl)
@@ -296,29 +189,29 @@ equal defs a b lvl = go a b lvl Set.empty
       _         -> return False
 
 data CheckErr
-  = CheckQuantityMismatch Context (Name,Uses,HOAS) (Name,Uses,HOAS)
-  | InferQuantityMismatch Context (Name,Uses,HOAS) (Name,Uses,HOAS)
-  | TypeMismatch PreContext HOAS HOAS
+  = CheckQuantityMismatch Context (Name,Uses,Hoas) (Name,Uses,Hoas)
+  | InferQuantityMismatch Context (Name,Uses,Hoas) (Name,Uses,Hoas)
+  | TypeMismatch PreContext Hoas Hoas
   | UnboundVariable Name Int
   | FoundHole Hole
   | EmptyContext
   | UntypedLambda
   | UndefinedReference Name
-  | LambdaNonFunctionType PreContext HOAS HOAS HOAS
-  | NewNonSelfType PreContext HOAS HOAS HOAS
-  | NonFunctionApplication Context HOAS HOAS HOAS
-  | NonSelfUse  Context HOAS HOAS HOAS
+  | LambdaNonFunctionType PreContext Hoas Hoas Hoas
+  | NewNonSelfType PreContext Hoas Hoas Hoas
+  | NonFunctionApplication Context Hoas Hoas Hoas
+  | NonSelfUse  Context Hoas Hoas Hoas
   | CustomErr PreContext Text
 
 -- | Fills holes of a term until it is complete
-synth :: Defs -> HOAS -> HOAS -> Except CheckErr (HOAS, HOAS)
+synth :: Defs -> Hoas -> Hoas -> Except CheckErr (Hoas, Hoas)
 synth defs term typ_ = do
   case runExcept (check  defs Ctx.empty Once term typ_) of
     Left (FoundHole hole) -> synth  defs (fill hole term) (fill hole typ_)
     Left error            -> throwError error
     Right (_,typ_)        -> return (term, typ_)
 
-fill :: Hole -> HOAS -> HOAS
+fill :: Hole -> Hoas -> Hoas
 fill hole term = case term of
   TypH                 -> TypH
   VarH nam idx         -> VarH nam idx
@@ -334,8 +227,8 @@ fill hole term = case term of
     go x = fill hole x
 
 -- * Type System
-check :: Defs -> PreContext -> Uses -> HOAS -> HOAS
-      -> Except CheckErr (Context, HOAS)
+check :: Defs -> PreContext -> Uses -> Hoas -> Hoas
+      -> Except CheckErr (Context, Hoas)
 check defs pre use term typ = case term of
   LamH name body -> case whnf defs typ of
     AllH bindName bindUse bind typeBody -> do
@@ -382,8 +275,8 @@ check defs pre use term typ = case term of
       Right True  -> return (ctx, typ)
 
 -- | Infers the type of a term
-infer :: Defs -> PreContext -> Uses -> HOAS
-      -> Except CheckErr (Context, HOAS)
+infer :: Defs -> PreContext -> Uses -> Hoas
+      -> Except CheckErr (Context, Hoas)
 infer defs pre use term = case term of
   VarH nam lvl -> do
     case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
@@ -451,22 +344,22 @@ prettyUses Many = "ω"
 prettyCtx :: Context -> Text
 prettyCtx (Ctx ctx) = foldr go "" ctx
   where
-    go :: (Name,(Uses,HOAS)) -> Text -> Text
+    go :: (Name,(Uses,Hoas)) -> Text -> Text
     go (n,(u,t)) txt = T.concat ["- ", prettyCtxElem (n,u,t),"\n",txt]
 
-prettyCtxElem :: (Name,Uses,HOAS) -> Text
-prettyCtxElem ("",u,t) = T.concat [prettyUses u, " _: ", printHOAS t]
-prettyCtxElem (n,u,t)  = T.concat [prettyUses u , " ", n, ": ", printHOAS t]
+prettyCtxElem :: (Name,Uses,Hoas) -> Text
+prettyCtxElem ("",u,t) = T.concat [prettyUses u, " _: ", printHoas t]
+prettyCtxElem (n,u,t)  = T.concat [prettyUses u , " ", n, ": ", printHoas t]
 
 prettyPre :: PreContext -> Text
 prettyPre (Ctx ctx) = foldr go "" ctx
   where
-    go :: (Name,HOAS) -> Text -> Text
+    go :: (Name,Hoas) -> Text -> Text
     go (n,t) txt = T.concat ["- ", prettyPreElem (n,t),"\n",txt]
 
-prettyPreElem :: (Name,HOAS) -> Text
-prettyPreElem ("",t) = T.concat [" _: ", printHOAS t]
-prettyPreElem (n,t)  = T.concat [" ", n, ": ", printHOAS t]
+prettyPreElem :: (Name,Hoas) -> Text
+prettyPreElem ("",t) = T.concat [" _: ", printHoas t]
+prettyPreElem (n,t)  = T.concat [" ", n, ": ", printHoas t]
 
 prettyError :: CheckErr -> Text
 prettyError e = case e of
@@ -493,17 +386,17 @@ prettyError e = case e of
       ]
     LambdaNonFunctionType ctx trm typ typ' -> T.concat
       ["The type of a lambda must be a forall: \n"
-      , "  Checked term: ", printHOAS trm,"\n"
-      , "  Against type: ", printHOAS typ, "\n"
-      , "  Reduced type: ",  printHOAS typ',"\n"
+      , "  Checked term: ", printHoas trm,"\n"
+      , "  Against type: ", printHoas typ, "\n"
+      , "  Reduced type: ",  printHoas typ',"\n"
       , "With context:\n"
       , prettyPre ctx
       ]
     NewNonSelfType ctx trm typ typ' -> T.concat
       ["The type of data must be a self: \n"
-      , "  Checked term: ", printHOAS trm,"\n"
-      , "  Against type: ", printHOAS typ, "\n"
-      , "  Reduced type: ",  printHOAS typ',"\n"
+      , "  Checked term: ", printHoas trm,"\n"
+      , "  Against type: ", printHoas typ, "\n"
+      , "  Reduced type: ",  printHoas typ',"\n"
       , "With context:\n"
       , prettyPre ctx
       ]
@@ -511,20 +404,20 @@ prettyError e = case e of
       ["Unbound free variable: ", T.pack $ show nam, " at level ", T.pack $ show idx]
     UntypedLambda -> "Can't infer the type of a lambda"
     FoundHole (name,term) -> T.concat
-      ["Can't fill hole: ?", T.pack $ show name, " : ", printHOAS term]
+      ["Can't fill hole: ?", T.pack $ show name, " : ", printHoas term]
     NonFunctionApplication ctx trm typ typ' -> T.concat
       ["Tried to apply something that wasn't a lambda: \n"
-      , "  Checked term: ", printHOAS trm,"\n"
-      , "  Against type: ", printHOAS typ, "\n"
-      , "  Reduced type: ",  printHOAS typ',"\n"
+      , "  Checked term: ", printHoas trm,"\n"
+      , "  Against type: ", printHoas typ, "\n"
+      , "  Reduced type: ",  printHoas typ',"\n"
       , "With context:\n"
       , prettyCtx ctx
       ]
     NonSelfUse ctx trm typ typ' -> T.concat
       ["Tried to case on something that wasn't data: \n"
-      , "  Checked term: ", printHOAS trm,"\n"
-      , "  Against type: ", printHOAS typ, "\n"
-      , "  Reduced type: ",  printHOAS typ',"\n"
+      , "  Checked term: ", printHoas trm,"\n"
+      , "  Against type: ", printHoas typ, "\n"
+      , "  Reduced type: ",  printHoas typ',"\n"
       , "With context:\n"
       , prettyCtx ctx
       ]
@@ -542,394 +435,4 @@ prettyError e = case e of
 
 instance Show CheckErr where
   show e = T.unpack $ prettyError e
-
-reduceOpr :: PrimOp -> HOAS -> HOAS
-reduceOpr op arg = case (op,arg) of
-  (I32_const,    LitH (VI32 a))    -> LamH "x" $ \x -> (LitH (VI32 a))
-  (I64_const,    LitH (VI64 a))    -> LamH "x" $ \x -> (LitH (VI64 a))
-  (F32_const,    LitH (VF32 a))    -> LamH "x" $ \x -> (LitH (VF32 a))
-  (F64_const,    LitH (VF64 a))    -> LamH "x" $ \x -> (LitH (VF64 a))
-  (I32_eqz,      LitH (VI32 a))    -> LitH (bool (a == 0))
-  (I32_eq,       LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (a == b))
-    _                 -> noredex x
-  (I32_ne,       LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (a /= b))
-    _                 -> noredex x
-  (I32_lt_s,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (i32 a < i32 b))
-    _                 -> noredex x
-  (I32_lt_u,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (a < b))
-    _                 -> noredex x
-  (I32_gt_s,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (i32 a > i32 b))
-    _                 -> noredex x
-  (I32_gt_u,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (a > b))
-    _                 -> noredex x
-  (I32_le_s,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (i32 a <= i32 b))
-    _                 -> noredex x
-  (I32_le_u,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (a <= b))
-    _                 -> noredex x
-  (I32_ge_s,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (i32 a >= i32 b))
-    _                 -> noredex x
-  (I32_ge_u,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (bool (a >= b))
-    _                 -> noredex x
-  (I64_eqz,      LitH (VI64 a))    -> LitH (bool (a == 0))
-  (I64_eq,       LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (a == b))
-    _                 -> noredex x
-  (I64_ne,       LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (a /= b))
-    _                 -> noredex x
-  (I64_lt_s,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (i64 a < i64 b))
-    _                 -> noredex x
-  (I64_lt_u,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (a < b))
-    _                 -> noredex x
-  (I64_gt_s,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (i64 a > i64 b))
-    _                 -> noredex x
-  (I64_gt_u,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (a > b))
-    _                 -> noredex x
-  (I64_le_s,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (i64 a <= i64 b))
-    _                 -> noredex x
-  (I64_le_u,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (a <= b))
-    _                 -> noredex x
-  (I64_ge_s,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (i64 a >= i64 b))
-    _                 -> noredex x
-  (I64_ge_u,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (bool (a >= b))
-    _                 -> noredex x
-  (F32_eq,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (bool (a == b))
-    _                 -> noredex x
-  (F32_ne,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (bool (a /= b))
-    _                 -> noredex x
-  (F32_lt,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (bool (a < b))
-    _                 -> noredex x
-  (F32_gt,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (bool (a > b))
-    _                 -> noredex x
-  (F32_le,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (bool (a <= b))
-    _                 -> noredex x
-  (F32_ge,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (bool (a >= b))
-    _                 -> noredex x
-  (F64_eq,      LitH (VF64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (bool (a == b))
-    _                 -> noredex x
-  (F64_ne,      LitH (VF64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (bool (a /= b))
-    _                 -> noredex x
-  (F64_lt,      LitH (VF64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (bool (a < b))
-    _                 -> noredex x
-  (F64_gt,      LitH (VF64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (bool (a > b))
-    _                 -> noredex x
-  (F64_le,      LitH (VF64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (bool (a <= b))
-    _                 -> noredex x
-  (F64_ge,      LitH (VF64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (bool (a >= b))
-    _                 -> noredex x
-  (I32_clz,     LitH (VI32 a))    -> LitH (VI32 $ cst32 $ countLeadingZeros a)
-  (I32_ctz,     LitH (VI32 a))    -> LitH (VI32 $ cst32 $ countTrailingZeros a)
-  (I32_popcnt,  LitH (VI32 a))    -> LitH (VI32 $ cst32 $ popCount a)
-  (I32_add,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a + b))
-    _                 -> noredex x
-  (I32_sub,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a - b))
-    _                 -> noredex x
-  (I32_mul,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a * b))
-    _                 -> noredex x
-  (I32_div_s,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     ->
-      if (b == 0 || (a == 0x80000000 && b == 0xFFFFFFFF))
-      then noredex x
-      else LitH (VI32 (u32 $ i32 a `quot` i32 b))
-    _                 -> noredex x
-  (I32_div_u,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> if b == 0 then noredex x else LitH (VI32 (a `quot` b))
-    _                 -> noredex x
-  (I32_rem_s,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> 
-      if b == 0
-      then noredex x 
-      else LitH (VI32 (u32 $ i32 a `rem` i32 b))
-    _                 -> noredex x
-  (I32_rem_u,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> if b == 0 then noredex x else LitH (VI32 (a `rem` b))
-    _                 -> noredex x
-  (I32_and,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a .&. b))
-    _                 -> noredex x
-  (I32_or,      LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a .|. b))
-    _                 -> noredex x
-  (I32_xor,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a `xor` b))
-    _                 -> noredex x
-  (I32_shl,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a `shiftL` (fromIntegral b `rem` 32)))
-    _                 -> noredex x
-  (I32_shr_u,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a `shiftR` (fromIntegral b `rem` 32)))
-    _                 -> noredex x
-  (I32_shr_s,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     ->
-      LitH (VI32 (u32 $ i32 a `shiftR` (fromIntegral b `rem` 32)))
-    _                 -> noredex x
-  (I32_rotl,    LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a `rotateL` fromIntegral b))
-    _                 -> noredex x
-  (I32_rotr,    LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> LitH (VI32 (a `rotateR` fromIntegral b))
-    _                 -> noredex x
-  (I64_clz,     LitH (VI64 a))    -> LitH (VI64 $ cst64 $ countLeadingZeros a)
-  (I64_ctz,     LitH (VI64 a))    -> LitH (VI64 $ cst64 $ countTrailingZeros a)
-  (I64_popcnt,  LitH (VI64 a))    -> LitH (VI64 $ cst64 $ popCount a)
-  (I64_add,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a + b))
-    _                 -> noredex x
-  (I64_sub,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a - b))
-    _                 -> noredex x
-  (I64_mul,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a * b))
-    _                 -> noredex x
-  (I64_div_s,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     ->
-      if (b == 0 || (a == 0x8000000000000000 && b == 0xFFFFFFFFFFFFFFFF))
-      then noredex x
-      else LitH (VI64 (u64 $ i64 a `quot` i64 b))
-    _                 -> noredex x
-  (I64_div_u,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> if b == 0 then noredex x else LitH (VI64 (a `quot` b))
-    _                 -> noredex x
-  (I64_rem_s,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> 
-      if b == 0
-      then noredex x 
-      else LitH (VI64 (u64 $ i64 a `rem` i64 b))
-    _                 -> noredex x
-  (I64_rem_u,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> if b == 0 then noredex x else LitH (VI64 (a `rem` b))
-    _                 -> noredex x
-  (I64_and,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a .&. b))
-    _                 -> noredex x
-  (I64_or,      LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a .|. b))
-    _                 -> noredex x
-  (I64_xor,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a `xor` b))
-    _                 -> noredex x
-  (I64_shl,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a `shiftL` (fromIntegral b `rem` 64)))
-    _                 -> noredex x
-  (I64_shr_u,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a `shiftR` (fromIntegral b `rem` 64)))
-    _                 -> noredex x
-  (I64_shr_s,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     ->
-      LitH (VI64 (u64 $ i64 a `shiftR` (fromIntegral b `rem` 64)))
-    _                 -> noredex x
-  (I64_rotl,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a `rotateL` fromIntegral b))
-    _                 -> noredex x
-  (I64_rotr,    LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> LitH (VI64 (a `rotateR` fromIntegral b))
-    _                 -> noredex x
-  (F32_abs,     LitH (VF32 a))    -> LitH (VF32 $ abs a)
-  (F32_neg,     LitH (VF32 a))    -> LitH (VF32 $ negate a)
-  (F32_ceil,    LitH (VF32 a))    -> LitH (VF32 $ floatCeil a)
-  (F32_floor,   LitH (VF32 a))    -> LitH (VF32 $ floatFloor a)
-  (F32_trunc,   LitH (VF32 a))    -> LitH (VF32 $ floatTrunc a)
-  (F32_nearest, LitH (VF32 a))    -> LitH (VF32 $ nearest a)
-  (F32_sqrt,    LitH (VF32 a))    -> LitH (VF32 $ sqrt a)
-  (F32_add,     LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (VF32 (a + b))
-    _                 -> noredex x
-  (F32_sub,     LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (VF32 (a - b))
-    _                 -> noredex x
-  (F32_mul,     LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (VF32 (a * b))
-    _                 -> noredex x
-  (F32_div,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (VF32 (a / b))
-    _                 -> noredex x
-  (F32_min,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (VF32 (a `zeroAwareMin` b))
-    _                 -> noredex x
-  (F32_max,      LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (VF32 (a `zeroAwareMax` b))
-    _                 -> noredex x
-  (F32_copysign, LitH (VF32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF32 b)     -> LitH (VF32 (a `copySign` b))
-    _                 -> noredex x
-  (F64_abs,      LitH (VF64 a))    -> LitH (VF64 $ abs a)
-  (F64_neg,      LitH (VF64 a))    -> LitH (VF64 $ negate a)
-  (F64_ceil,     LitH (VF64 a))    -> LitH (VF64 $ doubleCeil a)
-  (F64_floor,    LitH (VF64 a))    -> LitH (VF64 $ doubleFloor a)
-  (F64_trunc,    LitH (VF64 a))    -> LitH (VF64 $ doubleTrunc a)
-  (F64_nearest,  LitH (VF64 a))    -> LitH (VF64 $ nearest a)
-  (F64_sqrt,     LitH (VF64 a))    -> LitH (VF64 $ sqrt a)
-  (F64_add,      LitH (VF64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (VF64 (a + b))
-    _                 -> noredex x
-  (F64_sub,      LitH (VF64 a))     -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (VF64 (a - b))
-    _                 -> noredex x
-  (F64_mul,      LitH (VF64 a))     -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (VF64 (a * b))
-    _                 -> noredex x
-  (F64_div,      LitH (VF64 a))     -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (VF64 (a / b))
-    _                 -> noredex x
-  (F64_min,      LitH (VF64 a))     -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (VF64 (a `zeroAwareMin` b))
-    _                 -> noredex x
-  (F64_max,      LitH (VF64 a))     -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (VF64 (a `zeroAwareMax` b))
-    _                 -> noredex x
-  (F64_copysign, LitH (VF64 a))     -> LamH "x" $ \x -> case x of
-    LitH (VF64 b)     -> LitH (VF64 (a `copySign` b))
-    _                 -> noredex x
-  (I32_wrap_I64, LitH (VI64 a))      ->
-    LitH (VI32 $ (fromIntegral $ a .&. 0xFFFFFFFF))
-  (I32_trunc_F32_s, LitH (VF32 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) then noredex'
-     else LitH (VI32 (u32 $ truncate a))
-  (I32_trunc_F32_u, LitH (VF32 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) then noredex'
-     else LitH (VI32 (truncate a))
-  (I32_trunc_F64_s, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63) then noredex'
-     else LitH (VI32 (u32 $ truncate a))
-  (I32_trunc_F64_u, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) then noredex'
-     else LitH (VI32 (truncate a))
-  (I64_extend_I32_s, LitH (VI32 a))  -> LitH (VI64 (u64 $ fromIntegral $ i32 a))
-  (I64_extend_I32_u, LitH (VI32 a))  -> LitH (VI64 (fromIntegral a))
-  (I64_trunc_F32_s, LitH (VF32 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) then noredex'
-     else LitH (VI64 (u64 $ truncate a))
-  (I64_trunc_F32_u, LitH (VF32 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) then noredex'
-     else LitH (VI64 (truncate a))
-  (I64_trunc_F64_s, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63) then noredex'
-     else LitH (VI64 (u64 $ truncate a))
-  (I64_trunc_F64_u, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) then noredex'
-     else LitH (VI64 (truncate a))
-  (F32_convert_I32_s, LitH (VI32 a)) -> LitH (VF32 (realToFrac $ i32 a))
-  (F32_convert_I32_u, LitH (VI32 a)) -> LitH (VF32 (realToFrac a))
-  (F32_convert_I64_s, LitH (VI64 a)) -> LitH (VF32 (realToFrac $ i64 a))
-  (F32_convert_I64_u, LitH (VI64 a)) -> LitH (VF32 (realToFrac a))
-  (F32_demote_F64, LitH (VF64 a))    -> LitH (VF32 (realToFrac a))
-  (F64_convert_I32_s, LitH (VI32 a)) -> LitH (VF64 (realToFrac $ i32 a))
-  (F64_convert_I32_u, LitH (VI32 a)) -> LitH (VF64 (realToFrac a))
-  (F64_convert_I64_s, LitH (VI64 a)) -> LitH (VF64 (realToFrac $ i64 a))
-  (F64_convert_I64_u, LitH (VI64 a)) -> LitH (VF64 (realToFrac a))
-  (F64_promote_F32, LitH (VF32 a))   -> LitH (VF64 (realToFrac a))
-  (I32_reinterpret_F32, LitH (VF32 a)) -> LitH (VI32 (floatToWord a))
-  (I64_reinterpret_F64, LitH (VF64 a)) -> LitH (VI64 (doubleToWord a))
-  (F32_reinterpret_I32, LitH (VI32 a)) -> LitH (VF32 (wordToFloat a))
-  (F64_reinterpret_I64, LitH (VI64 a)) -> LitH (VF64 (wordToDouble a))
-  (Natural_succ, LitH (VNatural n)) -> LitH (VNatural $ n+1)
-  (Natural_pred, LitH (VNatural 0)) -> LitH (VNatural 0)
-  (Natural_pred, LitH (VNatural n)) -> LitH (VNatural $ n-1)
-  (Natural_add,  LitH (VNatural a)) -> LamH "x" $ \x -> case x of
-    LitH (VNatural b) -> LitH (VNatural $ a + b)
-    _                 -> noredex x
-  (Natural_sub,  LitH (VNatural a)) -> LamH "x" $ \x -> case x of
-    LitH (VNatural b) -> LitH (VNatural $ ite (a < b) 0 (a - b))
-    _                 -> noredex x
-  (Natural_mul,  LitH (VNatural a)) -> LamH "x" $ \x -> case x of
-    LitH (VNatural b) -> LitH (VNatural $ a * b)
-    _                 -> noredex x
-  (Natural_div, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
-    LitH (VNatural b) -> LitH (VNatural $ a `div` b)
-    _                 -> noredex x
-  (Natural_gt, LitH (VNatural a))   -> LamH "x" $ \x -> case x of
-    LitH (VNatural b) -> LitH (bool (a > b))
-    _                 -> noredex x
-  (Natural_ge, LitH (VNatural a))   -> LamH "x" $ \x -> case x of
-    LitH (VNatural b) -> LitH (bool (a >= b))
-    _                 -> noredex x
-  (Natural_eq, LitH (VNatural a))   -> LamH "x" $ \x -> case x of
-    LitH (VNatural b) -> LitH (bool (a == b))
-    _                 -> noredex  x
-  _                                 -> noredex'
-  where
-    noredex x = WhnH $ AppH (AppH (OprH op) arg) x
-    noredex'  = WhnH $ AppH (OprH op) arg
-    ite c t f = if c then t else f
-    bool c = ite c (VI32 1) (VI32 0)
-    cst32 :: Integral a => a -> Word32
-    cst32 = fromIntegral
-    cst64 :: Integral a => a -> Word64
-    cst64 = fromIntegral
-    i32 = asInt32
-    i64 = asInt64
-    u32 = asWord32
-    u64 = asWord64
-
-
-expandLit :: Literal -> HOAS
-expandLit t = case t of
-  VNatural nat ->
-    if nat == 0
-    then LamH "P" $ \p -> LamH "z" $ \z -> LamH "s" $ \s -> z
-    else LamH "P" $ \p -> LamH "z" $ \z -> LamH "s" $ 
-            \s -> AppH s (LitH $ VNatural (nat - 1))
-  _        -> error "TODO"
-
-litInduction :: LitType -> HOAS -> HOAS
-litInduction t val = case t of
-  TNatural ->
-    AllH "P" None (AllH "" Many (LTyH TNatural) $ \_ -> TypH) $ \p ->
-    AllH "" Affi (AppH p (LitH $ VNatural 0))$ \_ ->
-    AllH "" Affi (AllH "pred" Many (LTyH TNatural) $
-      \pred -> AppH p (AppH (OprH Natural_succ) pred)) $ \s ->
-      AppH p val
-  _    -> error "TODO"
-
-typeOfLit :: Literal -> HOAS
-typeOfLit t = case t of
-  VWorld         -> LTyH TWorld
-  VNatural _     -> LTyH TNatural
-  VF64    _      -> LTyH TF64
-  VF32    _      -> LTyH TF32
-  VI64    _      -> LTyH TI64
-  VI32    _      -> LTyH TI32
-  VBitString _   -> LTyH TBitString
-  VBitVector l _ -> LTyH (TBitVector l)
-  VString _      -> LTyH TString
-  VChar _        -> LTyH TChar
-
-typeOfOpr :: PrimOp -> HOAS
-typeOfOpr t = case t of
-  Natural_succ -> AllH "" Many (LTyH TNatural) (\_ -> LTyH TNatural)
-
-
 

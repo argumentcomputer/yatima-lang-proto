@@ -43,7 +43,6 @@ import qualified Data.Set                   as Set
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
 import qualified Data.ByteString            as BS
-import qualified Data.ByteString.UTF8       as BS hiding (length)
 import qualified Data.ByteString.Base16     as B16
 import           Data.ByteString            (ByteString)
 import           Data.Proxy
@@ -431,7 +430,6 @@ pLitType = choice
   , string "#F64"       >> return TF64
   , string "#F32"       >> return TF32
   , string "#BitVector" >> TBitVector . fromIntegral <$> pNatural
-  , string "#BitString" >> return TBitString
   ]
   
 
@@ -489,15 +487,14 @@ pFloat = choice
 
 pBits :: (Ord e, Monad m) => Parser e m Literal
 pBits = do
-  vec <- (string "#0" >> return False) <|> (string "#" >> return True)
+  string "#"
   (bitsPer, ds) <- choice
     [ (4,) <$> (string "x" >> many (satisfy (\x -> isHexDigit x || x == '_')))
     , (1,) <$> (string "b" >> many (satisfy (\x -> isBinDigit x || x == '_')))
     ]
   let bits = fromIntegral $ length ds * bitsPer
   let words = mkWords bitsPer (digitToInt <$> (filter (/= '_') ds))
-  if | vec       -> return $ VBitVector bits (BS.pack words)
-     | otherwise -> return $ VBitString (BS.pack words)
+  return $ VBitVector bits (BS.pack words)
   where
     mkWords _ [] = []
     mkWords b cs = let (xs,rs) = splitAt (8 `div` b) cs in 
@@ -514,7 +511,7 @@ pOpr = choice $ mkParse <$> [minBound..maxBound]
       notFollowedBy alphaNumChar
       return x
 
-pString :: (Ord e, Monad m) => Parser e m ByteString
+pString :: (Ord e, Monad m) => Parser e m Text
 pString = do
   string "\""
   str <- many $ choice
@@ -523,7 +520,7 @@ pString = do
     , pure <$> pEscape
     ]
   string "\""
-  return $ BS.fromString $ concat str
+  return $ T.pack $ concat str
 
 pChar :: (Ord e, Monad m) => Parser e m Char
 pChar = do

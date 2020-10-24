@@ -33,9 +33,10 @@ import           HaskelineT
 
 import           Yatima.CID
 import           Yatima.Package
-import qualified Yatima.Ctx as Ctx
+import qualified Yatima.Core.Ctx as Ctx
 import           Yatima.Term
 import qualified Yatima.Core as Core
+import           Yatima.Core.Hoas
 import           Yatima.Parse
 import           Yatima.Print
 import           Yatima.Import
@@ -146,7 +147,7 @@ process line = dontCrash' $ do
         cache <- liftIO $ readCache root
         def   <- catchReplErr $ deref n index cache
         defs  <- catchReplErr $ indexToDefs index cache
-        let (trm,typ) = Core.defToHoas "^" def
+        let (trm,typ) = defToHoas "^" def
         (_,typ) <- catchReplErr (Core.check defs Ctx.empty Once trm typ)
         liftIO $ print $ typ
         return ()
@@ -156,7 +157,7 @@ process line = dontCrash' $ do
         cache    <- liftIO $ readCache root
         t        <- catchReplErr (validateTerm t [] index cache)
         defs     <- catchReplErr (indexToDefs index cache)
-        let hterm = Core.termToHoas Ctx.empty t
+        let hterm = termToHoas Ctx.empty t
         --(_,typ_) <- catchReplErr (Core.infer defs Ctx.empty Once hterm)
         --catchReplErr (Core.check defs Ctx.empty Once hterm typ_)
         liftIO $ print $ Core.norm defs hterm
@@ -166,7 +167,7 @@ process line = dontCrash' $ do
         root   <- gets _yRoot
         cache  <- liftIO $ readCache root
         defs   <- catchReplErr (indexToDefs index cache)
-        let (trm,typ) = Core.defToHoas nam def
+        let (trm,typ) = defToHoas nam def
         catchReplErr (Core.check defs Ctx.empty Once trm typ)
         (i',c') <- catchReplErr (insertDefs [(nam,def)] index cache)
         modify (\e -> e {_yDefs = i'})

@@ -15,23 +15,24 @@ description:
 library:
   source-dirs: src
   exposed-modules:
-    - Yatima.Term
-    - Yatima.Literal
-    - Yatima.PrimOp
-    - Yatima.IPLD
     - Yatima.CID
-    - Yatima.Uses
-    - Yatima.Print
-    - Yatima.Parse
-    - Yatima.Parse.Integer
-    - Yatima.DagJSON
-    - Yatima.DagAST
-    - Yatima.Package
-    - Yatima.Import
     - Yatima.Core
     - Yatima.Core.Wasm
-    - Yatima.Ctx
+    - Yatima.Core.Ctx
+    - Yatima.Core.Hoas
+    - Yatima.DagAST
+    - Yatima.DagJSON
+    - Yatima.Import
     - Yatima.IPFS
+    - Yatima.IPLD
+    - Yatima.Literal
+    - Yatima.Package
+    - Yatima.Parse
+    - Yatima.Parse.Integer
+    - Yatima.PrimOp
+    - Yatima.Print
+    - Yatima.Term
+    - Yatima.Uses
     - Yatima
 
   dependencies:
@@ -47,7 +48,6 @@ library:
     - serialise
     - bytestring
     - base16
-    - utf8-string
     - multibase
     - cryptonite
     - multihash-cryptonite
@@ -160,4 +160,5 @@ tests:
       - Spec.IPLD
       - Spec.Parse
       - Spec.Print
+      - Spec.Instances
 

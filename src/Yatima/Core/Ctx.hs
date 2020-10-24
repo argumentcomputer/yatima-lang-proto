@@ -1,5 +1,5 @@
 {-|
-Module      : Yatima.Ctx
+Module      : Yatima.Core.Ctx
 Description : Defines a named sequence datatype used as a context for
 typechecking.
 Copyright   : (c) Sunshine Cybernetics, 2020
@@ -10,7 +10,7 @@ Stability   : experimental
 This module defines `Term`, the type of expressions in the Yatima language.
 
 -}
-module Yatima.Ctx where
+module Yatima.Core.Ctx where
 
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T

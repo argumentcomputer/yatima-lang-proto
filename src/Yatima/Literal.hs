@@ -10,6 +10,7 @@ import           Data.ByteString          (ByteString)
 import qualified Data.ByteString          as BS
 import           Data.Text                (Text)
 import qualified Data.Text                as T
+import qualified Data.Text.Encoding       as T
 import           Data.Word
 
 import           Numeric.Natural
@@ -21,9 +22,8 @@ data Literal
   | VF32       Float
   | VI64       Word64
   | VI32       Word32
-  | VBitString ByteString
   | VBitVector Natural ByteString
-  | VString    ByteString
+  | VString    Text
   | VChar      Char
   deriving (Eq,Show)
 
@@ -34,7 +34,6 @@ data LitType
   | TF32
   | TI64
   | TI32
-  | TBitString
   | TBitVector Natural
   | TString
   | TChar
@@ -48,10 +47,9 @@ encodeLiteral t = case t of
   VF32 x         -> encodeListLen 2 <> ctor <> tag 3 <> encode x
   VI64 x         -> encodeListLen 2 <> ctor <> tag 4 <> encode x
   VI32 x         -> encodeListLen 2 <> ctor <> tag 5 <> encode x
-  VBitString x   -> encodeListLen 2 <> ctor <> tag 6 <> encode x
-  VBitVector n x -> encodeListLen 3 <> ctor <> tag 7 <> encode n <> encode x
-  VString x      -> encodeListLen 2 <> ctor <> tag 8 <> encode x
-  VChar x        -> encodeListLen 2 <> ctor <> tag 9 <> encode x
+  VBitVector n x -> encodeListLen 3 <> ctor <> tag 6 <> encode n <> encode x
+  VString x      -> encodeListLen 2 <> ctor <> tag 7 <> encode (T.encodeUtf8 x)
+  VChar x        -> encodeListLen 2 <> ctor <> tag 8 <> encode x
   where
     ctor = encodeString "Lit"
     tag  = encodeInt
@@ -69,10 +67,13 @@ decodeLiteral = do
     (2,3) -> VF32       <$> decode
     (2,4) -> VI64       <$> decode
     (2,5) -> VI32       <$> decode
-    (2,6) -> VBitString <$> decode
-    (3,7) -> VBitVector <$> decode <*> decode
-    (2,8) -> VString    <$> decode
-    (2,9) -> VChar      <$> decode
+    (3,6) -> VBitVector <$> decode <*> decode
+    (2,7) -> do
+      bs <- decodeBytes
+      case T.decodeUtf8' bs of
+        Left  e -> fail $ "invalid Literal string with UTF-8 error: " ++ show e
+        Right x -> return $ VString x
+    (2,8) -> VChar      <$> decode
     _     -> fail $ concat
        ["invalid Literal with size: ", show size, " and tag: ", show tag]
 
@@ -88,10 +89,9 @@ encodeLitType t = case t of
   TF32           -> encodeListLen 1 <> ctor <> tag 3
   TI64           -> encodeListLen 1 <> ctor <> tag 4
   TI32           -> encodeListLen 1 <> ctor <> tag 5
-  TBitString     -> encodeListLen 1 <> ctor <> tag 6
-  TBitVector n   -> encodeListLen 2 <> ctor <> tag 7 <> encode n
-  TString        -> encodeListLen 1 <> ctor <> tag 8
-  TChar          -> encodeListLen 1 <> ctor <> tag 9
+  TBitVector n   -> encodeListLen 2 <> ctor <> tag 6 <> encode n
+  TString        -> encodeListLen 1 <> ctor <> tag 7
+  TChar          -> encodeListLen 1 <> ctor <> tag 8
   where
     ctor = encodeString "LTy"
     tag  = encodeInt
@@ -109,10 +109,9 @@ decodeLitType = do
     (1,3) -> return TF32
     (1,4) -> return TI64
     (1,5) -> return TI32
-    (1,6) -> return TBitString
-    (2,7) -> TBitVector <$> decode
-    (1,8) -> return TString
-    (1,9) -> return TChar
+    (2,6) -> TBitVector <$> decode
+    (1,7) -> return TString
+    (1,8) -> return TChar
     _     -> fail $ concat
        ["invalid LitType with size: ", show size, " and tag: ", show tag]
 
