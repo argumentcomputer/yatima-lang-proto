@@ -14,7 +14,7 @@ data IR where
   AppI :: Uses -> IR -> IR -> IR
   NewI :: IR -> IR
   UseI :: IR -> Maybe LitType -> IR
-  LetI :: Uses -> Name -> IR -> IR -> IR
+  LetI :: Bool -> Uses -> Name -> IR -> IR -> IR
   -- Typing constructors
   AllI :: Name -> Uses -> IR -> IR -> IR
   SlfI :: Name -> IR -> IR

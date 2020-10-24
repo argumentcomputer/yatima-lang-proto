@@ -168,6 +168,7 @@ data PrimOp
   | Natural_mul
   | Natural_sub
   | Natural_div
+  | Natural_mod
   | Natural_gt
   | Natural_ge
   | Natural_eq
@@ -348,6 +349,7 @@ primOpName p = case p of
    Natural_mul         -> "Natural_mul"
    Natural_sub         -> "Natural_sub"
    Natural_div         -> "Natural_div"
+   Natural_mod         -> "Natural_mod"
    Natural_gt          -> "Natural_gt"
    Natural_ge          -> "Natural_ge"
    Natural_eq          -> "Natural_eq"

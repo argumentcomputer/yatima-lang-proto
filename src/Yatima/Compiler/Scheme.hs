@@ -16,6 +16,7 @@ data Scheme where
   Lambda   :: Name     -> Scheme -> Scheme
   Apply    :: Scheme   -> Scheme -> Scheme
   Let      :: Name     -> Scheme -> Scheme -> Scheme
+  Letrec   :: Name     -> Scheme -> Scheme -> Scheme
   Value    :: Literal  -> Scheme
   Operator :: PrimOp   -> Scheme
   Begin    :: [Scheme] -> Scheme -> Scheme
@@ -41,10 +42,10 @@ termToScheme use trm = case trm of
     case argUse of
       None -> termToScheme use fun
       _    -> Apply (termToScheme use fun) (termToScheme (use *# argUse) arg)
-  LetI valUse nam val bod ->
+  LetI rec valUse nam val bod ->
     case valUse of
       None -> termToScheme use bod
-      _    -> Let (nonPrim nam) (termToScheme (use *# valUse) val) (termToScheme use bod)
+      _    -> (if rec then Letrec else Let) (nonPrim nam) (termToScheme (use *# valUse) val) (termToScheme use bod)
   NewI exp            -> termToScheme use exp
   UseI exp Nothing    -> termToScheme use exp
   UseI exp (Just TNatural) ->
@@ -72,7 +73,10 @@ schemeToCode dep False trm = case trm of
   Variable nam           -> nam
   Lambda   nam  bod      -> T.concat ["(lambda (", nam, ")\n", schemeToCode (dep+2) True bod, ")"]
   Apply    fun  arg      -> T.concat ["(", schemeToCode (dep+1) False fun, "\n", schemeToCode (dep+1) True arg, ")"]
-  Let      nam  exp  bod -> T.concat ["(letrec ((", nam, " ",
+  Let      nam  exp  bod -> T.concat ["(let ((", nam, " ",
+                                      schemeToCode (dep+8+T.length nam) False exp, "))\n",
+                                      schemeToCode (dep+2) True bod, ")"]
+  Letrec   nam  exp  bod -> T.concat ["(letrec ((", nam, " ",
                                       schemeToCode (dep+11+T.length nam) False exp, "))\n",
                                       schemeToCode (dep+2) True bod, ")"]
   Value    lit           -> litToCode lit
@@ -97,4 +101,15 @@ oprToCode :: PrimOp  -> Text
 oprToCode opr = case opr of
   Natural_succ -> "1+"
   Natural_pred -> "1-"
+  Natural_add  -> "(lambda (x) (lambda (y) (+ x y)))"
+  Natural_mul  -> "(lambda (x) (lambda (y) (* x y)))"
+  Natural_sub  -> "(lambda (x) (lambda (y) (- x y)))"
+  Natural_div  -> "(lambda (x) (lambda (y) (div x y)))"
+  Natural_mod  -> "(lambda (x) (lambda (y) (mod x y)))"
+  Natural_gt   -> "(lambda (x) (lambda (y) (> x y)))"
+  Natural_ge   -> "(lambda (x) (lambda (y) (>= x y)))"
+  Natural_eq   -> "(lambda (x) (lambda (y) (= x y)))"
+  Natural_ne   -> "(lambda (x) (lambda (y) (not (= x y))))"
+  Natural_lt   -> "(lambda (x) (lambda (y) (< x y)))"
+  Natural_le   -> "(lambda (x) (lambda (y) (<= x y)))"
   _            -> "'()" -- TODO

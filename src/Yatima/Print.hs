@@ -57,8 +57,8 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Lam nam bod             -> "λ" <> lams nam bod
       Ann val typ             -> pars (go val <> " :: " <> go typ)
       App func argm           -> apps func argm
-      Let nam use typ exp bod -> mconcat
-        ["let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
+      Let rec nam use typ exp bod -> mconcat
+        [if rec then "letrec " else "let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
       Typ                     -> "Type"
       Lit lit                 -> TB.fromText (prettyLiteral lit)
       LTy lit                 -> TB.fromText (prettyLitType lit)

@@ -79,25 +79,25 @@ type Hole = (Name, HOAS)
 -- | Convert a lower-order `Term` to a GHC higher-order one
 termToHoas :: PreContext -> Term -> HOAS
 termToHoas ctx t = case t of
-  Typ                     -> TypH
-  Hol nam                 -> HolH nam
-  Var nam                 -> maybe (VarH nam 0) id (Ctx.find nam ctx)
-  Ref nam                 -> RefH nam
-  Lam nam bod             -> LamH nam (bind nam bod)
-  App fun arg             -> AppH (go fun) (go arg)
-  New exp                 -> NewH (go exp)
-  Use exp                 -> UseH (go exp)
-  Ann val typ             -> AnnH (go val) (go typ)
-  Let nam use typ exp bod -> LetH nam use (go typ) (rec nam exp) (bind nam bod)
-  All nam use typ bod     -> AllH nam use (go typ) (bind nam bod)
-  Slf nam bod             -> SlfH nam (bind nam bod)
-  Lit lit                 -> LitH lit
-  LTy lty                 -> LTyH lty
-  Opr opr                 -> OprH opr
+  Typ                         -> TypH
+  Hol nam                     -> HolH nam
+  Var nam                     -> maybe (VarH nam 0) id (Ctx.find nam ctx)
+  Ref nam                     -> RefH nam
+  Lam nam bod                 -> LamH nam (bind nam bod)
+  App fun arg                 -> AppH (go fun) (go arg)
+  New exp                     -> NewH (go exp)
+  Use exp                     -> UseH (go exp)
+  Ann val typ                 -> AnnH (go val) (go typ)
+  Let rec nam use typ exp bod -> LetH nam use (go typ) (fix rec nam exp) (bind nam bod)
+  All nam use typ bod         -> AllH nam use (go typ) (bind nam bod)
+  Slf nam bod                 -> SlfH nam (bind nam bod)
+  Lit lit                     -> LitH lit
+  LTy lty                     -> LTyH lty
+  Opr opr                     -> OprH opr
   where
     go      t   = termToHoas ctx t
     bind  n t   = (\x   -> termToHoas ((n,x)<|ctx) t)
-    rec n t = FixH n (bind n t)
+    fix r n t   = if r then FixH n (bind n t) else go t
 
 -- | Convert a GHC higher-order representation to a lower-order one
 hoasToTerm :: PreContext -> HOAS -> Term
@@ -110,7 +110,7 @@ hoasToTerm ctx t = case t of
   AppH fun arg             -> App (go fun) (go arg)
   UseH exp                 -> Use (go exp)
   NewH exp                 -> New (go exp)
-  LetH nam use typ exp bod -> Let nam use (go typ) (go exp) (bind nam bod)
+  LetH nam use typ exp bod -> Let (isFix exp) nam use (go typ) (go exp) (bind nam bod)
   AllH nam use typ bod     -> All nam use (go typ) (bind nam bod)
   SlfH nam bod             -> Slf nam (bind nam bod)
   FixH nam bod             -> bind nam bod
@@ -120,9 +120,11 @@ hoasToTerm ctx t = case t of
   LTyH lty                 -> LTy lty
   OprH opr                 -> Opr opr
   where
-    dep          = Ctx.depth ctx
-    go t         = hoasToTerm ctx t
-    bind n b     = hoasToTerm ((n,TypH)<|ctx) (b (VarH n dep))
+    dep                  = Ctx.depth ctx
+    go t                 = hoasToTerm ctx t
+    bind n b             = hoasToTerm ((n,TypH)<|ctx) (b (VarH n dep))
+    isFix exp@(FixH _ _) = True
+    isFix exp            = False
 
 printHOAS :: HOAS -> Text
 printHOAS = prettyTerm . (hoasToTerm Ctx.empty)
@@ -360,7 +362,10 @@ check defs pre use term typ = case term of
           let original = (name,exprUse,exprTyp)
           let checked  = (name',exprUse',exprTyp')
           throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked))
-        let ir = LetI exprUse name exprIR bodyIR
+        let isFix = case expr of
+              FixH _ _ -> True
+              _        -> False
+        let ir    = LetI isFix exprUse name exprIR bodyIR
         return (mulCtx use (addCtx exprCtx (Ctx bodyCtx')),typ,ir)
   FixH name body -> do
     let unroll = body (UnrH name (Ctx.depth pre) (FixH name body) typ)
@@ -431,7 +436,10 @@ infer defs pre use term = case term of
           let original = (name,exprUse,exprTyp)
           let inferred = (name',exprUse',exprTyp')
           throwError (InferQuantityMismatch (Ctx bodyCtx') original inferred))
-        let ir = LetI exprUse name exprIR bodyIR
+        let isFix = case expr of
+              FixH _ _ -> True
+              _        -> False
+        let ir    = LetI isFix exprUse name exprIR bodyIR
         return (mulCtx use (addCtx exprCtx (Ctx bodyCtx')),typ,ir)
   -- Hole
   TypH           -> return (toContext pre,TypH,TypI)
@@ -589,3 +597,5 @@ typeOfLit t = case t of
 typeOfOpr :: PrimOp -> HOAS
 typeOfOpr t = case t of
   Natural_succ -> AllH "" Many (LTyH TNatural) (\_ -> LTyH TNatural)
+  Natural_add  -> AllH "" Many (LTyH TNatural) (\_ -> AllH "" Many (LTyH TNatural) (\_ -> LTyH TNatural))
+  _            -> error "TODO"

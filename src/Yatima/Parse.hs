@@ -315,11 +315,11 @@ pDecl shadow = do
 -- | Parse a local, possibly recursive, definition
 pLet :: (Ord e, Monad m) => Parser e m Term
 pLet = do
-  symbol "let"
-  use  <- pUses
+  rec <- (symbol "letrec" >> return True) <|> (symbol "let" >> return False)
+  use   <- pUses
   (nam,exp,typ) <- pDecl True <* symbol ";"
   bdy <- bind [nam] $ pExpr False
-  return $ Let nam use typ exp bdy
+  return $ Let rec nam use typ exp bdy
 
 -- | Parse a local variable or a locally indexed alias of a global reference
 pVar :: (Ord e, Monad m) => Parser e m Term
