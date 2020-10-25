@@ -23,6 +23,8 @@ library:
     - Yatima.DagAST
     - Yatima.DagJSON
     - Yatima.Import
+    - Yatima.IR
+    - Yatima.Compiler.Scheme
     - Yatima.IPFS
     - Yatima.IPLD
     - Yatima.Literal

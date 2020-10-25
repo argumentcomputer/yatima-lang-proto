@@ -452,20 +452,20 @@ expandLit t = termToHoas Ctx.empty $ case t of
                     in App (App f (Lit $ VChar x)) (Lit $ VString xs)
   _        -> error "TODO"
 
-litInduction :: LitType -> Hoas
-litInduction t = termToHoas Ctx.empty $ case t of
-  TNatural ->  [yatima|
-   @self forall
+litInduction :: LitType -> Hoas -> Hoas
+litInduction t val = case t of
+  TNatural ->  AppH (termToHoas Ctx.empty $ [yatima|
+   λ self => forall
    (P : forall #Natural -> Type)
    (& zero : P 0)
    (& succ : forall (pred : #Natural) -> P (#Natural_succ pred))
-   -> P self|]
-  TString -> [yatima|
-   @self forall
-   (P : forall #String -> Type)
-   (& nil  : P "")
-   (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
-   -> P self|]
+   -> P self|]) val
+  --TString -> [yatima|
+  -- @self forall
+  -- (P : forall #String -> Type)
+  -- (& nil  : P "")
+  -- (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
+  -- -> P self|]
   --TBitVector (LitH $ VNatural n) -> [yatima|
   -- λ n => @self forall
   -- (P : forall (n: #Natural) (_:#BitVector n) -> Type)

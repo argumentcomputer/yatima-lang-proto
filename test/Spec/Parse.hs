@@ -131,9 +131,9 @@ spec = do
     ]
 
   parseDescribe pLet "Let"
-    [ ("let any: Type = Type; any", Good $ Let "any" Many Typ Typ $ Var "any")
+    [ ("let any: Type = Type; any", Good $ Let False "any" Many Typ Typ $ Var "any")
     , ("let any (x:Type) (y:Type): Type = Type; any", Good $ 
-          Let "any" Many (All "x" Many Typ (All "y" Many Typ Typ))
+          Let False "any" Many (All "x" Many Typ (All "y" Many Typ Typ))
             (Lam "x" (Lam "y" Typ)) (Var "any")
       )
     ]

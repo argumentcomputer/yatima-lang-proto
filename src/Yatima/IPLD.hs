@@ -196,13 +196,14 @@ termToAST n t index cache =
         v' <- go v ctx
         t' <- go t ctx
         return $ Ctor "Ann" [v', t']
-      Let n u t x b        -> do
+      Let r n u t x b        -> do
+        let r' = if r then "True" else "False"
         bind n
         bump
         t' <- go t ctx
         x' <- go x (n:ctx)
         b' <- go b (n:ctx)
-        return $ Ctor "Let" [usesToAST u, t', Bind x', Bind b']
+        return $ Ctor "Let" [Ctor r' [], usesToAST u, t', Bind x', Bind b']
       Typ                  -> bump >> return (Ctor "Typ" [])
       All n u t b          -> do
         bind n
@@ -268,6 +269,12 @@ astToTerm n index anon meta = do
       "Many" -> return Many
       n      -> get >>= \i -> throwError $ UnexpectedCtor n [] ctx i
 
+    bool :: Name -> [Name] -> ExceptT IPLDErr (State Int) Bool
+    bool n ctx = case n of
+      "True"  -> return True
+      "False" -> return False
+      n      -> get >>= \i -> throwError $ UnexpectedCtor n [] ctx i
+
     go :: AnonAST -> [Name] -> ExceptT IPLDErr (State Int) Term
     go t ctx = case t of
       Vari idx -> do
@@ -291,11 +298,12 @@ astToTerm n index anon meta = do
         ("New",[e])   -> bump >> New <$> go e ctx
         ("Use",[e])   -> bump >> Use <$> go e ctx
         ("Ann",[v,t]) -> bump >> Ann <$> go v ctx <*> go t ctx
-        ("Let",[Ctor u [],t,Bind x, Bind b]) -> do
+        ("Let",[Ctor r [], Ctor u [],t,Bind x, Bind b]) -> do
           n <- get >>= name
+          r <- bool r ctx
           u <- uses u ctx
           bump
-          Let n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
+          Let r n u <$> go t ctx <*> go x (n:ctx) <*> go b (n:ctx)
         ("Typ",[]) -> bump >> return Typ
         ("All",[Ctor u [], t, Bind (Bind b)]) -> do
           u <- uses u ctx
@@ -356,8 +364,8 @@ validateTerm trm ctx index cache = case trm of
   App fun arg             -> App <$> go fun <*> go arg
   New exp                 -> New <$> go exp
   Use exp                 -> Use <$> go exp
-  Let nam use typ exp bod ->
-    Let nam use <$> go typ <*> bind nam exp <*> bind nam bod
+  Let rec nam use typ exp bod ->
+    Let rec nam use <$> go typ <*> bind nam exp <*> bind nam bod
   Typ                     -> return Typ
   All nam use typ bod     -> All nam use <$> go typ <*> bind nam bod
   Slf nam bod             -> Slf nam <$> bind nam bod

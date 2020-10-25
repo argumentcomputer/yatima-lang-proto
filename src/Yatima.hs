@@ -5,18 +5,25 @@
 {-# LANGUAGE TypeApplications #-}
 module Yatima where
 
-import           Yatima.CID
-import           Yatima.Import
-import           Yatima.Package
---import           Language.Yatima.IPFS
-import qualified Yatima.Core as Core
-import qualified Yatima.Core.Ctx as Ctx
+import           Yatima.Core.Ctx             (Ctx, (<|))
+import qualified Yatima.Core.Ctx             as Ctx
+import qualified Yatima.Core            as Core
 import           Yatima.Core.Hoas
-import           Yatima.IPLD
-import           Yatima.Parse
-import           Yatima.Print
-import           Yatima.Term
+import           Yatima.Print           (prettyTerm)
+import qualified Yatima.Print           as Print
+import           Yatima.Parse           (parseTerm, unsafeParseTerm)
+import qualified Yatima.Parse           as Parse
+import           Yatima.CID
 import           Yatima.Uses
+import           Yatima.Term            (Def (..), Defs, Name, Term (..))
+import qualified Yatima.Term            as Term
+import qualified Yatima.IR              as IR
+import qualified Yatima.Compiler.Scheme as Scheme
+
+import           Yatima.IPLD
+import           Yatima.Package
+import           Yatima.Import
+import           Yatima.Print
 
 import           Control.Monad.Catch
 import           Control.Monad.Except
@@ -106,10 +113,30 @@ checkRef index cache (name,cid) = do
         ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
         , printCIDBase32 cid, "\n"
         , T.pack $ show e]
-    Right (_,t) -> putStrLn $ T.unpack $ T.concat
+    Right (_,t,_) -> putStrLn $ T.unpack $ T.concat
         ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHoas t]
 
--- | Evaluate a `Hoas` from a file
+compileFile :: FilePath -> IO ()
+compileFile file = do
+  (r,c,p) <- loadFile file
+  let index = _index p
+  cache <- readCache r
+  codes <- forM (M.toList $ (_byName index)) (compileRef index cache)
+  putStrLn $ T.unpack $ T.concat codes
+
+compileRef ::  Index -> Cache -> (Name, CID) -> IO Text
+compileRef index cache (name,cid) = do
+  def  <- liftIO $ catchErr $ derefDagDefCID name cid index cache
+  defs <- liftIO $ catchErr $ indexToDefs index cache
+  let (trm,typ) = defToHoas name def
+  case runExcept $ Core.check defs Ctx.empty Once trm typ of
+    Left  e -> ioError $ userError $ T.unpack $ T.concat
+        ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
+        , printCIDBase32 cid, "\n"
+        , T.pack $ show e]
+    Right (_,_,c) -> return $ Scheme.defToCode name c
+
+-- | Evaluate a `HOAS` from a file
 normDef :: Name -> FilePath -> IO Hoas
 normDef name file = do
   (r,c,p) <- loadFile file
@@ -143,7 +170,7 @@ infer defs term =
   let hTerm = termToHoas Ctx.empty term in
   case runExcept (Core.infer defs Ctx.empty Once hTerm) of
     Left err -> Left err
-    Right (_,ty) -> Right (hoasToTerm Ctx.empty ty)
+    Right (_,ty,_) -> Right (hoasToTerm Ctx.empty ty)
 
 check :: Defs -> Term -> Term -> Either Core.CheckErr Term
 check defs term typ_ =
@@ -151,7 +178,7 @@ check defs term typ_ =
   let hType = termToHoas Ctx.empty typ_ in
   case runExcept (Core.check defs Ctx.empty Once hTerm hType) of
     Left err     -> Left err
-    Right (_,ty) -> Right (hoasToTerm Ctx.empty ty)
+    Right (_,ty,_) -> Right (hoasToTerm Ctx.empty ty)
 
 synth :: Defs -> Term -> Term -> Either Core.CheckErr (Term, Term)
 synth defs term typ_ =

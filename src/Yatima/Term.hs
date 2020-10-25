@@ -58,7 +58,7 @@ data Term where
   -- | An reference
   Ref :: Name -> Term
   -- | An inline local definition,
-  Let :: Name -> Uses -> Term -> Term -> Term -> Term
+  Let :: Bool -> Name -> Uses -> Term -> Term -> Term -> Term
   -- | The type of types.
   Typ :: Term
   -- | Type annotation

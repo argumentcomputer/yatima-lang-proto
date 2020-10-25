@@ -148,7 +148,7 @@ process line = dontCrash' $ do
         def   <- catchReplErr $ deref n index cache
         defs  <- catchReplErr $ indexToDefs index cache
         let (trm,typ) = defToHoas "^" def
-        (_,typ) <- catchReplErr (Core.check defs Ctx.empty Once trm typ)
+        (_,typ,_) <- catchReplErr (Core.check defs Ctx.empty Once trm typ)
         liftIO $ print $ typ
         return ()
       Eval t -> do

@@ -154,8 +154,8 @@ term_gen ctx = frequency
   , (50, Ann <$> term_gen ctx <*> term_gen ctx)
   , (33, (name_gen >>= \n -> All n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)))
   , (33, (name_gen >>= \n -> 
-            Let n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)
-                  <*> term_gen (n:ctx)))
+            Let <$> arbitrary <*> pure n <*> arbitrary <*> term_gen ctx 
+              <*> term_gen (n:ctx) <*> term_gen (n:ctx)))
   ]
 
 instance Arbitrary Term where
