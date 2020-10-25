@@ -114,6 +114,7 @@ literal_gen = oneof
   , VI32 <$> arbitrary
   , VF64 <$> arbitrary
   , VF32 <$> arbitrary
+  , return VException
   ]
 
 literalType_gen :: Gen LitType
@@ -127,6 +128,7 @@ literalType_gen = oneof
   , return TI32
   , return TF64
   , return TF64
+  , return TException
   ]
 
 instance Arbitrary Literal where

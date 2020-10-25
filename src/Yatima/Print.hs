@@ -90,16 +90,13 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Ann _ _ -> True
       _       -> False
 
-    fun :: Term -> TB.Builder
-    fun t
-      | isAtom t  = go t
-      | otherwise = pars (go t)
-
     apps :: Term -> Term -> TB.Builder
-    apps f (App af aa)  = fun f <> " " <> pars (apps af aa)
     apps f a
-      | isAtom f  = fun f <> " " <> pars (go a)
-      | otherwise = fun f <> " " <> go a
+      | isAtom f, App af aa <- a = go f         <> " " <> pars (apps af aa)
+      | App af aa <- a           = pars (go f) <> " " <> pars (apps af aa)
+      | isAtom f && isAtom a     = go f        <> " " <> go a
+      | isAtom f                 = go f        <> " " <> pars (go a)
+      | otherwise                = pars (go f) <> " " <> go a
 
 prettyLiteral :: Literal -> Text
 prettyLiteral t = case t of
@@ -109,13 +106,14 @@ prettyLiteral t = case t of
   VF32 x         -> (T.pack $ show x) <> "f32"
   VI64 x         -> (T.pack $ show x) <> "u64"
   VI32 x         -> (T.pack $ show x) <> "u32"
-  VBitVector l x -> 
+  VBitVector l x ->
     if l `mod` 4 == 0 
     then "#x" <> (B16.encodeBase16 x)
     else "#b" <> (bits l . roll . B.unpack) x
 
   VString  x     -> (T.pack $ show x)
   VChar    x     -> T.pack $ show x
+  VException     -> "#exception"
 
 roll :: [Word8] -> Integer
 roll bs = foldr (\ b a -> a `shiftL` 8 .|. fromIntegral b) 0 bs
@@ -140,6 +138,7 @@ prettyLitType t = case t of
   TBitVector l -> "#BitVector" <> (T.pack $ show l)
   TString      -> "#String"
   TChar        -> "#Char"
+  TException   -> "#Exception"
 
 prettyPrimOp :: PrimOp -> Text
 prettyPrimOp p = "#" <> primOpName p

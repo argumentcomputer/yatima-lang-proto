@@ -16,6 +16,7 @@ import           Numeric.IEEE
 
 import           Yatima.Core.Hoas
 import           Yatima.Core.Wasm
+import qualified Yatima.Core.Ctx as Ctx
 import           Yatima.Term
 import           Yatima.QuasiQuoter
 
@@ -138,20 +139,26 @@ reduceOpr op arg = case (op,arg) of
   (I32_div_s,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
     LitH (VI32 b)     ->
       if (b == 0 || (a == 0x80000000 && b == 0xFFFFFFFF))
-      then noredex x
+      then LitH (VException)
       else LitH (VI32 (u32 $ i32 a `quot` i32 b))
     _                 -> noredex x
   (I32_div_u,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> if b == 0 then noredex x else LitH (VI32 (a `quot` b))
+    LitH (VI32 b)     ->
+      if b == 0
+      then LitH (VException)
+      else LitH (VI32 (a `quot` b))
     _                 -> noredex x
   (I32_rem_s,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> 
+    LitH (VI32 b)     ->
       if b == 0
-      then noredex x 
+      then LitH (VException)
       else LitH (VI32 (u32 $ i32 a `rem` i32 b))
     _                 -> noredex x
   (I32_rem_u,   LitH (VI32 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI32 b)     -> if b == 0 then noredex x else LitH (VI32 (a `rem` b))
+    LitH (VI32 b)     ->
+      if b == 0
+      then LitH (VException)
+      else LitH (VI32 (a `rem` b))
     _                 -> noredex x
   (I32_and,     LitH (VI32 a))    -> LamH "x" $ \x -> case x of
     LitH (VI32 b)     -> LitH (VI32 (a .&. b))
@@ -193,20 +200,26 @@ reduceOpr op arg = case (op,arg) of
   (I64_div_s,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
     LitH (VI64 b)     ->
       if (b == 0 || (a == 0x8000000000000000 && b == 0xFFFFFFFFFFFFFFFF))
-      then noredex x
+      then LitH (VException)
       else LitH (VI64 (u64 $ i64 a `quot` i64 b))
     _                 -> noredex x
   (I64_div_u,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> if b == 0 then noredex x else LitH (VI64 (a `quot` b))
+    LitH (VI64 b)     ->
+      if b == 0
+      then LitH (VException)
+      else LitH (VI64 (a `quot` b))
     _                 -> noredex x
   (I64_rem_s,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> 
+    LitH (VI64 b)     ->
       if b == 0
-      then noredex x 
+      then LitH (VException)
       else LitH (VI64 (u64 $ i64 a `rem` i64 b))
     _                 -> noredex x
   (I64_rem_u,   LitH (VI64 a))    -> LamH "x" $ \x -> case x of
-    LitH (VI64 b)     -> if b == 0 then noredex x else LitH (VI64 (a `rem` b))
+    LitH (VI64 b)     ->
+      if b == 0
+      then LitH (VException)
+      else LitH (VI64 (a `rem` b))
     _                 -> noredex x
   (I64_and,     LitH (VI64 a))    -> LamH "x" $ \x -> case x of
     LitH (VI64 b)     -> LitH (VI64 (a .&. b))
@@ -295,27 +308,34 @@ reduceOpr op arg = case (op,arg) of
      if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) then noredex'
      else LitH (VI32 (u32 $ truncate a))
   (I32_trunc_F32_u, LitH (VF32 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) then noredex'
+     if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) 
+     then LitH VException
      else LitH (VI32 (truncate a))
   (I32_trunc_F64_s, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63) then noredex'
+     if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63)
+     then LitH VException
      else LitH (VI32 (u32 $ truncate a))
   (I32_trunc_F64_u, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) then noredex'
+     if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) 
+     then LitH VException
      else LitH (VI32 (truncate a))
   (I64_extend_I32_s, LitH (VI32 a))  -> LitH (VI64 (u64 $ fromIntegral $ i32 a))
   (I64_extend_I32_u, LitH (VI32 a))  -> LitH (VI64 (fromIntegral a))
   (I64_trunc_F32_s, LitH (VF32 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) then noredex'
+     if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) 
+     then LitH VException
      else LitH (VI64 (u64 $ truncate a))
   (I64_trunc_F32_u, LitH (VF32 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) then noredex'
+     if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) 
+     then LitH VException
      else LitH (VI64 (truncate a))
   (I64_trunc_F64_s, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63) then noredex'
+     if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63) 
+     then noredex' -- WasmTrap
      else LitH (VI64 (u64 $ truncate a))
   (I64_trunc_F64_u, LitH (VF64 a))   ->
-     if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) then noredex'
+     if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) 
+     then LitH VException
      else LitH (VI64 (truncate a))
   (F32_convert_I32_s, LitH (VI32 a)) -> LitH (VF32 (realToFrac $ i32 a))
   (F32_convert_I32_u, LitH (VI32 a)) -> LitH (VF32 (realToFrac a))
@@ -344,9 +364,11 @@ reduceOpr op arg = case (op,arg) of
     LitH (VNatural b) -> LitH (VNatural $ a * b)
     _                 -> noredex x
   (Natural_div, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural 0) -> LitH (VNatural $ 0)
     LitH (VNatural b) -> LitH (VNatural $ a `div` b)
     _                 -> noredex x
   (Natural_mod, LitH (VNatural a))  -> LamH "x" $ \x -> case x of
+    LitH (VNatural 0) -> LitH (VNatural $ 0)
     LitH (VNatural b) -> LitH (VNatural $ a `mod` b)
     _                 -> noredex x
   (Natural_gt, LitH (VNatural a))   -> LamH "x" $ \x -> case x of
@@ -368,29 +390,37 @@ reduceOpr op arg = case (op,arg) of
     LitH (VNatural b) -> LitH (bool (a <= b))
     _                 -> noredex  x
   (Natural_to_I64, LitH (VNatural a)) ->
-    if a >= 2^64 then noredex' else LitH $ VI64 $ fromIntegral a
+    if a >= 2^64
+    then LitH VException
+    else LitH $ VI64 $ fromIntegral a
   (Natural_to_I32, LitH (VNatural a)) ->
-    if a >= 2^32 then noredex' else LitH $ VI32 $ fromIntegral a
+    if a >= 2^32 
+    then LitH VException
+    else LitH $ VI32 $ fromIntegral a
   (Natural_from_I64, LitH (VI64 a)) -> LitH $ VNatural $ fromIntegral a
   (Natural_from_I32, LitH (VI32 a)) -> LitH $ VNatural $ fromIntegral a
-  (BitVector_cons, LitH (VI32 a))   -> LamH "x" $ \x -> case x of
-    LitH (VBitVector n b) -> case a of
-      0 -> LitH (VBitVector (n+1) (byteStringCons0 b))
-      1 -> LitH (VBitVector (n+1) (byteStringCons1 b))
-      _ -> noredex x
-    _                 -> noredex x
+  (BitVector_b0, LitH (VBitVector n bs)) -> LitH $ VBitVector (n+1) $
+    case BS.uncons bs of
+      Nothing       -> BS.singleton 0
+      Just (255,cs) -> BS.cons 0 $ BS.cons 255 $ cs
+      Just (c,cs)   -> bs
+  (BitVector_b1, LitH (VBitVector n bs)) -> LitH $ VBitVector (n+1) $
+      case BS.uncons bs of
+        Nothing       -> BS.singleton 1
+        Just (255,cs) -> BS.cons 1 $ BS.cons 0 $ cs
+        Just (c,cs)   -> BS.cons (c+1) bs
   (BitVector_concat, LitH (VBitVector n a))   -> LamH "x" $ \x -> case x of
     LitH (VBitVector m b) -> LitH (VBitVector (n+m) $ a <> b)
     _                     -> noredex x
   (BitVector_length, LitH (VBitVector n a))   -> LitH (VNatural n)
-  (String_cons, LitH (VChar c))    -> LamH "x" $ \x -> case x of
+  (String_cons, LitH (VChar c))     -> LamH "x" $ \x -> case x of
     LitH (VString txt) -> LitH (VString (T.cons c txt))
-    _                 -> noredex x
-  (String_concat, LitH (VString a))    -> LamH "x" $ \x -> case x of
+    _                  -> noredex x
+  (String_concat, LitH (VString a)) -> LamH "x" $ \x -> case x of
     LitH (VString b) -> LitH (VString $ a <> b)
-    _                 -> noredex x
-  (Char_ord, LitH (VChar c))       -> LitH (VI64 $ fromIntegral $ ord c)
-  (Char_chr, LitH (VI64 x))        -> LitH (VChar $ chr $ fromIntegral x)
+    _                -> noredex x
+  (Char_ord, LitH (VChar c))        -> LitH (VI64 $ fromIntegral $ ord c)
+  (Char_chr, LitH (VI64 x))         -> LitH (VChar $ chr $ fromIntegral x)
   _                                 -> noredex'
   where
     noredex x = WhnH $ AppH (AppH (OprH op) arg) x
@@ -406,12 +436,6 @@ reduceOpr op arg = case (op,arg) of
     u32 = asWord32
     u64 = asWord64
 
-byteStringCons0 :: BS.ByteString -> BS.ByteString
-byteStringCons0 bs = case BS.uncons bs of
-  Nothing       -> BS.singleton 0
-  Just (255,cs) -> BS.cons 0 $ BS.cons 255 $ cs
-  Just (c,cs)   -> bs
-
 byteStringCons1 :: BS.ByteString -> BS.ByteString
 byteStringCons1 bs = case BS.uncons bs of
   Nothing       -> BS.singleton 1
@@ -419,26 +443,37 @@ byteStringCons1 bs = case BS.uncons bs of
   Just (c,cs)   -> BS.cons (c+1) bs
 
 expandLit :: Literal -> Hoas
-expandLit t = case t of
-  VNatural nat ->
-    if nat == 0
-    then LamH "P" $ \p -> LamH "z" $ \z -> LamH "s" $ \s -> z
-    else LamH "P" $ \p -> LamH "z" $ \z -> LamH "s" $ 
-            \s -> AppH s (LitH $ VNatural (nat - 1))
+expandLit t = termToHoas Ctx.empty $ case t of
+  VNatural 0 -> [yatima| λ P z s => z|]
+  VNatural n -> App [yatima| λ x P z s => s x|] (Lit $ VNatural (n-1))
+  VString cs -> case T.uncons cs of
+    Nothing     -> [yatima| λ P n c => n|]
+    Just (x,xs) -> let f = [yatima| λ x xs P n c => c x xs|]
+                    in App (App f (Lit $ VChar x)) (Lit $ VString xs)
   _        -> error "TODO"
 
-litInduction :: LitType -> Hoas -> Hoas
-litInduction t val = case t of
-  TNatural ->
-    AllH "P" None (AllH "" Many (LTyH TNatural) $ \_ -> TypH) $ \p ->
-    AllH "" Affi (AppH p (LitH $ VNatural 0))$ \_ ->
-    AllH "" Affi (AllH "pred" Many (LTyH TNatural) $
-      \pred -> AppH p (AppH (OprH Natural_succ) pred)) $ \s ->
-      AppH p val
+litInduction :: LitType -> Hoas
+litInduction t = termToHoas Ctx.empty $ case t of
+  TNatural ->  [yatima|
+   @self forall
+   (P : forall #Natural -> Type)
+   (& zero : P 0)
+   (& succ : forall (pred : #Natural) -> P (#Natural_succ pred))
+   -> P self|]
+  TString -> [yatima|
+   @self forall
+   (P : forall #String -> Type)
+   (& nil  : P "")
+   (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
+   -> P self|]
+  --TBitVector (LitH $ VNatural n) -> [yatima|
+  -- λ n => @self forall
+  -- (P : forall (n: #Natural) (_:#BitVector n) -> Type)
+  -- (& be  : P 0 #b)
+  -- (& b0 : forall (n: #Natural) (pred : #String) -> P (#Natural_succ n) (#BitVector_b0 xs))
+  -- (& b0 : forall (n: #Natural) (pred : #String) -> P (#Natural_succ n) (#BitVector_b1 xs))
+  -- -> P n self|]
   _    -> error "TODO"
-
-foo :: Hoas
-foo = termToHoas $ [yatima| λ x => x|]
 
 typeOfLit :: Literal -> Hoas
 typeOfLit t = case t of
@@ -453,5 +488,16 @@ typeOfLit t = case t of
   VChar _        -> LTyH TChar
 
 typeOfOpr :: PrimOp -> Hoas
-typeOfOpr t = case t of
-  Natural_succ -> AllH "" Many (LTyH TNatural) (\_ -> LTyH TNatural)
+typeOfOpr t = termToHoas Ctx.empty $ case t of
+  Natural_succ -> [yatima|∀ #Natural -> #Natural|]
+  Natural_pred -> [yatima|∀ #Natural -> #Natural|]
+  Natural_add  -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_sub  -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_div  -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_mod  -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_gt   -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_ge   -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_eq   -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_ne   -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_lt   -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_le   -> [yatima|∀ #Natural #Natural -> #I32|]

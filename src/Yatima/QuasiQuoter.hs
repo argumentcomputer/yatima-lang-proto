@@ -22,7 +22,7 @@ import           Yatima.Parse
 
 yatima :: QuasiQuoter
 yatima = QuasiQuoter
-  { quoteExp  = toExp
+  { quoteExp  = yatima'
   , quotePat  = undefined
   , quoteType = undefined
   , quoteDec  = undefined
@@ -31,8 +31,8 @@ yatima = QuasiQuoter
 liftText :: T.Text -> Q Exp
 liftText txt = AppE (VarE 'T.pack) <$> lift (T.unpack txt)
 
-toExp :: String -> Q Exp
-toExp s = do
+yatima' :: String -> Q Exp
+yatima' s = do
   file <- loc_filename <$> location
   thExts <- extsEnabled
   let wrapFromString e =
@@ -45,20 +45,20 @@ toExp s = do
     Left err -> do
       err' <- overrideErrorForFile file err
       fail (errorBundlePretty err')
-    Right c -> dataToExpQ (\a -> liftText <$> cast a) c
+    Right c -> dataToExpQ (\a -> (liftText <$> cast a)) c
 
 overrideErrorForFile :: FilePath -> ParseErrorBundle Text e -> Q (ParseErrorBundle Text e)
 overrideErrorForFile "<interactive>" err = pure err
 overrideErrorForFile filename err = do
-  (line, col) <- loc_start <$> location
+  (lin, col) <- loc_start <$> location
   fileContent <- runIO (readFile filename)
-  let (prefix, postfix) = splitAt (col - 1) $ unlines $ drop (line - 1) (lines fileContent)
+  let (prefix, postfix) = splitAt (col - 1) $ unlines $ drop (lin - 1) (lines fileContent)
   pure $
     err
       { bundlePosState =
           (bundlePosState err)
             { pstateInput = T.pack postfix,
-              pstateSourcePos = SourcePos filename (mkPos line) (mkPos col),
+              pstateSourcePos = SourcePos filename (mkPos lin) (mkPos col),
               pstateOffset = 0,
               pstateLinePrefix = prefix
             }

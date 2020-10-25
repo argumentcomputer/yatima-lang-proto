@@ -168,7 +168,8 @@ data PrimOp
   | Natural_from_I64
   | Natural_from_I32
   -- BitVector
-  | BitVector_cons
+  | BitVector_b0
+  | BitVector_b1
   | BitVector_concat
   | BitVector_length
   -- String
@@ -340,7 +341,8 @@ primOpName p = case p of
   Natural_to_I32     -> "Natural_to_I32"
   Natural_from_I64   -> "Natural_from_I64"
   Natural_from_I32   -> "Natural_from_I32"
-  BitVector_cons     -> "BitVector_cons"
+  BitVector_b0       -> "BitVector_b0"
+  BitVector_b1       -> "BitVector_b1"
   BitVector_concat   -> "BitVector_concat"
   BitVector_length   -> "BitVector_length"
   String_cons        -> "String_cons"

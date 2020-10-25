@@ -379,7 +379,7 @@ pExpr annotatable = label "an expression" $ do
       ]
 
 pAnn :: (Ord e, Monad m) => Parser e m Term
-pAnn = label "an annotation" $ do
+pAnn = do
   symbol "("
   val <- pExpr False <* space
   symbol "::"
@@ -412,6 +412,7 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
 pLiteral :: (Ord e, Monad m) => Parser e m Literal
 pLiteral = label "a literal" $ choice
   [ string "#world"     >> return VWorld
+  , string "#exception" >> return VException
   , try $ VString <$> pString
   , try $ pBits
   , try $ pFloat
@@ -423,6 +424,7 @@ pLiteral = label "a literal" $ choice
 pLitType :: (Ord e, Monad m) => Parser e m LitType
 pLitType = label "the type of a literal" $ choice
   [ string "#World"     >> return TWorld
+  , string "#Exception" >> return TException
   , string "#Natural"   >> return TNatural
   , string "#String"    >> return TString
   , string "#Char"      >> return TChar
@@ -432,7 +434,6 @@ pLitType = label "the type of a literal" $ choice
   , string "#F32"       >> return TF32
   , string "#BitVector" >> TBitVector . fromIntegral <$> pNatural
   ]
-  
 
 pNum :: (Ord e, Monad m) => Parser e m Integer
 pNum = choice

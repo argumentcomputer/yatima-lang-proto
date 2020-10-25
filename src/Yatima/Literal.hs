@@ -27,6 +27,7 @@ data Literal
   | VBitVector Natural ByteString
   | VString    Text
   | VChar      Char
+  | VException
   deriving (Eq,Show,Data)
 
 data LitType
@@ -39,6 +40,7 @@ data LitType
   | TBitVector Natural
   | TString
   | TChar
+  | TException
   deriving (Eq,Show,Data)
 
 encodeLiteral :: Literal -> Encoding
@@ -52,6 +54,7 @@ encodeLiteral t = case t of
   VBitVector n x -> encodeListLen 3 <> ctor <> tag 6 <> encode n <> encode x
   VString x      -> encodeListLen 2 <> ctor <> tag 7 <> encode (T.encodeUtf8 x)
   VChar x        -> encodeListLen 2 <> ctor <> tag 8 <> encode x
+  VException          -> encodeListLen 1 <> ctor <> tag 9
   where
     ctor = encodeString "Lit"
     tag  = encodeInt
@@ -76,6 +79,7 @@ decodeLiteral = do
         Left  e -> fail $ "invalid Literal string with UTF-8 error: " ++ show e
         Right x -> return $ VString x
     (2,8) -> VChar      <$> decode
+    (1,9) -> pure VException
     _     -> fail $ concat
        ["invalid Literal with size: ", show size, " and tag: ", show tag]
 
@@ -94,6 +98,7 @@ encodeLitType t = case t of
   TBitVector n   -> encodeListLen 2 <> ctor <> tag 6 <> encode n
   TString        -> encodeListLen 1 <> ctor <> tag 7
   TChar          -> encodeListLen 1 <> ctor <> tag 8
+  TException     -> encodeListLen 1 <> ctor <> tag 9
   where
     ctor = encodeString "LTy"
     tag  = encodeInt
@@ -114,6 +119,7 @@ decodeLitType = do
     (2,6) -> TBitVector <$> decode
     (1,7) -> return TString
     (1,8) -> return TChar
+    (1,9) -> return TException
     _     -> fail $ concat
        ["invalid LitType with size: ", show size, " and tag: ", show tag]
 
