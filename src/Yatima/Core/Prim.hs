@@ -453,19 +453,19 @@ expandLit t = termToHoas Ctx.empty $ case t of
   _        -> error "TODO"
 
 litInduction :: LitType -> Hoas -> Hoas
-litInduction t val = case t of
-  TNatural ->  AppH (termToHoas Ctx.empty $ [yatima|
+litInduction t val = (\x y -> AppH y x) val $ termToHoas Ctx.empty $ case t of
+  TNatural -> [yatima|
    λ self => forall
    (P : forall #Natural -> Type)
    (& zero : P 0)
    (& succ : forall (pred : #Natural) -> P (#Natural_succ pred))
-   -> P self|]) val
-  --TString -> [yatima|
-  -- @self forall
-  -- (P : forall #String -> Type)
-  -- (& nil  : P "")
-  -- (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
-  -- -> P self|]
+   -> P self|]
+  TString -> [yatima|
+   λ self => forall
+   (P : forall #String -> Type)
+   (& nil  : P "")
+   (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
+   -> P self|]
   --TBitVector (LitH $ VNatural n) -> [yatima|
   -- λ n => @self forall
   -- (P : forall (n: #Natural) (_:#BitVector n) -> Type)
@@ -489,15 +489,17 @@ typeOfLit t = case t of
 
 typeOfOpr :: PrimOp -> Hoas
 typeOfOpr t = termToHoas Ctx.empty $ case t of
-  Natural_succ -> [yatima|∀ #Natural -> #Natural|]
-  Natural_pred -> [yatima|∀ #Natural -> #Natural|]
-  Natural_add  -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_sub  -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_div  -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_mod  -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_gt   -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_ge   -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_eq   -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_ne   -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_lt   -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_le   -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_succ   -> [yatima|∀ #Natural -> #Natural|]
+  Natural_pred   -> [yatima|∀ #Natural -> #Natural|]
+  Natural_add    -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_sub    -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_div    -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_mod    -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_gt     -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_ge     -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_eq     -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_ne     -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_lt     -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_le     -> [yatima|∀ #Natural #Natural -> #I32|]
+  String_cons    -> [yatima|∀ #Char #String -> #String|]
+  String_concat  -> [yatima|∀ #String #String -> #String|]
