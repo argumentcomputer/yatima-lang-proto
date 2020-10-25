@@ -88,11 +88,13 @@ norm defs term = go term 0 Set.empty
       AllH nam use typ bod ->
         AllH nam use (go typ lvl seen) (\x -> go (bod x) (lvl+1) seen)
       LamH nam bod         -> LamH nam (\x -> go (bod x) (lvl+1) seen)
-      AppH fun arg         -> AppH (go fun lvl seen) (go arg lvl seen)
+      AppH fun arg         -> go (AppH (go fun lvl seen) (go arg lvl seen)) lvl seen
       FixH nam bod         -> go (bod (FixH nam bod)) lvl seen
       SlfH nam bod         -> SlfH nam (\x -> go (bod x) (lvl+1) seen)
       NewH exp             -> NewH (go exp lvl seen)
       UseH exp             -> UseH (go exp lvl seen)
+
+      WhnH x               -> go x lvl seen
       step                 -> step
 
 -- Converts a term to a unique string representation. This is used by equal.
@@ -141,6 +143,7 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
       LitH lit                 -> "(" <> TB.fromText (prettyLiteral lit) <> ")"
       LTyH lit                 -> "<" <> TB.fromText (prettyLitType lit) <> ">"
       OprH opr                 -> "{" <> TB.fromText (prettyPrimOp opr) <> "}"
+      WhnH trm                 -> go trm lvl ini
 
 equal :: Defs -> Hoas -> Hoas -> Int -> Either Hole Bool
 equal defs a b lvl = go a b lvl Set.empty

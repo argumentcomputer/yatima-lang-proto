@@ -90,13 +90,15 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Ann _ _ -> True
       _       -> False
 
+    pars' :: Term -> TB.Builder
+    pars' t = if isAtom t then go t else pars (go t)
+
     apps :: Term -> Term -> TB.Builder
     apps f a
-      | isAtom f, App af aa <- a = go f         <> " " <> pars (apps af aa)
-      | App af aa <- a           = pars (go f) <> " " <> pars (apps af aa)
-      | isAtom f && isAtom a     = go f        <> " " <> go a
-      | isAtom f                 = go f        <> " " <> pars (go a)
-      | otherwise                = pars (go f) <> " " <> go a
+      | App ff fa <- f, App af aa <- a = apps ff fa  <> " " <> pars (apps af aa)
+      |                 App af aa <- a = pars' f     <> " " <> pars (apps af aa)
+      | App ff fa <- f                 = apps ff fa  <> " " <> pars' a
+      | otherwise                      = pars' f <> " " <> pars' a
 
 prettyLiteral :: Literal -> Text
 prettyLiteral t = case t of

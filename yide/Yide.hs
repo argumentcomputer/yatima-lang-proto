@@ -85,7 +85,7 @@ quit = outputTxtLn "Goodbye."
 data Command
   = Eval Term
   | Defn Name Def
-  | Type Name
+  | Type Term
   | Load (Path Abs File)
   | Import CID
   | Quit
@@ -100,7 +100,7 @@ parseLine = do
     [ (symbol ":help" <|> symbol ":h") >> return Help
     --, (symbol ":quit" <|> symbol ":q") >> return Quit
     , (symbol ":browse" <|> symbol ":b") >> return Browse
-    , (symbol ":type" <|> symbol ":t") >> Type <$> (pName False)
+    , (symbol ":type" <|> symbol ":t") >> Type <$> (pExpr False)
     , do
         (symbol ":load" <|> symbol ":l")
         nam  <- takeWhile1P Nothing (not . isSpace)
@@ -141,14 +141,13 @@ process line = dontCrash' $ do
         return ()
       Help   -> liftIO $ putStrLn "help text fills you with determination "
       -- Quit   -> abort
-      Type n -> do
+      Type t -> do
         index <- gets _yDefs
         root  <- gets _yRoot
         cache <- liftIO $ readCache root
-        def   <- catchReplErr $ deref n index cache
         defs  <- catchReplErr $ indexToDefs index cache
-        let (trm,typ) = defToHoas "^" def
-        (_,typ,_) <- catchReplErr (Core.check defs Ctx.empty Once trm typ)
+        let trm = termToHoas Ctx.empty t
+        (_,typ,_) <- catchReplErr (Core.infer defs Ctx.empty Once trm)
         liftIO $ print $ typ
         return ()
       Eval t -> do
@@ -193,14 +192,15 @@ prefixes [] x = False
 
 complete :: CompletionFunc (StateT YideState IO)
 complete (ante, post)
-  | prefixes [":h ", ":help "] p = noCompletion (ante, post)
-  | otherwise = do
+  | prefixes ks p = noCompletion (ante, post)
+  | otherwise     = do
      ns <- gets (M.keys . _byName . _yDefs)
-     let ks = [":help", ":browse"]
-     let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks ++ ns)
+     let ks' = T.pack <$> ks
+     let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks' ++ ns)
      completeWord Nothing " " (pure . (map simpleCompletion) . f)  (ante, post)
   where
     p = reverse ante
+    ks = [":help", ":browse", ":load", ":type"]
 
 yide :: StateT YideState IO ()
 yide = repl prompt quit process complete ini
