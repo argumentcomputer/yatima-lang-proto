@@ -95,13 +95,6 @@ spec = do
     ,("Type", Good [("",Many,Typ)])
     ]
 
-  parseDescribe pHol "Hole"
-    [("?foo", Good $ Hol "foo")
-    ]
-
-  parseDescribe pHol "Hole Errors"
-    [("?'a", mkBad 3 $ ReservedLeadingChar '\'' "'a")
-    ]
 
   parseDescribe pAll "Forall"
     [ ( "∀ (x: Type) -> Type", Good $ All "x" Many Typ Typ)

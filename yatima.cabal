@@ -44,7 +44,6 @@ library
       Yatima
   other-modules:
       Yatima.Core.Prim
-      Yatima.QuasiQuoter.QTerm
       Paths_yatima
   hs-source-dirs:
       src

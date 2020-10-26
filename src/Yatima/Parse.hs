@@ -230,14 +230,6 @@ pBinder namOptional = choice
       string ")"
       return $ (,uses,typ_) <$> names
 
-
--- | Parse a hole: @?name@
-pHol :: (Ord e, Monad m) => Parser e m Term
-pHol = label "a hole: \"?name\"" $ do
-  symbol "?"
-  name <- pName True
-  return (Hol name)
-
 foldLam:: Term -> [Name] -> Term
 foldLam body bs = foldr (\n x -> Lam n x) body bs
 
@@ -341,7 +333,6 @@ pTerm = do
     , pSlf
     , pUse
     , pNew
-    , pHol
     , pTyp
     , symbol "(" >> pExpr True <* space <* string ")"
     , pLet

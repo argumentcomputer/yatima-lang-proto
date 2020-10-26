@@ -39,8 +39,6 @@ type Name = Text
 
 -- | A Yatima term with names and source locations
 data Term where
-  -- | A hole
-  Hol :: Name -> Term
   -- | Local variable
   Var :: Name -> Term
   -- | A forall

@@ -24,7 +24,6 @@ data Hoas where
   AnnH :: Hoas -> Hoas -> Hoas
   UnrH :: Name -> Int  -> Hoas -> Hoas -> Hoas
   TypH :: Hoas
-  HolH :: Name -> Hoas
   LitH :: Literal -> Hoas
   LTyH :: LitType -> Hoas
   OprH :: PrimOp  -> Hoas
@@ -44,14 +43,11 @@ addCtx = Ctx.zipWith (\(uses,typ) (uses',_) -> (uses +# uses', typ))
 toContext :: PreContext -> Context
 toContext = fmap (\(term) -> (None, term))
 
--- | A filled hole
-type Hole = (Name, Hoas)
 
 -- | Convert a lower-order `Term` to a GHC higher-order one
 termToHoas :: PreContext -> Term -> Hoas
 termToHoas ctx t = case t of
   Typ                         -> TypH
-  Hol nam                     -> HolH nam
   Var nam                     -> maybe (VarH nam 0) id (Ctx.find nam ctx)
   Ref nam                     -> RefH nam
   Lam nam bod                 -> LamH nam (bind nam bod)
@@ -74,7 +70,6 @@ termToHoas ctx t = case t of
 hoasToTerm :: PreContext -> Hoas -> Term
 hoasToTerm ctx t = case t of
   TypH                     -> Typ
-  HolH nam                 -> Hol nam
   RefH nam                 -> Ref nam
   VarH nam idx             -> Var nam
   LamH nam bod             -> Lam nam (bind nam bod)

@@ -139,16 +139,15 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
         "%" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
       AnnH trm _               -> go trm lvl ini
       UnrH _ _ trm _           -> go trm lvl ini
-      HolH nam                 -> "?" <> name nam
       LitH lit                 -> "(" <> TB.fromText (prettyLiteral lit) <> ")"
       LTyH lit                 -> "<" <> TB.fromText (prettyLitType lit) <> ">"
       OprH opr                 -> "{" <> TB.fromText (prettyPrimOp opr) <> "}"
       WhnH trm                 -> go trm lvl ini
 
-equal :: Defs -> Hoas -> Hoas -> Int -> Either Hole Bool
-equal defs a b lvl = go a b lvl Set.empty
+equal :: Defs -> Hoas -> Hoas -> Int -> Bool
+equal defs a b lvl = runIdentity $ go a b lvl Set.empty
   where
-    go :: Hoas -> Hoas -> Int -> Set (LT.Text,LT.Text) -> Either Hole Bool
+    go :: Hoas -> Hoas -> Int -> Set (LT.Text,LT.Text) -> Identity Bool
     go a b lvl seen = do
       let aWhnf = whnf defs a
       let bWhnf = whnf defs b
@@ -161,7 +160,7 @@ equal defs a b lvl = go a b lvl Set.empty
              let seen' = Set.insert (aHash,bHash) seen
              next aWhnf bWhnf lvl seen'
 
-    next :: Hoas -> Hoas -> Int -> Set (LT.Text, LT.Text) -> Either Hole Bool
+    next :: Hoas -> Hoas -> Int -> Set (LT.Text, LT.Text) -> Identity Bool
     next a b lvl seen = case (a, b) of
       (AllH aNam aUse aTyp aBod, AllH bNam bUse bTyp bBod) -> do
         let aBod' = aBod (VarH aNam lvl)
@@ -186,8 +185,6 @@ equal defs a b lvl = go a b lvl Set.empty
         funEq <- go aFun bFun lvl seen
         argEq <- go aArg bArg lvl seen
         return $ funEq && argEq
-      (HolH name, b) -> Left (name, b)
-      (a, HolH name) -> Left (name, a)
       _         -> return False
 
 data CheckErr
@@ -195,7 +192,6 @@ data CheckErr
   | InferQuantityMismatch Context (Name,Uses,Hoas) (Name,Uses,Hoas)
   | TypeMismatch PreContext Hoas Hoas
   | UnboundVariable Name Int
-  | FoundHole Hole
   | EmptyContext
   | UntypedLambda
   | UndefinedReference Name
@@ -204,29 +200,6 @@ data CheckErr
   | NonFunctionApplication Context Hoas Hoas Hoas
   | NonSelfUse  Context Hoas Hoas Hoas
   | CustomErr PreContext Text
-
--- | Fills holes of a term until it is complete
-synth :: Defs -> Hoas -> Hoas -> Except CheckErr (Hoas, Hoas)
-synth defs term typ_ = do
-  case runExcept (check  defs Ctx.empty Once term typ_) of
-    Left (FoundHole hole) -> synth  defs (fill hole term) (fill hole typ_)
-    Left error            -> throwError error
-    Right (_,typ_,_)        -> return (term, typ_)
-
-fill :: Hole -> Hoas -> Hoas
-fill hole term = case term of
-  TypH                 -> TypH
-  VarH nam idx         -> VarH nam idx
-  LamH nam bod         -> LamH nam (\x -> go (bod x))
-  AllH nam use typ bod -> AllH nam use (go typ) (\x -> go (bod x))
-  SlfH nam bod         -> SlfH nam (\x -> go (bod x))
-  NewH exp             -> NewH (go exp)
-  UseH exp             -> UseH (go exp)
-  AppH fun arg         -> AppH (go fun) (go arg)
-  HolH nam             -> if fst hole == nam then snd hole else HolH nam
-  _                    -> term
-  where
-    go x = fill hole x
 
 -- * Type System
 check :: Defs -> PreContext -> Uses -> Hoas -> Hoas
@@ -278,9 +251,8 @@ check defs pre use term typ = case term of
   _ -> do
     (ctx,termTyp,termIR) <- infer defs pre use term
     case equal defs typ termTyp (Ctx.depth pre) of
-      Left hole   -> throwError (FoundHole hole)
-      Right False -> throwError (TypeMismatch pre typ termTyp)
-      Right True  -> return (ctx,typ,termIR)
+      False -> throwError (TypeMismatch pre typ termTyp)
+      True  -> return (ctx,typ,termIR)
 
 -- | Infers the type of a term
 infer :: Defs -> PreContext -> Uses -> Hoas
@@ -346,7 +318,6 @@ infer defs pre use term = case term of
               _        -> False
         let ir    = LetI isFix exprUse name exprIR bodyIR
         return (mulCtx use (addCtx exprCtx (Ctx bodyCtx')),typ,ir)
-  -- Hole
   TypH           -> return (toContext pre,TypH,TypI)
   UnrH nam lvl val typ -> do
     case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
@@ -359,7 +330,6 @@ infer defs pre use term = case term of
   LitH lit  -> return (toContext pre, typeOfLit lit, LitI lit)
   LTyH lty  -> return (toContext pre, typeOfLTy lty, LTyI lty)
   OprH opr  -> return (toContext pre, typeOfOpr opr, OprI opr)
-  HolH name -> return (toContext pre,TypH,TypI)
   _ -> throwError $ CustomErr pre "can't infer type"
 
 ---- * Pretty Printing Errors
@@ -431,8 +401,6 @@ prettyError e = case e of
     UnboundVariable nam idx -> T.concat
       ["Unbound free variable: ", T.pack $ show nam, " at level ", T.pack $ show idx]
     UntypedLambda -> "Can't infer the type of a lambda"
-    FoundHole (name,term) -> T.concat
-      ["Can't fill hole: ?", T.pack $ show name, " : ", printHoas term]
     NonFunctionApplication ctx trm typ typ' -> T.concat
       ["Tried to apply something that wasn't a lambda: \n"
       , "  Checked term: ", printHoas trm,"\n"

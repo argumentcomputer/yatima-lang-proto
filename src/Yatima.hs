@@ -179,15 +179,6 @@ check defs term typ_ =
     Left err     -> Left err
     Right (_,ty,_) -> Right (hoasToTerm Ctx.empty ty)
 
-synth :: Defs -> Term -> Term -> Either Core.CheckErr (Term, Term)
-synth defs term typ_ =
-  let hTerm = termToHoas Ctx.empty term in
-  let hType = termToHoas Ctx.empty typ_ in
-  case runExcept (Core.synth defs hTerm hType) of
-    Left err -> Left err
-    Right tt -> Right $
-      (hoasToTerm Ctx.empty (fst tt), hoasToTerm Ctx.empty (snd tt))
-
 prettyInfer :: Defs -> Term -> Text
 prettyInfer defs term = case infer defs term of
   Left err -> Core.prettyError err
@@ -197,20 +188,3 @@ prettyCheck :: Defs -> Term -> Term -> Text
 prettyCheck defs term typ_ = case check defs term typ_ of
   Left err -> Core.prettyError err
   Right ty -> prettyTerm ty
-
-prettySynth :: Defs -> Term -> Term -> Text
-prettySynth defs term typ_ = case synth defs term typ_ of
-  Left err -> Core.prettyError err
-  Right (ty,tr) -> T.concat [prettyTerm tr, " :: ", prettyTerm ty]
-
-testSynth :: Defs -> Text -> Text -> IO ()
-testSynth defs termCode typeCode = do
-  let term = unsafeParseTerm termCode
-  let typ_ = unsafeParseTerm typeCode
-  putStrLn ("input-term: " ++ T.unpack (prettyTerm term))
-  putStrLn ("input-type: " ++ T.unpack (prettyTerm typ_))
-  case synth defs term typ_ of
-    Left err -> print (T.unpack (Core.prettyError err))
-    Right (sTerm, sTipo) -> do
-      putStrLn ("synth-term: " ++ T.unpack (prettyTerm sTerm))
-      putStrLn ("synth-type: " ++ T.unpack (prettyTerm sTipo))
