@@ -37,7 +37,7 @@ data LitType
   | TF32
   | TI64
   | TI32
-  | TBitVector Natural
+  | TBitVector
   | TString
   | TChar
   | TException
@@ -89,16 +89,16 @@ instance Serialise Literal where
 
 encodeLitType :: LitType -> Encoding
 encodeLitType t = case t of
-  TWorld         -> encodeListLen 1 <> ctor <> tag 0
-  TNatural       -> encodeListLen 1 <> ctor <> tag 1
-  TF64           -> encodeListLen 1 <> ctor <> tag 2
-  TF32           -> encodeListLen 1 <> ctor <> tag 3
-  TI64           -> encodeListLen 1 <> ctor <> tag 4
-  TI32           -> encodeListLen 1 <> ctor <> tag 5
-  TBitVector n   -> encodeListLen 2 <> ctor <> tag 6 <> encode n
-  TString        -> encodeListLen 1 <> ctor <> tag 7
-  TChar          -> encodeListLen 1 <> ctor <> tag 8
-  TException     -> encodeListLen 1 <> ctor <> tag 9
+  TWorld     -> encodeListLen 1 <> ctor <> tag 0
+  TNatural   -> encodeListLen 1 <> ctor <> tag 1
+  TF64       -> encodeListLen 1 <> ctor <> tag 2
+  TF32       -> encodeListLen 1 <> ctor <> tag 3
+  TI64       -> encodeListLen 1 <> ctor <> tag 4
+  TI32       -> encodeListLen 1 <> ctor <> tag 5
+  TBitVector -> encodeListLen 1 <> ctor <> tag 6
+  TString    -> encodeListLen 1 <> ctor <> tag 7
+  TChar      -> encodeListLen 1 <> ctor <> tag 8
+  TException -> encodeListLen 1 <> ctor <> tag 9
   where
     ctor = encodeString "LTy"
     tag  = encodeInt
@@ -116,7 +116,7 @@ decodeLitType = do
     (1,3) -> return TF32
     (1,4) -> return TI64
     (1,5) -> return TI32
-    (2,6) -> TBitVector <$> decode
+    (1,6) -> return TBitVector
     (1,7) -> return TString
     (1,8) -> return TChar
     (1,9) -> return TException

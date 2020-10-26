@@ -87,6 +87,8 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Var _   -> True
       Ref _   -> True
       Lit _   -> True
+      LTy _   -> True
+      Opr _   -> True
       Ann _ _ -> True
       _       -> False
 
@@ -131,16 +133,16 @@ bits n x
 
 prettyLitType :: LitType -> Text
 prettyLitType t = case t of
-  TWorld       -> "#World"
-  TNatural     -> "#Natural"
-  TF64         -> "#F64"
-  TF32         -> "#F32"
-  TI64         -> "#I64"
-  TI32         -> "#I32"
-  TBitVector l -> "#BitVector" <> (T.pack $ show l)
-  TString      -> "#String"
-  TChar        -> "#Char"
-  TException   -> "#Exception"
+  TWorld     -> "#World"
+  TNatural   -> "#Natural"
+  TF64       -> "#F64"
+  TF32       -> "#F32"
+  TI64       -> "#I64"
+  TI32       -> "#I32"
+  TBitVector -> "#BitVector"
+  TString    -> "#String"
+  TChar      -> "#Char"
+  TException -> "#Exception"
 
 prettyPrimOp :: PrimOp -> Text
 prettyPrimOp p = "#" <> primOpName p

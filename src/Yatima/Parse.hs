@@ -413,11 +413,11 @@ pLiteral :: (Ord e, Monad m) => Parser e m Literal
 pLiteral = label "a literal" $ choice
   [ string "#world"     >> return VWorld
   , string "#exception" >> return VException
-  , try $ VString <$> pString
-  , try $ pBits
-  , try $ pFloat
-  , try $ pInt
+  , pBits
   , try $ VNatural <$> pNatural
+  , try $ pFloat
+  , pInt
+  , try $ VString <$> pString
   , VChar <$> pChar
   ]
 
@@ -432,7 +432,7 @@ pLitType = label "the type of a literal" $ choice
   , string "#I32"       >> return TI32
   , string "#F64"       >> return TF64
   , string "#F32"       >> return TF32
-  , string "#BitVector" >> TBitVector . fromIntegral <$> pNatural
+  , string "#BitVector" >> return TBitVector
   ]
 
 pNum :: (Ord e, Monad m) => Parser e m Integer
@@ -448,12 +448,13 @@ pIntType = choice [string "i32",string "i64", string "u32",string "u64"]
 pNatural :: (Ord e, Monad m) => Parser e m Natural
 pNatural = do
   val <- notFollowedBy (string "_") >> pNum
-  notFollowedBy (pIntType <|> choice [string "f32",string "f64"])
+  notFollowedBy (pIntType <|> choice [string "f32",string "f64", string "."])
   return $ fromIntegral val
 
 pInt :: (Ord e, Monad m) => Parser e m Literal
 pInt = do
   val <- L.signed (pure ()) $ notFollowedBy (string "_") >> pNum
+  notFollowedBy (choice [string "f32",string "f64", string "."])
   typ  <- pIntType
   case typ of
     "i64" -> do

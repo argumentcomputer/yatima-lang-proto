@@ -121,7 +121,7 @@ literalType_gen :: Gen LitType
 literalType_gen = oneof
   [ return TWorld
   , return TNatural
-  , TBitVector <$> arbitrarySizedNatural
+  , return TBitVector
   , return TString
   , return TChar
   , return TI64

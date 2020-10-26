@@ -6,19 +6,25 @@ module Yatima.QuasiQuoter where
 
 import           Control.Monad.Identity
 
-import           Data.Text                      (Text)
-import qualified Data.Text                      as T
+import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as B
+import qualified Data.ByteString.Char8      as B8
+import           Data.Text                  (Text)
+import qualified Data.Text                  as T
 
+import           Data.Generics.Aliases
 import           Data.Typeable
 
 import           Text.Megaparsec
 
+import           Language.Haskell.TH        hiding (Name)
+import qualified Language.Haskell.TH        as TH
 import           Language.Haskell.TH.Quote
-import           Language.Haskell.TH
-import           Language.Haskell.TH.Syntax
+import           Language.Haskell.TH.Syntax hiding (Name)
+import qualified Language.Haskell.TH.Syntax as TH
 
-import           Yatima.Term
 import           Yatima.Parse
+import           Yatima.Term
 
 yatima :: QuasiQuoter
 yatima = QuasiQuoter
@@ -28,8 +34,11 @@ yatima = QuasiQuoter
   , quoteDec  = undefined
   }
 
-liftText :: T.Text -> Q Exp
-liftText txt = AppE (VarE 'T.pack) <$> lift (T.unpack txt)
+liftText :: T.Text -> Maybe ExpQ
+liftText txt = Just $ appE (varE 'T.pack) $ litE $ StringL (T.unpack txt)
+
+liftByteString :: ByteString -> Maybe ExpQ
+liftByteString txt = Just $ appE (varE 'B8.pack) $ litE $ StringL (B8.unpack txt)
 
 yatima' :: String -> Q Exp
 yatima' s = do
@@ -45,7 +54,7 @@ yatima' s = do
     Left err -> do
       err' <- overrideErrorForFile file err
       fail (errorBundlePretty err')
-    Right c -> dataToExpQ (\a -> (liftText <$> cast a)) c
+    Right c -> dataToExpQ (const Nothing `extQ` liftText `extQ` liftByteString) c
 
 overrideErrorForFile :: FilePath -> ParseErrorBundle Text e -> Q (ParseErrorBundle Text e)
 overrideErrorForFile "<interactive>" err = pure err

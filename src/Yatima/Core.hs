@@ -314,6 +314,10 @@ infer defs pre use term = case term of
         return (exprCtx,body expr,UseI exprIR Nothing)
       LTyH typ -> do
         return (exprCtx, litInduction typ expr,UseI exprIR (Just typ))
+      AppH (LTyH TBitVector) (LitH (VNatural n)) -> do
+        let expr' = AppH (litInduction TBitVector (LitH (VNatural n))) expr
+        return (exprCtx, expr', UseI exprIR (Just TBitVector))
+        -- TODO: Make sure this is right
       x -> throwError $ NonSelfUse exprCtx expr exprTyp x
   AllH name bindUse bind body -> do
     let nameVar = VarH name $ Ctx.depth pre
@@ -353,7 +357,7 @@ infer defs pre use term = case term of
   AnnH val typ -> do
     check defs pre use val typ
   LitH lit  -> return (toContext pre, typeOfLit lit, LitI lit)
-  LTyH lty  -> return (toContext pre, TypH, LTyI lty)
+  LTyH lty  -> return (toContext pre, typeOfLTy lty, LTyI lty)
   OprH opr  -> return (toContext pre, typeOfOpr opr, OprI opr)
   HolH name -> return (toContext pre,TypH,TypI)
   _ -> throwError $ CustomErr pre "can't infer type"

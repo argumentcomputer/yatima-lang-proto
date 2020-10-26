@@ -436,12 +436,6 @@ reduceOpr op arg = case (op,arg) of
     u32 = asWord32
     u64 = asWord64
 
-byteStringCons1 :: BS.ByteString -> BS.ByteString
-byteStringCons1 bs = case BS.uncons bs of
-  Nothing       -> BS.singleton 1
-  Just (255,cs) -> BS.cons 1 $ BS.cons 0 $ cs
-  Just (c,cs)   -> BS.cons (c+1) bs
-
 expandLit :: Literal -> Hoas
 expandLit t = termToHoas Ctx.empty $ case t of
   VNatural 0 -> [yatima| λ P z s => z|]
@@ -450,29 +444,43 @@ expandLit t = termToHoas Ctx.empty $ case t of
     Nothing     -> [yatima| λ P n c => n|]
     Just (x,xs) -> let f = [yatima| λ x xs P n c => c x xs|]
                     in App (App f (Lit $ VChar x)) (Lit $ VString xs)
+  VBitVector l bs -> case BS.uncons bs of
+    Nothing -> [yatima| λ P be b0 b1 => be |]
+    Just (0,xs) -> let f = [yatima| λ n xs P be b0 b1 => b0 n xs|]
+                    in App (App f (Lit $ VNatural (l-1))) (Lit $ VBitVector (l-1) xs)
+    Just (x,xs) ->
+      if | x `mod` 2 == 0 ->
+           let f = [yatima| λ n xs P be b0 b1 => b0 n xs|]
+            in (App (App f (Lit $ VNatural (l-1))) (Lit $ VBitVector (l-1) (BS.cons (x `div` 2) xs)))
+         | x `mod` 2 == 1 ->
+           let f = [yatima| λ n xs P be b0 b1 => b1 n xs|]
+            in (App (App f (Lit $ VNatural (l-1))) (Lit $ VBitVector (l-1) (BS.cons (x `div` 2) xs)))
   _        -> error "TODO"
 
 litInduction :: LitType -> Hoas -> Hoas
 litInduction t val = (\x y -> AppH y x) val $ termToHoas Ctx.empty $ case t of
   TNatural -> [yatima|
-   λ self => forall
-   (P : forall #Natural -> Type)
-   (& zero : P 0)
-   (& succ : forall (pred : #Natural) -> P (#Natural_succ pred))
-   -> P self|]
+    λ self => forall
+    (P : forall #Natural -> Type)
+    (& zero : P 0)
+    (& succ : forall (pred : #Natural) -> P (#Natural_succ pred))
+    -> P self|]
   TString -> [yatima|
-   λ self => forall
-   (P : forall #String -> Type)
-   (& nil  : P "")
-   (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
-   -> P self|]
-  --TBitVector (LitH $ VNatural n) -> [yatima|
-  -- λ n => @self forall
-  -- (P : forall (n: #Natural) (_:#BitVector n) -> Type)
-  -- (& be  : P 0 #b)
-  -- (& b0 : forall (n: #Natural) (pred : #String) -> P (#Natural_succ n) (#BitVector_b0 xs))
-  -- (& b0 : forall (n: #Natural) (pred : #String) -> P (#Natural_succ n) (#BitVector_b1 xs))
-  -- -> P n self|]
+    λ self => forall
+    (P : forall #String -> Type)
+    (& nil  : P "")
+    (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
+    -> P self|]
+  TBitVector -> [yatima|
+    λ n self => forall
+   (P    : forall (n: #Natural) (#BitVector n) -> Type)
+   (& be : P 0 #b)
+   (& b0 : forall (n: #Natural) (xs : #String)
+     -> P (#Natural_succ n) (#BitVector_b0 n xs))
+   (& b1 : forall (n: #Natural) (xs : #String)
+     -> P (#Natural_succ n) (#BitVector_b1 n xs))
+   -> P n self
+  |]
   _    -> error "TODO"
 
 typeOfLit :: Literal -> Hoas
@@ -483,9 +491,14 @@ typeOfLit t = case t of
   VF32    _      -> LTyH TF32
   VI64    _      -> LTyH TI64
   VI32    _      -> LTyH TI32
-  VBitVector l _ -> LTyH (TBitVector l)
+  VBitVector l _ -> (AppH (LTyH TBitVector) (LitH (VNatural l)))
   VString _      -> LTyH TString
   VChar _        -> LTyH TChar
+
+typeOfLTy :: LitType -> Hoas
+typeOfLTy t = case t of
+  TBitVector -> AllH "" Many (LTyH TNatural) (\x -> TypH)
+  _          -> TypH
 
 typeOfOpr :: PrimOp -> Hoas
 typeOfOpr t = termToHoas Ctx.empty $ case t of
@@ -503,3 +516,7 @@ typeOfOpr t = termToHoas Ctx.empty $ case t of
   Natural_le     -> [yatima|∀ #Natural #Natural -> #I32|]
   String_cons    -> [yatima|∀ #Char #String -> #String|]
   String_concat  -> [yatima|∀ #String #String -> #String|]
+  BitVector_b0   -> [yatima|∀ (n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
+  BitVector_b1   -> [yatima|∀ (n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
+
+
