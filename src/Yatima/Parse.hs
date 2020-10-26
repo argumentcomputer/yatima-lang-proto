@@ -53,9 +53,7 @@ import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 
-import           Yatima.Uses
 import           Yatima.Term
-import           Yatima.Print
 import           Yatima.Parse.Integer
 
 -- | The environment of a Parser

@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module Yatima.Uses where
+module Yatima.Term.Uses where
 
 import           Data.Data
 

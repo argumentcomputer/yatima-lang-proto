@@ -15,27 +15,27 @@ description:
 library:
   source-dirs: src
   exposed-modules:
-    - Yatima.CID
     - Yatima.Core
     - Yatima.Core.Wasm
     - Yatima.Core.Ctx
     - Yatima.Core.Hoas
-    - Yatima.DagAST
-    - Yatima.DagJSON
-    - Yatima.Import
-    - Yatima.IR
+    - Yatima.Core.IR
     - Yatima.Compiler.Scheme
-    - Yatima.IPFS
-    - Yatima.IPLD
-    - Yatima.Literal
-    - Yatima.Package
+    - Yatima.IPFS.DagAST
+    - Yatima.IPFS.DagJSON
+    - Yatima.IPFS.Import
+    - Yatima.IPFS.CID
+    - Yatima.IPFS.Client
+    - Yatima.IPFS.IPLD
+    - Yatima.IPFS.Package
     - Yatima.Parse
     - Yatima.Parse.Integer
-    - Yatima.PrimOp
     - Yatima.Print
     - Yatima.QuasiQuoter
+    - Yatima.Term.Literal
+    - Yatima.Term.PrimOp
+    - Yatima.Term.Uses
     - Yatima.Term
-    - Yatima.Uses
     - Yatima
 
   dependencies:

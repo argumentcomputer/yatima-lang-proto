@@ -7,7 +7,7 @@ Maintainer  : john@yatima.io
 Stability   : experimental
 -}
 {-# LANGUAGE DataKinds   #-}
-module Yatima.CID
+module Yatima.IPFS.CID
   ( CID(..)
   , encodeCID
   , decodeCID

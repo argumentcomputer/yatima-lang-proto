@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE QuasiQuotes #-}
-module Yatima.IPLD where
+module Yatima.IPFS.IPLD where
 
 --import           Data.Set                   (Set)
 --import qualified Data.Set                   as Set
@@ -25,10 +25,10 @@ import           Control.Monad.State.Strict
 import           Path
 import           Path.IO
 
-import           Yatima.CID
+import           Yatima.IPFS.CID
 import           Yatima.Term
-import           Yatima.Package
-import           Yatima.DagAST
+import           Yatima.IPFS.Package
+import           Yatima.IPFS.DagAST
 
 newtype Cache = Cache { _data :: Map CID BS.ByteString }
 

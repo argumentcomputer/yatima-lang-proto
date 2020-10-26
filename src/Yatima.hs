@@ -5,25 +5,24 @@
 {-# LANGUAGE TypeApplications #-}
 module Yatima where
 
-import           Yatima.Core.Ctx             (Ctx, (<|))
-import qualified Yatima.Core.Ctx             as Ctx
+import qualified Yatima.Compiler.Scheme as Scheme
 import qualified Yatima.Core            as Core
+import           Yatima.Core.Ctx        (Ctx, (<|))
+import qualified Yatima.Core.Ctx        as Ctx
 import           Yatima.Core.Hoas
-import           Yatima.Print           (prettyTerm)
-import qualified Yatima.Print           as Print
+import qualified Yatima.Core.IR         as IR
 import           Yatima.Parse           (parseTerm, unsafeParseTerm)
 import qualified Yatima.Parse           as Parse
-import           Yatima.CID
-import           Yatima.Uses
-import           Yatima.Term            (Def (..), Defs, Name, Term (..))
+import           Yatima.Print           (prettyTerm, prettyDef)
+import qualified Yatima.Print           as Print
+import           Yatima.Term            (Def (..), Defs, Name, Term (..),
+                                         Uses (..))
 import qualified Yatima.Term            as Term
-import qualified Yatima.IR              as IR
-import qualified Yatima.Compiler.Scheme as Scheme
 
-import           Yatima.IPLD
-import           Yatima.Package
-import           Yatima.Import
-import           Yatima.Print
+import           Yatima.IPFS.CID
+import           Yatima.IPFS.IPLD
+import           Yatima.IPFS.Package
+import           Yatima.IPFS.Import
 
 import           Control.Monad.Catch
 import           Control.Monad.Except

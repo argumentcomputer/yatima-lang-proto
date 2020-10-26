@@ -31,9 +31,9 @@ import           Yatima.Core.Ctx            (Ctx (..), (<|))
 import qualified Yatima.Core.Ctx            as Ctx
 import           Yatima.Core.Hoas
 import           Yatima.Core.Prim
+import           Yatima.Core.IR
 import           Yatima.Print
 import           Yatima.Term
-import           Yatima.IR
 
 whnf :: Defs -> Hoas -> Hoas
 whnf defs trm = case trm of

@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module Yatima.Literal where
+module Yatima.Term.Literal where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding

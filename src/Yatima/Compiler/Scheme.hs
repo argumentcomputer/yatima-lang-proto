@@ -3,12 +3,8 @@ module Yatima.Compiler.Scheme where
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 
-import           Yatima.Uses
-import           Yatima.PrimOp
-import           Yatima.Literal
-import           Yatima.IR
-
-type Name = Text
+import           Yatima.Core.IR
+import           Yatima.Term                    hiding (Let)
 
 data Scheme where
   Define   :: Name     -> Scheme -> Scheme

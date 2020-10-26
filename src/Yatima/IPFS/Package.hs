@@ -1,4 +1,4 @@
-module Yatima.Package where
+module Yatima.IPFS.Package where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -18,7 +18,7 @@ import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
 import           Data.List                  (sortBy)
 
-import           Yatima.CID
+import           Yatima.IPFS.CID
 import           Yatima.Term
 
 data Package = Package

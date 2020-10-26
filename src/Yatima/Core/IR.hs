@@ -1,9 +1,8 @@
-module Yatima.IR where
+module Yatima.Core.IR where
 
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 
-import           Yatima.Uses
 import           Yatima.Print
 import           Yatima.Term
 

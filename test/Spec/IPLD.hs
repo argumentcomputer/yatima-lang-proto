@@ -19,12 +19,11 @@ import           Data.Text                            (Text)
 import qualified Data.Text                            as T
 import qualified Data.Text.Encoding                   as T
 
-import           Yatima.CID
-import           Yatima.DagAST
-import           Yatima.IPLD
-import           Yatima.Package
+import           Yatima.IPFS.CID
+import           Yatima.IPFS.DagAST
+import           Yatima.IPFS.IPLD
+import           Yatima.IPFS.Package
 import           Yatima.Term
-import           Yatima.Uses
 
 import           Test.Hspec
 import           Test.QuickCheck

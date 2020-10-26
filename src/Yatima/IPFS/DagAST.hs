@@ -6,7 +6,7 @@ License     : GPL-3
 Maintainer  : john@yatima.io
 Stability   : experimental
 -}
-module Yatima.DagAST where
+module Yatima.IPFS.DagAST where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -21,8 +21,7 @@ import qualified Data.Text                  as T hiding (find)
 import           Data.IntMap                (IntMap)
 import qualified Data.IntMap                as IM
 
-import           Yatima.CID
-import           Yatima.Term
+import           Yatima.IPFS.CID
 
 -- | A definition embedded in the IPLD DAG
 data DagDef = DagDef
@@ -37,7 +36,7 @@ data AnonDef = AnonDef { _anonTerm :: CID , _anonType :: CID } deriving Show
 
 -- | An anonymous spine of a λ-like language
 data AnonAST
-  = Ctor Name [AnonAST]
+  = Ctor Text [AnonAST]
   | Bind AnonAST
   | Vari Int
   | Link CID
@@ -45,7 +44,7 @@ data AnonAST
   deriving (Eq,Show,Ord)
 
 -- | The computationally irrelevant metadata of an AST
-data Meta = Meta { _entries :: IntMap (Either Name CID) } deriving (Show,Eq)
+data Meta = Meta { _entries :: IntMap (Either Text CID) } deriving (Show,Eq)
 
 encodeAnonAST :: AnonAST -> Encoding
 encodeAnonAST term = case term of

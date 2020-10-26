@@ -31,16 +31,16 @@ import           Path.IO
 
 import           HaskelineT
 
-import           Yatima.CID
-import           Yatima.Package
+import           Yatima.IPFS.CID
+import           Yatima.IPFS.Package
+import           Yatima.IPFS.Import
+import           Yatima.IPFS.IPLD
 import qualified Yatima.Core.Ctx as Ctx
 import           Yatima.Term
 import qualified Yatima.Core as Core
 import           Yatima.Core.Hoas
 import           Yatima.Parse
 import           Yatima.Print
-import           Yatima.Import
-import           Yatima.IPLD
 import           Yatima
 
 

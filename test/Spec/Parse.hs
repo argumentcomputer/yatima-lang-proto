@@ -13,7 +13,6 @@ import           Data.List.NonEmpty         (NonEmpty)
 import           Data.List.NonEmpty         as NE
 
 import           Yatima.Term
-import           Yatima.Uses
 import qualified Yatima.Parse as Parse
 import           Yatima.Parse hiding (Parser)
 

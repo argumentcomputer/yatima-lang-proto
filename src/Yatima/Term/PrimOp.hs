@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module Yatima.PrimOp where
+module Yatima.Term.PrimOp where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding

@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE QuasiQuotes #-}
-module Yatima.IPFS where
+module Yatima.IPFS.Client where
 
 import           Control.Monad
 import           Control.Monad.Except
@@ -32,12 +32,12 @@ import           Path.IO
 
 import           Codec.Serialise
 
-import           Yatima.CID
-import           Yatima.IPLD
-import           Yatima.DagJSON
-import           Yatima.DagAST
-import           Yatima.Package
-import           Yatima.Import
+import           Yatima.IPFS.CID
+import           Yatima.IPFS.IPLD
+import           Yatima.IPFS.DagJSON
+import           Yatima.IPFS.DagAST
+import           Yatima.IPFS.Package
+import           Yatima.IPFS.Import
 import           Yatima.Term
 
 

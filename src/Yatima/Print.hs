@@ -32,7 +32,7 @@ import           Control.Monad.Except
 import           Numeric
 import           Numeric.Natural
 
-import           Yatima.IPLD
+--import           Yatima.IPFS.IPLD
 import           Yatima.Term
 
 -- | Pretty-printer for terms

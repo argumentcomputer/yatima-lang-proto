@@ -12,9 +12,9 @@ This module defines `Term`, the type of expressions in the Yatima language.
 
 {-# LANGUAGE DeriveDataTypeable #-}
 module Yatima.Term
-  ( module Yatima.Uses
-  , module Yatima.Literal
-  , module Yatima.PrimOp
+  ( module Yatima.Term.Uses
+  , module Yatima.Term.Literal
+  , module Yatima.Term.PrimOp
   , Name
   , Term (..)
   , Def  (..)
@@ -28,9 +28,9 @@ import qualified Data.Map                   as M
 
 import           Data.Data
 
-import           Yatima.Uses
-import           Yatima.PrimOp
-import           Yatima.Literal
+import           Yatima.Term.Uses
+import           Yatima.Term.PrimOp
+import           Yatima.Term.Literal
 
 -- * Yatima expressions
 

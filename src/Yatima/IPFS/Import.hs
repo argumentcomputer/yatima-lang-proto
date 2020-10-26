@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Yatima.Import where
+module Yatima.IPFS.Import where
 
 import           Control.Monad.Except
 import           Control.Monad.Catch
@@ -26,10 +26,10 @@ import qualified Data.ByteString            as BS
 import           Data.Char
 import           Debug.Trace
 
-import           Yatima.CID
+import           Yatima.IPFS.CID
+import           Yatima.IPFS.IPLD
+import           Yatima.IPFS.Package
 import           Yatima.Term
-import           Yatima.Package
-import           Yatima.IPLD
 import           Yatima.Parse      hiding (parseDefault)
 import           Yatima.Print
 
