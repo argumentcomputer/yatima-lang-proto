@@ -3,7 +3,7 @@ version:        0.1.0.0
 homepage:       "moonad/yatima"
 author:         "Gabriel Barreto, John C. Burnham"
 maintainer:     john@yatima.io
-copyright:      2020 Sunshine Cybernetics
+copyright:      2020 Yatima Inc
 
 extra-source-files:
 - README.md
@@ -24,12 +24,13 @@ library:
     - Yatima.Core.Hoas
     - Yatima.Core.IR
     - Yatima.Compiler.Scheme
-    - Yatima.IPFS.Import
     - Yatima.IPFS.Client
     - Yatima.IPFS.IPLD
-    - Yatima.IPFS.Package
-    - Yatima.Parse
+    - Yatima.Package
     - Yatima.Parse.Integer
+    - Yatima.Parse.Package
+    - Yatima.Parse.Term
+    - Yatima.Parse
     - Yatima.Print
     - Yatima.QuasiQuoter
     - Yatima.Term.Literal

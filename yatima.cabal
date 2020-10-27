@@ -10,7 +10,7 @@ description:    Please see the README on GitHub at <https://github.com/moonad/ya
 homepage:       moonad/yatima
 author:         Gabriel Barreto, John C. Burnham
 maintainer:     john@yatima.io
-copyright:      2020 Sunshine Cybernetics
+copyright:      2020 Yatima Inc
 license:        GPL-3
 license-file:   LICENSE
 build-type:     Simple
@@ -29,12 +29,13 @@ library
       Yatima.Core.Hoas
       Yatima.Core.IR
       Yatima.Compiler.Scheme
-      Yatima.IPFS.Import
       Yatima.IPFS.Client
       Yatima.IPFS.IPLD
-      Yatima.IPFS.Package
-      Yatima.Parse
+      Yatima.Package
       Yatima.Parse.Integer
+      Yatima.Parse.Package
+      Yatima.Parse.Term
+      Yatima.Parse
       Yatima.Print
       Yatima.QuasiQuoter
       Yatima.Term.Literal
@@ -44,8 +45,12 @@ library
       Yatima
   other-modules:
       Data.Multihash
+      Yatima.Core.CheckError
       Yatima.Core.Prim
       Yatima.Core.UnionFind
+      Yatima.Parse.Literal
+      Yatima.Parse.ParseError
+      Yatima.Parse.Parser
       Paths_yatima
   hs-source-dirs:
       src
