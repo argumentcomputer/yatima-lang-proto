@@ -36,27 +36,27 @@ import           Yatima.Print
 import           Yatima.Term
 
 whnf :: Defs -> Hoas -> Hoas
-whnf defs trm = case trm of
-  RefH nam           -> case defs M.!? nam of
-    Just d  -> go $ fst (defToHoas nam d)
-    Nothing -> RefH nam
-  FixH nam bod       -> go (bod trm)
-  AppH fun arg       -> case go fun of
-    LamH _ bod -> go (bod arg)
-    OprH opr   -> reduceOpr opr arg
-    x          -> AppH fun arg
-  UseH arg           -> case go arg of
-    NewH exp     -> go exp
-    LitH val     -> expandLit val
-    x            -> UseH arg
-  AnnH a _     -> go a
-  UnrH _ _ a _ -> go a
-  LetH _ _ _ exp bod -> go (bod exp)
-  WhnH x             -> x
-
-  x                  -> x
-  where
-    go x = whnf defs x
+whnf defs trm = go [] trm where
+  go args trm = case trm of
+    RefH nam -> case defs M.!? nam of
+      Just d  -> go args $ fst (defToHoas nam d)
+      Nothing -> apply args $ RefH nam
+    FixH nam bod -> go args (bod trm)
+    AppH fun arg -> go (arg : args) fun
+    LamH _   bod -> case args of
+      []          -> trm
+      (a : args') -> go args' (bod a)
+    OprH opr -> reduceOpr opr args
+    UseH arg -> case go [] arg of
+      NewH exp -> go args exp
+      LitH val -> go args $ expandLit val
+      _        -> apply args $ UseH arg
+    AnnH a _           -> go args a
+    UnrH _ _ a _       -> go args a
+    LetH _ _ _ exp bod -> go args (bod exp)
+    _                  -> apply args trm
+  apply []         trm = trm
+  apply (arg:args) trm = apply args (AppH trm arg)
 
 -- | Normalize a Hoas term
 --norm :: Defs -> Hoas -> Hoas
@@ -94,7 +94,6 @@ norm defs term = go term 0 Set.empty
       NewH exp             -> NewH (go exp lvl seen)
       UseH exp             -> UseH (go exp lvl seen)
 
-      WhnH x               -> go x lvl seen
       step                 -> step
 
 -- Converts a term to a unique string representation. This is used by equal.
@@ -142,7 +141,6 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
       LitH lit                 -> "(" <> TB.fromText (prettyLiteral lit) <> ")"
       LTyH lit                 -> "<" <> TB.fromText (prettyLitType lit) <> ">"
       OprH opr                 -> "{" <> TB.fromText (prettyPrimOp opr) <> "}"
-      WhnH trm                 -> go trm lvl ini
 
 equal :: Defs -> Hoas -> Hoas -> Int -> Bool
 equal defs a b lvl = runIdentity $ go a b lvl Set.empty
