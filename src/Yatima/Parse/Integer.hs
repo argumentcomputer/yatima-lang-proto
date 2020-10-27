@@ -1,3 +1,16 @@
+{-
+Module      : Yatima.Parse.Integer
+Description : This module implements parsers for integer literals in different
+bases optionally separated by '_' characters
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+
+This module modifies work by [the Megaparsec contributors](https://github.com/mrkkrp/megaparsec/blob/master/Text/Megaparsec/Char/Lexer.hs)
+which is licensed under 2-Clause-BSD terms included with this package in the
+@licenses/1999_present_Megaparsec@ file.
+-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
 module Yatima.Parse.Integer where
@@ -23,8 +36,6 @@ binary = mkNum
     step a c     = a * 2 + fromIntegral (Char.digitToInt c)
     isBinDigit x = x == '0' || x == '1'
 {-# INLINEABLE binary #-}
-
-
 
 decimal :: (MonadParsec e s m, Token s ~ Char, Integral a) => m a
 decimal = decimal_ <?> "integer"

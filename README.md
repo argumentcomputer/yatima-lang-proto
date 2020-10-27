@@ -44,7 +44,7 @@ Defs {_index = fromList [("fst",zDPWYqFCqtnpLtNboHxPUoPxo1FjTxXDu9M22pX1uTqPccQE
 ```
 The Yatima Programming Language
 
-Copyright (C) 2020 Sunshine Cybernetics
+Copyright (C) 2020 Yatima Inc.
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software

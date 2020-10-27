@@ -1,3 +1,11 @@
+{-
+Module      : Yatima.IPFS.Import
+Description : This module implements the import stanza parser for Yatima packages
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 module Yatima.IPFS.Import where
@@ -26,7 +34,7 @@ import qualified Data.ByteString            as BS
 import           Data.Char
 import           Debug.Trace
 
-import           Yatima.IPFS.CID
+import           Data.IPLD.CID
 import           Yatima.IPFS.IPLD
 import           Yatima.IPFS.Package
 import           Yatima.Term
@@ -245,7 +253,7 @@ pFile env relPath = do
   modifyIORef' env (\e -> e { _doneFiles = M.insert relPath cid (_doneFiles e)})
   putStrLn $ concat
     [ "parsed: ", (T.unpack $ _title pack), " "
-    , (T.unpack $ printCIDBase32 cid)
+    , (T.unpack $ cidToText cid)
     ]
   return (cid,pack)
 
@@ -266,7 +274,7 @@ pFile env relPath = do
 --writePackage title cid = do
 --  createDirectoryIfMissing True ".yatima/packages"
 --  let file = (".yatima/packages/" ++ (T.unpack $ title))
---  TIO.writeFile file (printCIDBase32 cid)
+--  TIO.writeFile file (cidToText cid)
 
 catchErr:: Show e => Except e a -> IO a
 catchErr x = do

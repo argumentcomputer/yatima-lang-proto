@@ -1,3 +1,12 @@
+{-
+Module      : Yatima.IPFS.IPLD
+Description : This module implements the IPLD embedding for Yatima terms and
+definitions, as well as related utilities.
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -25,10 +34,10 @@ import           Control.Monad.State.Strict
 import           Path
 import           Path.IO
 
-import           Yatima.IPFS.CID
+import           Data.IPLD.CID
+import           Data.IPLD.DagAST
 import           Yatima.Term
 import           Yatima.IPFS.Package
-import           Yatima.IPFS.DagAST
 
 newtype Cache = Cache { _data :: Map CID BS.ByteString }
 
@@ -42,18 +51,18 @@ data IPLDErr
   | MergeFreeVariableAt Int [Name] Int
   | MergeMissingNameAt Int
   | MergeMissingCIDAt Int
-  | UnexpectedCtor Name [AnonAST] [Name] Int
-  | UnexpectedBind AnonAST [Name] Int
+  | UnexpectedCtor Name [DagAST] [Name] Int
+  | UnexpectedBind DagAST [Name] Int
   deriving Eq
 
 instance Show IPLDErr where
   show (NoDeserial e)      = "Deserialise Failure: " ++ show e
   show (NotInIndex n)      = "Not In Index: " ++ show n
-  show (NotInCache c)      = "Not In Cache: " ++ (T.unpack $ printCIDBase32 c)
+  show (NotInCache c)      = "Not In Cache: " ++ (T.unpack $ cidToText c)
   show (CIDMismatch n x y) = concat
     ["CID Mismatch on ",show n,":\n"
-    , T.unpack $ printCIDBase32 x, "\n"
-    , T.unpack $ printCIDBase32 y
+    , T.unpack $ cidToText x, "\n"
+    , T.unpack $ cidToText y
     ]
   show (NameMismatch x y)   = "Name Mismatch: " ++ show x ++ " " ++ show y
   show (FreeVariable n ctx) = concat
@@ -93,7 +102,7 @@ indexLookup n d = maybe (throwError $ NotInIndex n) pure ((_byName d) M.!? n)
 
 indexLookup' :: Monad m => CID -> Index -> ExceptT IPLDErr m Name
 indexLookup' n d =
-  maybe (throwError $ NotInIndex (printCIDBase32 n)) pure ((_byCID d) M.!? n)
+  maybe (throwError $ NotInIndex (cidToText n)) pure ((_byCID d) M.!? n)
 
 cacheLookup :: Monad m => CID -> Cache -> ExceptT IPLDErr m BS.ByteString
 cacheLookup c (Cache d) = maybe (throwError $ NotInCache c) pure (d M.!? c)
@@ -108,7 +117,7 @@ makeLink :: Monad m => Name -> Index -> Cache -> ExceptT IPLDErr m (CID,CID)
 makeLink n index cache = do
   cid    <- indexLookup n index
   dagDef <- deserial @DagDef cid cache
-  return (cid, _anonDef dagDef)
+  return (cid, _anonTerm dagDef)
 
 deref :: Monad m => Name -> Index -> Cache -> ExceptT IPLDErr m Def
 deref name index cache = do
@@ -120,10 +129,9 @@ deref name index cache = do
 derefDagDef :: Monad m => Name -> Index -> DagDef -> Cache
             -> ExceptT IPLDErr m Def
 derefDagDef name index dagDef cache = do
-  astDef  <- deserial @AnonDef (_anonDef dagDef) cache
-  termAST <- deserial @AnonAST (_anonTerm astDef) cache
+  termAST <- deserial @DagAST (_anonTerm dagDef) cache
+  typeAST <- deserial @DagAST (_anonType dagDef) cache
   term    <- astToTerm name index termAST (_termMeta dagDef)
-  typeAST <- deserial @AnonAST (_anonType astDef) cache
   typ_    <- astToTerm name index typeAST (_typeMeta dagDef)
   return $ Def (_document dagDef) term typ_
 
@@ -137,14 +145,14 @@ derefDagDefCID name cid index cache = do
   --when (not $ name == _name def) (throwError $ NameMismatch name (_name def))
   return $ def
 
-usesToAST :: Uses -> AnonAST
+usesToAST :: Uses -> DagAST
 usesToAST None = Ctor "None" []
 usesToAST Affi = Ctor "Affi" []
 usesToAST Once = Ctor "Once" []
 usesToAST Many = Ctor "Many" []
 
 termToAST :: Monad m => Name -> Term -> Index -> Cache 
-          -> ExceptT IPLDErr m (AnonAST, Meta)
+          -> ExceptT IPLDErr m (DagAST, Meta)
 termToAST n t index cache =
   case runState (runExceptT (go t [n])) meta  of
     (Left  err,_)   -> throwError err
@@ -161,7 +169,7 @@ termToAST n t index cache =
     bump :: ExceptT IPLDErr (State (Meta,Int)) ()
     bump = modify (\(m,i) -> (m, i+1))
 
-    go :: Term -> [Name] -> ExceptT IPLDErr (State (Meta,Int)) AnonAST
+    go :: Term -> [Name] -> ExceptT IPLDErr (State (Meta,Int)) DagAST
     go t ctx = case t of
       Var n                -> do
         bump
@@ -169,10 +177,10 @@ termToAST n t index cache =
           Just i -> return $ Vari i
           _      -> throwError $ FreeVariable n ctx
       Ref n                -> do
-        (metaCID, anonCID) <- liftEither . runExcept $ makeLink n index cache
-        entry (Right metaCID)
+        (defCid, termCid) <- liftEither . runExcept $ makeLink n index cache
+        entry (Right defCid)
         bump
-        return (Link anonCID)
+        return (Link termCid)
       Lam n b              -> do
         bind n
         bump
@@ -239,7 +247,7 @@ deserialiseData bs = do
         Right x -> return $ Opr x
         Left e3  -> throwError $ NoDeserial [e1,e2,e3]
 
-astToTerm :: Monad m => Name -> Index -> AnonAST -> Meta -> ExceptT IPLDErr m Term
+astToTerm :: Monad m => Name -> Index -> DagAST -> Meta -> ExceptT IPLDErr m Term
 astToTerm n index anon meta = do
   liftEither (evalState (runExceptT (go anon [n])) 1)
   where
@@ -275,7 +283,7 @@ astToTerm n index anon meta = do
       "False" -> return False
       n      -> get >>= \i -> throwError $ UnexpectedCtor n [] ctx i
 
-    go :: AnonAST -> [Name] -> ExceptT IPLDErr (State Int) Term
+    go :: DagAST -> [Name] -> ExceptT IPLDErr (State Int) Term
     go t ctx = case t of
       Vari idx -> do
         i <- get
@@ -319,27 +327,24 @@ astToTerm n index anon meta = do
 insertDef :: Monad m => Name -> Def -> Index -> Cache
           -> ExceptT IPLDErr m (CID,Cache)
 insertDef name (Def doc term typ_) index c@(Cache cache) = do
-  (termAnon, termMeta) <- termToAST name term index c
-  (typeAnon, typeMeta) <- termToAST name typ_ index c
-  let termAnonCID = makeCID termAnon :: CID
-  let typeAnonCID = makeCID typeAnon :: CID
-  let anonDef     = AnonDef termAnonCID typeAnonCID
-  let anonDefCID  = makeCID anonDef :: CID
-  let dagAST      = DagDef anonDefCID doc termMeta typeMeta
-  let dagASTCID   = makeCID dagAST :: CID
-  let cache'      = M.insert dagASTCID  (BSL.toStrict $ serialise dagAST)  $
-                    M.insert anonDefCID  (BSL.toStrict $ serialise anonDef)  $
-                    M.insert typeAnonCID (BSL.toStrict $ serialise typeAnon) $
-                    M.insert termAnonCID (BSL.toStrict $ serialise termAnon) $
+  (anonTerm, termMeta) <- termToAST name term index c
+  (anonType, typeMeta) <- termToAST name typ_ index c
+  let anonTermCid = makeCid anonTerm :: CID
+  let anonTypeCid = makeCid anonType :: CID
+  let dagDef      = DagDef anonTermCid anonTypeCid doc termMeta typeMeta
+  let dagDefCid   = makeCid dagDef :: CID
+  let cache'      = M.insert dagDefCid (BSL.toStrict $ serialise dagDef)  $
+                    M.insert anonTypeCid (BSL.toStrict $ serialise anonTerm) $
+                    M.insert anonTermCid (BSL.toStrict $ serialise anonType) $
                     cache
-  return $ (dagASTCID,Cache cache')
+  return $ (dagDefCid,Cache cache')
 
 insertPackage :: Package -> Cache -> (CID,Cache)
-insertPackage p (Cache c) = let pCID = makeCID p in
+insertPackage p (Cache c) = let pCID = makeCid p in
   (pCID, Cache $ M.insert pCID (BSL.toStrict $ serialise p) c)
 
 insertSource :: Source -> Cache -> (CID,Cache)
-insertSource p (Cache c) = let pCID = makeCID p in
+insertSource p (Cache c) = let pCID = makeCid p in
   (pCID, Cache $ M.insert pCID (BSL.toStrict $ serialise p) c)
 
 insertDefs :: Monad m => [(Name,Def)] -> Index -> Cache
@@ -406,7 +411,7 @@ writeCache root (Cache c) = void $ M.traverseWithKey go c
     go :: CID -> BS.ByteString -> IO ()
     go c bs = do
       createDirIfMissing True dir
-      name <- parseRelFile (T.unpack $ printCIDBase32 c)
+      name <- parseRelFile (T.unpack $ cidToText c)
       let file = (dir </> name)
       exists <- doesFileExist file
       unless exists (BS.writeFile (toFilePath file) bs)

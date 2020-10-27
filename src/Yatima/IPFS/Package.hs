@@ -1,3 +1,11 @@
+{-
+Module      : Yatima.IPFS.Package
+Description : Defines the Yatima package, which is a map of names to content identifiers
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 module Yatima.IPFS.Package where
 
 import           Codec.Serialise
@@ -18,7 +26,7 @@ import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
 import           Data.List                  (sortBy)
 
-import           Yatima.IPFS.CID
+import           Data.IPLD.CID
 import           Yatima.Term
 
 data Package = Package
@@ -36,7 +44,7 @@ emptyIndex :: Index
 emptyIndex = Index M.empty M.empty
 
 emptyPackage :: Name -> Package
-emptyPackage n = Package n "" (makeCID BSL.empty) emptyImports emptyIndex
+emptyPackage n = Package n "" (makeCid BSL.empty) emptyImports emptyIndex
 
 newtype Imports = Imports (Map CID Text) deriving (Show, Eq)
 newtype Source  = Source  Text           deriving (Show, Eq)
@@ -73,8 +81,8 @@ encodeIndex (Index byName byCID) = encodeListLen 3
   <> (encodeMapLen (fromIntegral $ M.size byName) <> encodeByName byName)
   <> (encodeMapLen (fromIntegral $ M.size byCID ) <> encodeByCID  byCID)
   where
-    f (k,v) r = encodeString k <> encodeCID v <> r
-    g (k,v) r = encodeCID k <> encodeString v <> r
+    f (k,v) r = encodeString k <> encodeCid v <> r
+    g (k,v) r = encodeCid k <> encodeString v <> r
     encodeByName byName = foldr f mempty (sortBy cmp (M.toList byName))
     encodeByCID byCID   = foldr g mempty (sortBy cmp (M.toList byCID))
     cmp (k1,_) (k2,_)   = cborCanonicalOrder (serialise k1) (serialise k2)
@@ -92,9 +100,9 @@ decodeIndex = do
   tag    <- decodeString
   when (tag /= "Index") (fail $ "invalid Index tag: " ++ show tag)
   n      <- decodeMapLen
-  byName <- M.fromList <$> replicateM n ((,) <$> decodeString <*> decodeCID)
+  byName <- M.fromList <$> replicateM n ((,) <$> decodeString <*> decodeCid)
   c      <- decodeMapLen
-  byCID  <- M.fromList <$> replicateM c ((,) <$> decodeCID <*> decodeString)
+  byCID  <- M.fromList <$> replicateM c ((,) <$> decodeCid <*> decodeString)
   return $ Index byName byCID
 
 instance Serialise Index where
@@ -104,14 +112,14 @@ instance Serialise Index where
 encodeImports :: Imports -> Encoding
 encodeImports (Imports is) = encodeMapLen (fromIntegral $ M.size is ) <> go is
   where
-    f (k,v) r = encodeCID k <> encodeString v <> r
+    f (k,v) r = encodeCid k <> encodeString v <> r
     go is = foldr f mempty (sortBy cmp (M.toList is))
     cmp (k1,_) (k2,_)   = cborCanonicalOrder (serialise k1) (serialise k2)
 
 decodeImports :: Decoder s Imports
 decodeImports = do
   n      <- decodeMapLen
-  Imports . M.fromList <$> replicateM n ((,) <$> decodeCID <*> decodeString)
+  Imports . M.fromList <$> replicateM n ((,) <$> decodeCid <*> decodeString)
 
 instance Serialise Imports where
   encode = encodeImports
@@ -132,7 +140,7 @@ encodePackage package = encodeListLen 6
   <> (encodeString  ("Package" :: Text))
   <> (encodeString  (_title   package))
   <> (encodeString  (_descrip package))
-  <> (encodeCID     (_source package))
+  <> (encodeCid     (_source package))
   <> (encodeImports (_imports package))
   <> (encodeIndex   (_index   package))
 
@@ -142,7 +150,7 @@ decodePackage = do
   when (size /= 6) (fail $ "invalid Package list size: " ++ show size)
   tag <- decodeString
   when (tag /= "Package") (fail $ "invalid Package tag: " ++ show tag)
-  Package <$> decodeString <*> decodeString <*> decodeCID
+  Package <$> decodeString <*> decodeString <*> decodeCid
   <*> decodeImports <*> decodeIndex
 
 instance Serialise Package where

@@ -20,16 +20,16 @@ extra-source-files:
 
 library
   exposed-modules:
+      Data.IPLD.CID
+      Data.IPLD.DagAST
+      Data.IPLD.DagJSON
       Yatima.Core
       Yatima.Core.Wasm
       Yatima.Core.Ctx
       Yatima.Core.Hoas
       Yatima.Core.IR
       Yatima.Compiler.Scheme
-      Yatima.IPFS.DagAST
-      Yatima.IPFS.DagJSON
       Yatima.IPFS.Import
-      Yatima.IPFS.CID
       Yatima.IPFS.Client
       Yatima.IPFS.IPLD
       Yatima.IPFS.Package
@@ -43,7 +43,9 @@ library
       Yatima.Term
       Yatima
   other-modules:
+      Data.Multihash
       Yatima.Core.Prim
+      Yatima.Core.UnionFind
       Paths_yatima
   hs-source-dirs:
       src
@@ -53,13 +55,17 @@ library
     , array
     , base >=4.7 && <5
     , base16
+    , binary
+    , binary-varint
     , bytestring
     , cborg
     , cereal
     , containers
     , cryptonite
+    , deepseq
     , exceptions
     , file-embed
+    , hashable
     , http-client
     , http-client-tls
     , http-types
@@ -67,6 +73,7 @@ library
     , ipfs-api
     , ipld-cid
     , megaparsec
+    , memory
     , mtl
     , multibase
     , multihash-cryptonite
@@ -127,7 +134,6 @@ test-suite spec
     , containers
     , cryptonite
     , hspec
-    , ipld-cid
     , megaparsec
     , mtl
     , multibase

@@ -15,16 +15,16 @@ description:
 library:
   source-dirs: src
   exposed-modules:
+    - Data.IPLD.CID
+    - Data.IPLD.DagAST
+    - Data.IPLD.DagJSON
     - Yatima.Core
     - Yatima.Core.Wasm
     - Yatima.Core.Ctx
     - Yatima.Core.Hoas
     - Yatima.Core.IR
     - Yatima.Compiler.Scheme
-    - Yatima.IPFS.DagAST
-    - Yatima.IPFS.DagJSON
     - Yatima.IPFS.Import
-    - Yatima.IPFS.CID
     - Yatima.IPFS.Client
     - Yatima.IPFS.IPLD
     - Yatima.IPFS.Package
@@ -73,6 +73,11 @@ library:
     - array
     - template-haskell
     - syb
+    - binary
+    - deepseq
+    - binary-varint
+    - hashable
+    - memory
 
   default-extensions:
     - OverloadedStrings
@@ -148,7 +153,6 @@ tests:
       - raw-strings-qq
       - bytestring
       - multibase
-      - ipld-cid
       - serialise
       - cborg
       - cryptonite

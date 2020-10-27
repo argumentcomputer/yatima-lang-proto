@@ -19,8 +19,8 @@ import           Data.Text                            (Text)
 import qualified Data.Text                            as T
 import qualified Data.Text.Encoding                   as T
 
-import           Yatima.IPFS.CID
-import           Yatima.IPFS.DagAST
+import           Data.IPLD.CID
+import           Data.IPLD.DagAST
 import           Yatima.IPFS.IPLD
 import           Yatima.IPFS.Package
 import           Yatima.Term
@@ -49,11 +49,10 @@ spec = do
   describe "Checking serialisation correctness: `x == deserialise (serialise x)`" $ do
     it "Cid"  $ property $ prop_serial @CID
     it "Meta" $ property $ prop_serial @Meta
-    it "Anon" $ property $ prop_serial @AnonAST
+    it "DagAST" $ property $ prop_serial @DagAST
     it "Literal" $ property $ prop_serial @Literal
     it "LitType" $ property $ prop_serial @LitType
     it "PrimOp" $ property $ prop_serial @PrimOp
-    it "ASTDef" $ property $ prop_serial @AnonDef
     it "DagDef" $ property $ prop_serial @DagDef
     it "Package" $ property $ prop_serial @Index
     it "Package" $ property $ prop_serial @Package

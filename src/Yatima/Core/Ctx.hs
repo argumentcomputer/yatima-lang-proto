@@ -2,13 +2,10 @@
 Module      : Yatima.Core.Ctx
 Description : Defines a named sequence datatype used as a context for
 typechecking.
-Copyright   : (c) Sunshine Cybernetics, 2020
+Copyright   : 2020 Yatima Inc.
 License     : GPL-3
 Maintainer  : john@yatima.io
 Stability   : experimental
-
-This module defines `Term`, the type of expressions in the Yatima language.
-
 -}
 module Yatima.Core.Ctx where
 

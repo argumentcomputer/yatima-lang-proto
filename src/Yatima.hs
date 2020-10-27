@@ -19,7 +19,7 @@ import           Yatima.Term            (Def (..), Defs, Name, Term (..),
                                          Uses (..))
 import qualified Yatima.Term            as Term
 
-import           Yatima.IPFS.CID
+import           Data.IPLD.CID
 import           Yatima.IPFS.IPLD
 import           Yatima.IPFS.Package
 import           Yatima.IPFS.Import
@@ -90,7 +90,7 @@ prettyFile file = do
     go :: Index -> Name -> Def -> IO ()
     go index nam def = do
       putStrLn ""
-      putStrLn $ T.unpack $ printCIDBase32 $ (_byName index) M.! nam
+      putStrLn $ T.unpack $ cidToText $ (_byName index) M.! nam
       putStrLn $ T.unpack $ prettyDef nam def
       return ()
 
@@ -110,7 +110,7 @@ checkRef index cache (name,cid) = do
   case runExcept $ Core.check defs Ctx.empty Once trm typ of
     Left  e -> putStrLn $ T.unpack $ T.concat 
         ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
-        , printCIDBase32 cid, "\n"
+        , cidToText cid, "\n"
         , T.pack $ show e]
     Right (_,t,_) -> putStrLn $ T.unpack $ T.concat
         ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHoas t]
@@ -131,7 +131,7 @@ compileRef index cache (name,cid) = do
   case runExcept $ Core.check defs Ctx.empty Once trm typ of
     Left  e -> ioError $ userError $ T.unpack $ T.concat
         ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
-        , printCIDBase32 cid, "\n"
+        , cidToText cid, "\n"
         , T.pack $ show e]
     Right (_,_,c) -> return $ Scheme.defToCode name c
 

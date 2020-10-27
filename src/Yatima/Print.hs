@@ -1,7 +1,7 @@
 {-|
 Module      : Yatima.Print
 Description : Pretty-printing of expressions in the Yatima Language
-Copyright   : (c) Sunshine Cybernetics, 2020
+Copyright   : 2020 Yatima Inc.
 License     : GPL-3
 Maintainer  : john@yatima.io
 Stability   : experimental

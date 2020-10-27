@@ -1,3 +1,12 @@
+{-|
+  Moduel      : Data.Multihash
+  Copyright   : 2020 Yatima Inc.
+  Description : A compiler from Yatima to R5RS Scheme
+  License     : GPL-3
+  Maintainer  : john@yatima.io
+  Stability   : experimental
+-}
+
 module Yatima.Compiler.Scheme where
 
 import           Data.Text                      (Text)

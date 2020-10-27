@@ -1,8 +1,24 @@
-module Yatima.IPFS.DagJSON where
+{-
+Module      : Data.IPLD.DagJSON
+Description : This module implements DagJSON embedding of JSON structures into the InterPlanetary Linked Data (IPLD) directed acyclic graph (DAG)
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
 
--- adapted from
--- https://github.com/joelburget/haskell-ipld/blob/master/src/Network/IPLD/Internal.hs
--- and https://hackage.haskell.org/package/cborg-json-0.2.2.0/docs/src/Codec.CBOR.JSON.html#encodeValue
+
+This module modifies work by [Joel
+Burget](https://github.com/joelburget/haskell-ipld/blob/master/src/Network/IPLD/Internal.hs)
+which is licensed under BSD3 terms included with this package in the
+@licenses/2017_Joel_Burget@ file.
+
+This module modifies work by [Duncan Coutts and Well-Typed
+LLP](https://github.com/well-typed/cborg/blob/master/cborg-json/src/Codec/CBOR/JSON.hs))
+which is licensed under BSD3 terms included with this package in the
+@licenses/2017_Duncan_Coutts@ file.
+
+-}
+module Data.IPLD.DagJSON where
 
 import           Data.Monoid
 import           Control.Applicative
@@ -18,8 +34,7 @@ import           Data.Scientific                     as Scientific
 import qualified Data.Text                           as T
 import           Data.Text                           (Text)
 import qualified Data.Vector                         as V
-
-import           Yatima.IPFS.CID
+import           Data.IPLD.CID
 
 data DagJSON
   = DagLink CID
@@ -33,7 +48,7 @@ data DagJSON
 
 toAeson :: DagJSON -> Aeson.Value
 toAeson val = case val of
-  DagLink   cid  -> Aeson.object [ "/" .= (printCIDBase32 cid)]
+  DagLink   cid  -> Aeson.object [ "/" .= cidToText cid]
   DagObject hmap -> Aeson.Object (toAeson <$> hmap)
   DagArray  arr  -> Aeson.Array  (toAeson <$> arr)
   DagText   text -> Aeson.String text
@@ -64,7 +79,7 @@ instance Aeson.ToJSON DagJSON where
 -- | Encode a DagJSON value into CBOR.
 encodeDagJSON :: DagJSON -> Encoding
 encodeDagJSON x = case x of
-  DagLink c    -> encodeCID c
+  DagLink c    -> encodeCid c
   DagObject vs ->  encodeObject vs
   DagArray  vs -> encodeArray  vs
   DagText s    ->  encodeString s

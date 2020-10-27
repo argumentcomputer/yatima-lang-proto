@@ -1,8 +1,17 @@
+{-|
+Module      : Yatima.Core.WASM
+Description : Defines utilities for Yatima's WASM numeric primitives
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+
+This module modifies work by [Ilya Rezvov](https://github.com/SPY/haskell-wasm),
+which is released under MIT terms included with this package in the
+@licenses/2018_Ilya_Rezvov@ file
+-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
--- This module contains internal code reexported from Ilya Rezvov's Haskell-WASM
--- library: https://github.com/SPY/haskell-wasm, which is released under the
--- following MIT license: https://github.com/SPY/haskell-wasm/blob/master/LICENSE
 module Yatima.Core.Wasm where
 
 

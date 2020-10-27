@@ -1,3 +1,12 @@
+{-|
+Module      : Yatima.Core.Hoas
+Description : Defines a Higher-Order-Abstract-Syntax for Yatima terms
+typechecking.
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 module Yatima.Core.Hoas where
 
 import           Data.Text                      (Text)

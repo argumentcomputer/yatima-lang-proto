@@ -1,3 +1,11 @@
+{-
+Module      : Yatima.IPFS.Client
+Description : This module implements a Haskell Servant Client for the IPFS HTTP API
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
@@ -32,10 +40,10 @@ import           Path.IO
 
 import           Codec.Serialise
 
-import           Yatima.IPFS.CID
+import           Data.IPLD.CID
+import           Data.IPLD.DagJSON
+import           Data.IPLD.DagAST
 import           Yatima.IPFS.IPLD
-import           Yatima.IPFS.DagJSON
-import           Yatima.IPFS.DagAST
 import           Yatima.IPFS.Package
 import           Yatima.IPFS.Import
 import           Yatima.Term
@@ -51,7 +59,7 @@ dagPut :: BSL.ByteString -> Maybe Text -> Maybe Text -> Maybe Bool -> Maybe Text
        -> ClientM Value
 dagPut = client (Proxy :: Proxy ApiV0DagPut)
 
-dagPutAST :: Maybe Bool -> AnonAST -> ClientM Value
+dagPutAST :: Maybe Bool -> DagAST -> ClientM Value
 dagPutAST pin ast =
   dagPut (serialise ast) (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
 
@@ -64,7 +72,7 @@ dagGet = S.client (Proxy :: Proxy ApiV0DagGet)
 blockGet :: Text -> S.ClientM (SourceIO BS.ByteString)
 blockGet = S.client (Proxy :: Proxy ApiV0BlockGet)
 
-runDagPutAST :: AnonAST -> IO ()
+runDagPutAST :: DagAST -> IO ()
 runDagPutAST ast = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
@@ -134,7 +142,7 @@ runDagPutCache' root = do
       case cidFromText (T.pack $ toFilePath f) of
         Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ (toFilePath f) ++ ", " ++ e
         Right c -> do
-          putStrLn $ (T.unpack $ printCIDBase32 c)
+          putStrLn $ (T.unpack $ cidToText c)
           e <- runDagPutFile f
           case e of
             Left e  -> print e >> return ()
@@ -234,7 +242,7 @@ runEternumPinHash root hash = do
 --      case cidFromText (T.pack f) of
 --        Left e  -> error $ "CORRUPT CACHE ENTRY: " ++ (toFilePath f) ++ ", " ++ e
 --        Right c -> do
---          putStrLn $ (T.unpack $ printCIDBase32 c)
+--          putStrLn $ (T.unpack $ cidToText c)
 --          runEternumPinFile root f
 --          return ()
 

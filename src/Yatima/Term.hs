@@ -1,7 +1,7 @@
 {-|
 Module      : Yatima.Term
 Description : Defines expressions in the Yatima language
-Copyright   : (c) Sunshine Cybernetics, 2020
+Copyright   : 2020 Yatima Inc.
 License     : GPL-3
 Maintainer  : john@yatima.io
 Stability   : experimental
@@ -53,7 +53,7 @@ data Term where
   New :: Term -> Term
   -- | Self elimination
   Use :: Term -> Term
-  -- | An reference
+  -- | An immutable global reference
   Ref :: Name -> Term
   -- | An inline local definition,
   Let :: Bool -> Name -> Uses -> Term -> Term -> Term -> Term

@@ -2,7 +2,7 @@
 Module      : Yatima.Core
 Description : Evaluate and typecheck expressions in the Yatima Language using
 higher-order-abstract-syntax
-Copyright   : (c) Sunshine Cybernetics, 2020
+Copyright   : 2020 Yatima Inc.
 License     : GPL-3
 Maintainer  : john@yatima.io
 Stability   : experimental
@@ -32,6 +32,7 @@ import qualified Yatima.Core.Ctx            as Ctx
 import           Yatima.Core.Hoas
 import           Yatima.Core.Prim
 import           Yatima.Core.IR
+import           Yatima.Core.UnionFind
 import           Yatima.Print
 import           Yatima.Term
 

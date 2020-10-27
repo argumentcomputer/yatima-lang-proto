@@ -19,8 +19,8 @@ import           Data.Text                            (Text)
 import qualified Data.Text                            as T
 import qualified Data.Text.Encoding                   as T
 
-import           Yatima.IPFS.CID
-import           Yatima.IPFS.DagAST
+import           Data.IPLD.CID
+import           Data.IPLD.DagAST
 import           Yatima.IPFS.IPLD
 import           Yatima.IPFS.Package
 import           Yatima.Term
@@ -32,14 +32,14 @@ import           Test.QuickCheck.Instances.ByteString
 import           Test.QuickCheck.Instances.Text
 
 instance Arbitrary CID where
-  arbitrary = makeCID <$> (arbitrary :: Gen ByteString)
+  arbitrary = makeCid <$> (arbitrary :: Gen ByteString)
 
 deriving instance Bounded Uses
 
 instance Arbitrary Uses where
   arbitrary = arbitraryBoundedEnum
 
-instance Arbitrary AnonAST where
+instance Arbitrary DagAST where
   arbitrary = oneof
     [ Vari <$> arbitrary
     , Link <$> arbitrary
@@ -56,13 +56,8 @@ instance Arbitrary AnonAST where
 instance Arbitrary Meta where
   arbitrary = Meta <$> arbitrary
 
-instance Arbitrary AnonDef where
-  arbitrary = AnonDef <$> arbitrary <*> arbitrary
-
-deriving instance Eq AnonDef
-
 instance Arbitrary DagDef where
-  arbitrary = DagDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = DagDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 deriving instance Eq DagDef
 

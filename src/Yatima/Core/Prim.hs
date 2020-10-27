@@ -1,3 +1,15 @@
+{-|
+Module      : Yatima.Core.Prim
+Description : Defines the semantics of Yatima's primitive literals and operations
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+
+This module modifies work by [Ilya Rezvov](https://github.com/SPY/haskell-wasm),
+which is released under MIT terms included with this package in the
+@licenses/2018_Ilya_Rezvov@ file
+-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 module Yatima.Core.Prim where

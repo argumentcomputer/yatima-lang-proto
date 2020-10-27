@@ -1,3 +1,16 @@
+{-
+Module      : Yide
+Description : This module implements the Yatima Interactive Development Environment (Yide)
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+
+This module modifies work by [Stephen
+Diehl](https://github.com/sdiehl/repline/blob/master/src/System/Console/Repline.hs)
+which is licensed under MIT terms included with this package in the
+@licenses/2016_2020_Stephen_Diehl@ file.
+-}
 module Yide where
 
 import           Control.Applicative
@@ -31,7 +44,7 @@ import           Path.IO
 
 import           HaskelineT
 
-import           Yatima.IPFS.CID
+import           Data.IPLD.CID
 import           Yatima.IPFS.Package
 import           Yatima.IPFS.Import
 import           Yatima.IPFS.IPLD
@@ -134,7 +147,7 @@ process line = dontCrash' $ do
         defs  <- catchReplErr $ indexToDefs index cache
         let go cids nam def = do
               putStrLn ""
-              putStrLn $ T.unpack $ printCIDBase32 $ cids M.! nam
+              putStrLn $ T.unpack $ cidToText $ cids M.! nam
               putStrLn $ T.unpack $ prettyDef nam def
               return ()
         liftIO $ M.traverseWithKey (go (_byName index)) defs
@@ -183,8 +196,6 @@ process line = dontCrash' $ do
           Right index -> do
             modify (\e -> e {_yDefs = index})
             return ()
-
-
 
 prefixes :: [String] -> String -> Bool
 prefixes (p:ps) x = isPrefixOf p x || prefixes ps x

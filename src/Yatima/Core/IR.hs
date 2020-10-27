@@ -1,3 +1,11 @@
+{-|
+Module      : Yatima.Core.Ctx
+Description : Defines an Intermediate Representation for Yatima terms which is used during compilation
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 module Yatima.Core.IR where
 
 import           Data.Text                      (Text)

@@ -1,7 +1,7 @@
 {-|
 Module      : Yatima.Parse
 Description : Parsing expressions in the Yatima Language
-Copyright   : (c) Sunshine Cybernetics, 2020
+Copyright   : 2020 Yatima Inc.
 License     : GPL-3
 Maintainer  : john@yatima.io
 Stability   : experimental
@@ -10,15 +10,6 @@ This library implements a `Megaparsec` parser for the Yatima language using the
 conventions specified in `Text.MegaParsec.Char.Lexer`. A helpful tutorial
 explaining Megaparsec can be found on [Mark Karpov's
 blog](https://markkarpov.com/tutorial/megaparsec.html)
-
-Because the `Parser` type defined here is wrapped in an `RWST` and `IO` monad
-transformer, if you wish to extend or modify it, you will find the `parseIO
-function useful for testing and running the parsers defined here:
-
-@
-> parseIO (pExpr False) "λ y => (λ x => x) y"
-Lam "y" (App (Lam "x" (Var "x" 0)) (Var "y" 0))
-@
 |-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}

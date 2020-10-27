@@ -1,3 +1,12 @@
+{-|
+Module      : Yatima.QuasiQuoter
+Description : A quasiquoter to allow Yatima expressions to be embedded in
+Haskell source files.
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
