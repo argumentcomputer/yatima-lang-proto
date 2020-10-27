@@ -20,6 +20,161 @@ import qualified Yatima.Core.Ctx as Ctx
 import           Yatima.Term
 import           Yatima.QuasiQuoter
 
+oprArity :: PrimOp -> Int
+oprArity opr = case opr of
+  I32_const           -> 2
+  I64_const           -> 2
+  F32_const           -> 2
+  F64_const           -> 2
+  I32_eqz             -> 1
+  I32_eq              -> 2
+  I32_ne              -> 2
+  I32_lt_s            -> 2
+  I32_lt_u            -> 2
+  I32_gt_s            -> 2
+  I32_gt_u            -> 2
+  I32_le_s            -> 2
+  I32_le_u            -> 2
+  I32_ge_s            -> 2
+  I32_ge_u            -> 2
+  I64_eqz             -> 2
+  I64_eq              -> 2
+  I64_ne              -> 2
+  I64_lt_s            -> 2
+  I64_lt_u            -> 2
+  I64_gt_s            -> 2
+  I64_gt_u            -> 2
+  I64_le_s            -> 2
+  I64_le_u            -> 2
+  I64_ge_s            -> 2
+  I64_ge_u            -> 2
+  F32_eq              -> 2
+  F32_ne              -> 2
+  F32_lt              -> 2
+  F32_gt              -> 2
+  F32_le              -> 2
+  F32_ge              -> 2
+  F64_eq              -> 2
+  F64_ne              -> 2
+  F64_lt              -> 2
+  F64_gt              -> 2
+  F64_le              -> 2
+  F64_ge              -> 2
+  I32_clz             -> 1
+  I32_ctz             -> 1
+  I32_popcnt          -> 1
+  I32_add             -> 2
+  I32_sub             -> 2
+  I32_mul             -> 2
+  I32_div_s           -> 2
+  I32_div_u           -> 2
+  I32_rem_s           -> 2
+  I32_rem_u           -> 2
+  I32_and             -> 2
+  I32_or              -> 2
+  I32_xor             -> 2
+  I32_shl             -> 2
+  I32_shr_s           -> 2
+  I32_shr_u           -> 2
+  I32_rotl            -> 2
+  I32_rotr            -> 2
+  I64_clz             -> 1
+  I64_ctz             -> 1
+  I64_popcnt          -> 1
+  I64_add             -> 2
+  I64_sub             -> 2
+  I64_mul             -> 2
+  I64_div_s           -> 2
+  I64_div_u           -> 2
+  I64_rem_s           -> 2
+  I64_rem_u           -> 2
+  I64_and             -> 2
+  I64_or              -> 2
+  I64_xor             -> 2
+  I64_shl             -> 2
+  I64_shr_s           -> 2
+  I64_shr_u           -> 2
+  I64_rotl            -> 2
+  I64_rotr            -> 2
+  F32_abs             -> 1
+  F32_neg             -> 1
+  F32_ceil            -> 1
+  F32_floor           -> 1
+  F32_trunc           -> 1
+  F32_nearest         -> 1
+  F32_sqrt            -> 1
+  F32_add             -> 2
+  F32_sub             -> 2
+  F32_mul             -> 2
+  F32_div             -> 2
+  F32_min             -> 2
+  F32_max             -> 2
+  F32_copysign        -> 2
+  F64_abs             -> 1
+  F64_neg             -> 1
+  F64_ceil            -> 1
+  F64_floor           -> 1
+  F64_trunc           -> 1
+  F64_nearest         -> 1
+  F64_sqrt            -> 1
+  F64_add             -> 2
+  F64_sub             -> 2
+  F64_mul             -> 2
+  F64_div             -> 2
+  F64_min             -> 2
+  F64_max             -> 2
+  F64_copysign        -> 2
+  I32_wrap_I64        -> 1
+  I32_trunc_F32_s     -> 1
+  I32_trunc_F32_u     -> 1
+  I32_trunc_F64_s     -> 1
+  I32_trunc_F64_u     -> 1
+  I64_extend_I32_s    -> 1
+  I64_extend_I32_u    -> 1
+  I64_trunc_F32_s     -> 1
+  I64_trunc_F32_u     -> 1
+  I64_trunc_F64_s     -> 1
+  I64_trunc_F64_u     -> 1
+  F32_convert_I32_s   -> 1
+  F32_convert_I32_u   -> 1
+  F32_convert_I64_s   -> 1
+  F32_convert_I64_u   -> 1
+  F32_demote_F64      -> 1
+  F64_convert_I32_s   -> 1
+  F64_convert_I32_u   -> 1
+  F64_convert_I64_s   -> 1
+  F64_convert_I64_u   -> 1
+  F64_promote_F32     -> 1
+  I32_reinterpret_F32 -> 1
+  I64_reinterpret_F64 -> 1
+  F32_reinterpret_I32 -> 1
+  F64_reinterpret_I64 -> 1
+  Natural_succ        -> 1
+  Natural_pred        -> 1
+  Natural_add         -> 2
+  Natural_mul         -> 2
+  Natural_sub         -> 2
+  Natural_div         -> 2
+  Natural_mod         -> 2
+  Natural_gt          -> 2
+  Natural_ge          -> 2
+  Natural_eq          -> 2
+  Natural_ne          -> 2
+  Natural_lt          -> 2
+  Natural_le          -> 2
+  Natural_to_I64      -> 1
+  Natural_to_I32      -> 1
+  Natural_from_I64    -> 1
+  Natural_from_I32    -> 1
+  BitVector_b0        -> 1
+  BitVector_b1        -> 1
+  BitVector_concat    -> 2
+  BitVector_length    -> 1
+  String_cons         -> 2
+  String_concat       -> 2
+  Char_chr            -> 1
+  Char_ord            -> 1
+
 reduceOpr :: PrimOp -> [Hoas] -> Hoas
 reduceOpr op args = case (op,args) of
   -- (I32_const,   LitH (VI32 a) : LitH (VI32 b) : args')  -> LitH (VI32 a)
@@ -156,7 +311,7 @@ reduceOpr op args = case (op,args) of
   --    if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) then noredex
   --    else LitH (VI32 (u32 $ truncate a))
   -- (I32_trunc_F32_u, LitH (VF32 a) : args')     ->
-  --    if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) 
+  --    if (isNaN a || isInfinite a || a >= 2^32 || a <= -1)
   --    then LitH VException
   --    else LitH (VI32 (truncate a))
   -- (I32_trunc_F64_s, LitH (VF64 a) : args')     ->
@@ -164,25 +319,25 @@ reduceOpr op args = case (op,args) of
   --    then LitH VException
   --    else LitH (VI32 (u32 $ truncate a))
   -- (I32_trunc_F64_u, LitH (VF64 a) : args')     ->
-  --    if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) 
+  --    if (isNaN a || isInfinite a || a >= 2^64 || a <= -1)
   --    then LitH VException
   --    else LitH (VI32 (truncate a))
   -- (I64_extend_I32_s, LitH (VI32 a) : args')    -> LitH (VI64 (u64 $ fromIntegral $ i32 a))
   -- (I64_extend_I32_u, LitH (VI32 a) : args')    -> LitH (VI64 (fromIntegral a))
   -- (I64_trunc_F32_s, LitH (VF32 a) : args')     ->
-  --    if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) 
+  --    if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31)
   --    then LitH VException
   --    else LitH (VI64 (u64 $ truncate a))
   -- (I64_trunc_F32_u, LitH (VF32 a) : args')     ->
-  --    if (isNaN a || isInfinite a || a >= 2^32 || a <= -1) 
+  --    if (isNaN a || isInfinite a || a >= 2^32 || a <= -1)
   --    then LitH VException
   --    else LitH (VI64 (truncate a))
   -- (I64_trunc_F64_s, LitH (VF64 a) : args')     ->
-  --    if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63) 
+  --    if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63)
   --    then noredex -- WasmTrap
   --    else LitH (VI64 (u64 $ truncate a))
   -- (I64_trunc_F64_u, LitH (VF64 a) : args')     ->
-  --    if (isNaN a || isInfinite a || a >= 2^64 || a <= -1) 
+  --    if (isNaN a || isInfinite a || a >= 2^64 || a <= -1)
   --    then LitH VException
   --    else LitH (VI64 (truncate a))
   -- (F32_convert_I32_s, LitH (VI32 a) : args')   -> LitH (VF32 (realToFrac $ i32 a))
@@ -220,7 +375,7 @@ reduceOpr op args = case (op,args) of
     then LitH VException
     else LitH $ VI64 $ fromIntegral a
   (Natural_to_I32, LitH (VNatural a) : args') ->
-    if a >= 2^32 
+    if a >= 2^32
     then LitH VException
     else LitH $ VI32 $ fromIntegral a
   (Natural_from_I64, LitH (VI64 a) : args') -> LitH $ VNatural $ fromIntegral a
@@ -282,19 +437,19 @@ litInduction :: LitType -> Hoas -> Hoas
 litInduction t val = (\x y -> AppH y x) val $ termToHoas Ctx.empty $ case t of
   TNatural -> [yatima|
     λ self => forall
-    (P : forall #Natural -> Type)
+    (0 P : forall #Natural -> Type)
     (& zero : P 0)
     (& succ : forall (pred : #Natural) -> P (#Natural_succ pred))
     -> P self|]
   TString -> [yatima|
     λ self => forall
-    (P : forall #String -> Type)
+    (0 P : forall #String -> Type)
     (& nil  : P "")
     (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
     -> P self|]
   TBitVector -> [yatima|
     λ n self => forall
-   (P    : forall (n: #Natural) (#BitVector n) -> Type)
+   (0 P    : forall (n: #Natural) (#BitVector n) -> Type)
    (& be : P 0 #b)
    (& b0 : forall (n: #Natural) (xs : #String)
      -> P (#Natural_succ n) (#BitVector_b0 n xs))
@@ -339,5 +494,3 @@ typeOfOpr t = termToHoas Ctx.empty $ case t of
   String_concat  -> [yatima|∀ #String #String -> #String|]
   BitVector_b0   -> [yatima|∀ (n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
   BitVector_b1   -> [yatima|∀ (n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
-
-
