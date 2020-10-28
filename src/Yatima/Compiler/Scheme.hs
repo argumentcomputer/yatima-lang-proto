@@ -26,13 +26,16 @@ data Scheme where
   Nil      :: Scheme
   deriving (Show, Eq)
 
+defToCode :: Text -> IR -> Text
+defToCode nam trm = schemeToCode $ defToScheme nam trm
+
 -- Transform an IR into Scheme AST.
 --- All defined variables will start with ':' so to not collide with any primitive Scheme value or keyword
 defToScheme :: Text -> IR -> Scheme
-defToScheme nam trm = Define (T.cons ':' nam) (termToScheme Once trm)
+defToScheme nam trm = Define (T.cons ':' nam) (termToScheme trm)
 
-termToScheme :: Uses -> IR -> Scheme
-termToScheme use trm = go [] use trm where
+termToScheme :: IR -> Scheme
+termToScheme trm = go [] Once trm where
   go :: [Scheme] -> Uses -> IR -> Scheme
   go args use trm = case trm of
     RefI nam -> apply args $ Variable (nonPrim nam)
@@ -70,9 +73,10 @@ termToScheme use trm = go [] use trm where
   apply (arg:args) trm = apply args (Apply trm [arg])
   noArgs args trm = if args == [] then trm else error "Compilation error"
 
---- Transform Scheme AST into code. The `Int` variable `dep` represents the depth of the indentation
-schemeToCode :: Int -> Bool -> Scheme -> Text
-schemeToCode dep ind trm = LT.toStrict $ TB.toLazyText (go dep ind trm) where
+-- Transform Scheme AST into code.
+schemeToCode :: Scheme -> Text
+schemeToCode trm = LT.toStrict $ TB.toLazyText (go 0 False trm) where
+  -- The `Int` variable `dep` represents the depth of the indentation
   go :: Int -> Bool -> Scheme -> TB.Builder
   go dep True  trm = (TB.fromString $ replicate dep ' ') <> go dep False trm
   go dep False trm = case trm of
@@ -100,9 +104,6 @@ schemeToCode dep ind trm = LT.toStrict $ TB.toLazyText (go dep ind trm) where
   mergeWith sep []     = ""
   mergeWith sep [x]    = x
   mergeWith sep (x:xs) = x <> sep <> mergeWith sep xs
-
-defToCode :: Text -> IR -> Text
-defToCode nam trm = schemeToCode 0 False $ defToScheme nam trm
 
 litToCode :: Literal -> TB.Builder
 litToCode lit = case lit of
