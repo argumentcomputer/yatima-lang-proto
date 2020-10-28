@@ -33,6 +33,7 @@ defToScheme nam trm = Define (T.cons ':' nam) (termToScheme Once trm)
 
 termToScheme :: Uses -> IR -> Scheme
 termToScheme use trm = go [] use trm where
+  go :: [Scheme] -> Uses -> IR -> Scheme
   go args use trm = case trm of
     RefI nam -> apply args $ Variable (nonPrim nam)
     VarI nam -> apply args $ Variable (nonPrim nam)
@@ -50,15 +51,7 @@ termToScheme use trm = go [] use trm where
         _    -> apply args $ (if rec then Letrec else Let) (nonPrim nam) (go [] (use *# valUse) val) (go [] use bod)
     NewI exp            -> go args use exp
     UseI exp Nothing    -> go args use exp
-    UseI exp (Just TNatural) -> let (cases, rest) = splitAt 2 args in
-      -- inline cases $
-      apply cases $
-      Lambda ["zero_case"] $
-      Lambda ["succ_case"] $
-      Let "tmp" (go rest use exp) $
-      If (Equal (Variable "tmp") (Value (VNatural 0))) (Variable "zero_case") $
-      Apply (Variable "succ_case") [Apply (Operator Natural_pred) [Variable "tmp"]]
-    UseI exp (Just typ) -> go args use exp -- TODO
+    UseI exp (Just typ) -> useLit typ args (go [] use exp)
     -- Native datatypes
     LitI lit -> noArgs args $ Value lit
     OprI opr ->
@@ -132,3 +125,19 @@ oprToCode opr = case opr of
   Natural_lt   -> "<"
   Natural_le   -> "<="
   _            -> "'()" -- TODO
+
+useLit :: LitType -> [Scheme] -> Scheme -> Scheme
+useLit typ args trm = case typ of
+  TNatural ->
+    let bod z s = Let "tmp" trm $
+                  If (Equal (Variable "tmp") (Value (VNatural 0))) z $
+                  Apply s [Apply (Operator Natural_pred) [Variable "tmp"]]
+    in case args of
+      []       -> enclose "case_zero" $ enclose "case_succ" . bod
+      (x:[])   -> enclose "case_succ" $ bod x
+      (x:y:xs) -> apply xs $ bod x y
+  _ -> trm -- TODO
+  where
+    enclose nam bod = Lambda [nam] (bod (Variable nam))
+    apply []         trm = trm
+    apply (arg:args) trm = apply args (Apply trm [arg])
