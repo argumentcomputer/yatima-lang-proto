@@ -8,7 +8,10 @@ import           Spec.Parse                           (parse)
 
 import           Text.Megaparsec            hiding (State, parse)
 
-import           Yatima.Parse
+import           Data.IPLD.CID
+
+import           Yatima.Parse.Term
+import           Yatima.Parse.Literal
 import           Yatima.Print
 import           Yatima.Term
 import           Yatima.QuasiQuoter
@@ -30,6 +33,19 @@ prop_print_term :: Term -> Bool
 prop_print_term t = case ParseSpec.parse (pExpr False) (prettyTerm t) of
   ParseSpec.Good a -> a == t
   _      -> False
+
+
+fromRight (Right x) = x
+fromRight (Left e) = error "fromRight"
+
+term :: Term
+term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit VException)
+
+
+refId =
+  let d = cidFromText "bafy2bzaceb7tzcelrtfuo4zl375mtm7dqwmvv7a4amlpziwbm7k3hr4bp3lfc"
+      t = cidFromText "bafy2bzaceagf5dbfewoq632a5x5mjhhv3ojftx2sdh3lc73cneocoe7chzsks"
+   in Ref "id" (fromRight d) (fromRight t)
 
 spec :: SpecWith ()
 spec = do

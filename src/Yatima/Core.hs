@@ -33,14 +33,15 @@ import           Yatima.Core.Hoas
 import           Yatima.Core.Prim
 import           Yatima.Core.IR
 import           Yatima.Core.UnionFind
+import           Yatima.Core.CheckError
 import           Yatima.Print
 import           Yatima.Term
 
 whnf :: Defs -> Hoas -> Hoas
 whnf defs trm = case trm of
-  RefH nam           -> case defs M.!? nam of
+  RefH nam _ _ -> case defs M.!? nam of
     Just d  -> go $ fst (defToHoas nam d)
-    Nothing -> RefH nam
+    Nothing -> trm
   FixH nam bod       -> go (bod trm)
   AppH fun arg       -> case go fun of
     LamH _ bod -> go (bod arg)
@@ -120,7 +121,7 @@ serialize lvl term = TB.toLazyText (go term lvl lvl)
         if idx >= ini
         then "^" <> TB.decimal (lvl-idx-1)
         else "#" <> TB.decimal idx
-      RefH nam -> "$" <> name nam
+      RefH nam _ _ -> "$" <> name nam
       AllH nam use typ bod     ->
         "∀" <> uses use <> name nam
         <> go typ lvl ini
@@ -188,23 +189,9 @@ equal defs a b lvl = runIdentity $ go a b lvl Set.empty
         return $ funEq && argEq
       _         -> return False
 
-data CheckErr
-  = CheckQuantityMismatch Context (Name,Uses,Hoas) (Name,Uses,Hoas)
-  | InferQuantityMismatch Context (Name,Uses,Hoas) (Name,Uses,Hoas)
-  | TypeMismatch PreContext Hoas Hoas
-  | UnboundVariable Name Int
-  | EmptyContext
-  | UntypedLambda
-  | UndefinedReference Name
-  | LambdaNonFunctionType PreContext Hoas Hoas Hoas
-  | NewNonSelfType PreContext Hoas Hoas Hoas
-  | NonFunctionApplication Context Hoas Hoas Hoas
-  | NonSelfUse  Context Hoas Hoas Hoas
-  | CustomErr PreContext Text
-
 -- * Type System
 check :: Defs -> PreContext -> Uses -> Hoas -> Hoas
-      -> Except CheckErr (Context, Hoas, IR)
+      -> Except CheckError (Context, Hoas, IR)
 check defs pre use term typ = case term of
   LamH name body -> case whnf defs typ of
     AllH bindName bindUse bind typeBody -> do
@@ -257,14 +244,14 @@ check defs pre use term typ = case term of
 
 -- | Infers the type of a term
 infer :: Defs -> PreContext -> Uses -> Hoas
-      -> Except CheckErr (Context, Hoas, IR)
+      -> Except CheckError (Context, Hoas, IR)
 infer defs pre use term = case term of
   VarH nam lvl -> do
     let ir = VarI nam
     case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
       Nothing            -> throwError $ UnboundVariable nam lvl
       Just ((_,typ),ctx) -> return (ctx,typ,ir)
-  RefH nam -> do
+  RefH nam _ _ -> do
     --traceM ("RefH " ++ show nam)
     let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
     def         <- mapMaybe (defs M.!? nam)
@@ -333,102 +320,3 @@ infer defs pre use term = case term of
   OprH opr  -> return (toContext pre, typeOfOpr opr, OprI opr)
   _ -> throwError $ CustomErr pre "can't infer type"
 
----- * Pretty Printing Errors
-prettyUses :: Uses -> Text
-prettyUses None = "0"
-prettyUses Affi = "&"
-prettyUses Once = "1"
-prettyUses Many = "ω"
-
-prettyCtx :: Context -> Text
-prettyCtx (Ctx ctx) = foldr go "" ctx
-  where
-    go :: (Name,(Uses,Hoas)) -> Text -> Text
-    go (n,(u,t)) txt = T.concat ["- ", prettyCtxElem (n,u,t),"\n",txt]
-
-prettyCtxElem :: (Name,Uses,Hoas) -> Text
-prettyCtxElem ("",u,t) = T.concat [prettyUses u, " _: ", printHoas t]
-prettyCtxElem (n,u,t)  = T.concat [prettyUses u , " ", n, ": ", printHoas t]
-
-prettyPre :: PreContext -> Text
-prettyPre (Ctx ctx) = foldr go "" ctx
-  where
-    go :: (Name,Hoas) -> Text -> Text
-    go (n,t) txt = T.concat ["- ", prettyPreElem (n,t),"\n",txt]
-
-prettyPreElem :: (Name,Hoas) -> Text
-prettyPreElem ("",t) = T.concat [" _: ", printHoas t]
-prettyPreElem (n,t)  = T.concat [" ", n, ": ", printHoas t]
-
-prettyError :: CheckErr -> Text
-prettyError e = case e of
-    CheckQuantityMismatch ctx a b -> T.concat
-      ["Type checking quantity mismatch: \n"
-      , "- Expected: ", prettyCtxElem a, "\n"
-      , "- Detected: ", prettyCtxElem b, "\n"
-      , "With context:\n"
-      , prettyCtx ctx
-      ]
-    InferQuantityMismatch ctx a b -> T.concat
-      ["Type inference quantity mismatch: \n"
-      , "- Expected: ", prettyCtxElem a, "\n"
-      , "- Inferred: ", prettyCtxElem b, "\n"
-      , "With context:\n"
-      , prettyCtx ctx
-      ]
-    TypeMismatch ctx a b -> T.concat
-      ["Type Mismatch: \n"
-      , "- Expected: ", prettyPreElem ("",a), "\n"
-      , "- Detected: ", prettyPreElem ("",b), "\n"
-      , "With context:\n"
-      , prettyPre ctx
-      ]
-    LambdaNonFunctionType ctx trm typ typ' -> T.concat
-      ["The type of a lambda must be a forall: \n"
-      , "  Checked term: ", printHoas trm,"\n"
-      , "  Against type: ", printHoas typ, "\n"
-      , "  Reduced type: ",  printHoas typ',"\n"
-      , "With context:\n"
-      , prettyPre ctx
-      ]
-    NewNonSelfType ctx trm typ typ' -> T.concat
-      ["The type of data must be a self: \n"
-      , "  Checked term: ", printHoas trm,"\n"
-      , "  Against type: ", printHoas typ, "\n"
-      , "  Reduced type: ",  printHoas typ',"\n"
-      , "With context:\n"
-      , prettyPre ctx
-      ]
-    UnboundVariable nam idx -> T.concat
-      ["Unbound free variable: ", T.pack $ show nam, " at level ", T.pack $ show idx]
-    UntypedLambda -> "Can't infer the type of a lambda"
-    NonFunctionApplication ctx trm typ typ' -> T.concat
-      ["Tried to apply something that wasn't a lambda: \n"
-      , "  Checked term: ", printHoas trm,"\n"
-      , "  Against type: ", printHoas typ, "\n"
-      , "  Reduced type: ",  printHoas typ',"\n"
-      , "With context:\n"
-      , prettyCtx ctx
-      ]
-    NonSelfUse ctx trm typ typ' -> T.concat
-      ["Tried to case on something that wasn't data: \n"
-      , "  Checked term: ", printHoas trm,"\n"
-      , "  Against type: ", printHoas typ, "\n"
-      , "  Reduced type: ",  printHoas typ',"\n"
-      , "With context:\n"
-      , prettyCtx ctx
-      ]
-    EmptyContext -> "Empty Context"
-    UndefinedReference name -> T.concat
-      ["UndefinedReference error: \n"
-      , "Name: ", T.pack $ show name, "\n"
-      ]
-    CustomErr ctx txt -> T.concat
-      ["Custom Error:\n"
-      , txt,"\n"
-      , "With context:\n"
-      , prettyPre ctx
-      ]
-
-instance Show CheckErr where
-  show e = T.unpack $ prettyError e

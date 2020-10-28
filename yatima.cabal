@@ -35,6 +35,8 @@ library
       Yatima.Parse.Integer
       Yatima.Parse.Package
       Yatima.Parse.Term
+      Yatima.Parse.Literal
+      Yatima.Parse.Parser
       Yatima.Parse
       Yatima.Print
       Yatima.QuasiQuoter
@@ -48,9 +50,6 @@ library
       Yatima.Core.CheckError
       Yatima.Core.Prim
       Yatima.Core.UnionFind
-      Yatima.Parse.Literal
-      Yatima.Parse.ParseError
-      Yatima.Parse.Parser
       Paths_yatima
   hs-source-dirs:
       src

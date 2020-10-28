@@ -13,14 +13,16 @@ import           Data.List.NonEmpty         (NonEmpty)
 import           Data.List.NonEmpty         as NE
 
 import           Yatima.Term
-import qualified Yatima.Parse as Parse
-import           Yatima.Parse hiding (Parser)
+import qualified Yatima.Parse.Parser as Parse
+import           Yatima.Parse.Parser hiding (Parser)
+import           Yatima.Parse.Term
+import           Yatima.Package
 
-import qualified Spec.IPLD                            as IPLDSpec
+import qualified Spec.Instances                           as Instances
 
 import           Test.Hspec
 
-import           Text.Megaparsec            hiding (State, parse)
+import           Text.Megaparsec            hiding (State, parse, ParseError)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 import           Text.RawString.QQ
@@ -28,14 +30,14 @@ import           Text.RawString.QQ
 
 data Result a
   = Good a
-  | Bad Int (ErrorFancy (ParseErr ()))
-  | Ugly (ParseErrorBundle Text (ParseErr ()))
+  | Bad Int (ErrorFancy (ParseError ()))
+  | Ugly (ParseErrorBundle Text (ParseError ()))
   deriving (Eq, Show)
 
 type Parser a = Parse.Parser () Identity a
 
 testParseEnv :: Parse.ParseEnv
-testParseEnv = Parse.ParseEnv (Set.fromList ["test"]) (Set.fromList ["id"])
+testParseEnv = Parse.ParseEnv ["test"] (indexEntries Instances.test_index)
 
 parse :: Parser a -> Text -> Result a
 parse p txt = case runIdentity $ Parse.parseM p testParseEnv "" txt of
@@ -46,7 +48,7 @@ parse p txt = case runIdentity $ Parse.parseM p testParseEnv "" txt of
     _                         -> Ugly e
   Right x -> Good x
 
-mkBad :: Int -> ParseErr () -> Result a
+mkBad :: Int -> ParseError () -> Result a
 mkBad pos e = Bad pos (ErrorCustom e)
 
 parseIt :: (Eq a, Show a) => Parser a -> Text -> Result a -> SpecWith (Arg Expectation)
@@ -78,12 +80,12 @@ spec = do
     --parseIt (pName True >> eof) "A/Foo"  Ugly
 
   parseDescribe pLam "Lambda"
-    [ ("λ x => x", Good $ Lam "x" $ Var "x")
-    , ("λ x => λ y => x", Good $ Lam "x" $ Lam "y" $ Var "x")
-    , ( "λ x y => x", Good $ Lam "x" $ Lam "y" $ Var "x")
-    , ( "\\ x => x", Good $ Lam "x" $ Var "x")
-    , ( "\\ x => \\ y => x", Good $ Lam "x" $ Lam "y" $ Var "x")
-    , ( "\\ x y => x", Good $ Lam "x" $ Lam "y" $ Var "x")
+    [ ("λ x => x", Good $ Lam "x" $ Var "x" 0)
+    , ("λ x => λ y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1)
+    , ( "λ x y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1)
+    , ( "\\ x => x", Good $ Lam "x" $ Var "x" 0)
+    , ( "\\ x => \\ y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1)
+    , ( "\\ x y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1)
     ]
 
   parseDescribe (pBinder False) "Binder, name mandatory"
@@ -98,13 +100,13 @@ spec = do
 
   parseDescribe pAll "Forall"
     [ ( "∀ (x: Type) -> Type", Good $ All "x" Many Typ Typ)
-    , ( "∀ (x: Type) -> x", Good $ All "x" Many Typ $ Var "x")
-    , ( "∀ (x: Type) (y: Type) -> x", Good $ All "x" Many Typ $ All "y" Many Typ $ Var "x")
-    , ( "∀ (A: Type) (x: A) -> x", Good $ All "A" Many Typ $ All "x" Many (Var "A") $ Var "x")
-    , ( "∀ (x: Type) -> x", Good $ All  "x" Many Typ $ Var "x")
-    , ( "∀ (0 x: Type) -> x", Good $ All "x" None Typ $ Var "x")
-    , ( "∀ (& x: Type) -> x", Good $ All "x" Affi Typ $ Var "x")
-    , ( "∀ (1 x: Type) -> x", Good $ All "x" Once Typ $ Var "x")
+    , ( "∀ (x: Type) -> x", Good $ All "x" Many Typ $ Var "x" 0)
+    , ( "∀ (x: Type) (y: Type) -> x", Good $ All "x" Many Typ $ All "y" Many Typ $ Var "x" 1)
+    , ( "∀ (A: Type) (x: A) -> x", Good $ All "A" Many Typ $ All "x" Many (Var "A" 0) $ Var "x" 0)
+    , ( "∀ (x: Type) -> x", Good $ All  "x" Many Typ $ Var "x" 0)
+    , ( "∀ (0 x: Type) -> x", Good $ All "x" None Typ $ Var "x" 0)
+    , ( "∀ (& x: Type) -> x", Good $ All "x" Affi Typ $ Var "x" 0)
+    , ( "∀ (1 x: Type) -> x", Good $ All "x" Once Typ $ Var "x" 0)
     ]
 
   parseDescribe pTyp "Typ"
@@ -115,18 +117,18 @@ spec = do
     [ ("foo: Type = Type", Good ("foo", Typ, Typ))
     , ("foo (A:Type) (B:Type) (x:A) (y:B) : A = x", Good $ 
         ( "foo"
-        , Lam "A" (Lam "B" (Lam "x" (Lam "y" (Var "x"))))
-        , All "A" Many Typ (All "B" Many Typ (All "x" Many (Var "A")
-          (All "y" Many (Var "B") (Var "A"))))
+        , Lam "A" (Lam "B" (Lam "x" (Lam "y" (Var "x" 1))))
+        , All "A" Many Typ (All "B" Many Typ (All "x" Many (Var "A" 1)
+          (All "y" Many (Var "B" 1) (Var "A" 3))))
         )
       )
     ]
 
   parseDescribe pLet "Let"
-    [ ("let any: Type = Type; any", Good $ Let False "any" Many Typ Typ $ Var "any")
+    [ ("let any: Type = Type; any", Good $ Let False "any" Many Typ Typ $ Var "any" 0)
     , ("let any (x:Type) (y:Type): Type = Type; any", Good $ 
           Let False "any" Many (All "x" Many Typ (All "y" Many Typ Typ))
-            (Lam "x" (Lam "y" Typ)) (Var "any")
+            (Lam "x" (Lam "y" Typ)) (Var "any" 0)
       )
     ]
 

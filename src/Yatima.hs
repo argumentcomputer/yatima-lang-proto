@@ -10,6 +10,7 @@ import qualified Yatima.Core            as Core
 import           Yatima.Core.Ctx        (Ctx, (<|))
 import qualified Yatima.Core.Ctx        as Ctx
 import           Yatima.Core.Hoas
+import           Yatima.Core.CheckError
 import qualified Yatima.Core.IR         as IR
 import           Yatima.Parse           (parseTerm, unsafeParseTerm)
 import qualified Yatima.Parse           as Parse
@@ -21,8 +22,9 @@ import qualified Yatima.Term            as Term
 
 import           Data.IPLD.CID
 import           Yatima.IPFS.IPLD
-import           Yatima.IPFS.Package
-import           Yatima.IPFS.Import
+import           Yatima.Package
+import qualified Yatima.Parse.Package as Package
+import           Yatima.Parse.Package
 
 import           Control.Monad.Catch
 import           Control.Monad.Except
@@ -84,26 +86,26 @@ prettyFile file = do
   let index = _index p
   cache <- readCache r
   defs  <- catchErr $ indexToDefs index cache
-  M.traverseWithKey (go index) defs
+  M.traverseWithKey (prettyIndexF index) defs
   return ()
-  where
-    go :: Index -> Name -> Def -> IO ()
-    go index nam def = do
-      putStrLn ""
-      putStrLn $ T.unpack $ cidToText $ (_byName index) M.! nam
-      putStrLn $ T.unpack $ prettyDef nam def
-      return ()
+
+prettyIndexF :: Index -> Name -> Def -> IO ()
+prettyIndexF (Index ns) nam def = do
+  putStrLn ""
+  putStrLn $ T.unpack $ cidToText $ fst $ ns M.! nam
+  putStrLn $ T.unpack $ prettyDef nam def
+  return ()
 
 checkFile :: FilePath -> IO (CID,Package)
 checkFile file = do
   (r,c,p) <- loadFile file
-  let index = _index p
+  let index@(Index ns) = _index p
   cache <- readCache r
-  forM_ (M.toList $ (_byName index)) (checkRef index cache)
+  forM_ (M.toList ns) (checkRef index cache)
   return (c,p)
 
-checkRef ::  Index -> Cache -> (Name, CID) -> IO ()
-checkRef index cache (name,cid) = do
+checkRef ::  Index -> Cache -> (Name, (CID,CID)) -> IO ()
+checkRef index cache (name,(cid,_)) = do
   def  <- liftIO $ catchErr $ derefDagDefCID name cid index cache
   defs <- liftIO $ catchErr $ indexToDefs index cache
   let (trm,typ) = defToHoas name def
@@ -118,13 +120,13 @@ checkRef index cache (name,cid) = do
 compileFile :: FilePath -> IO ()
 compileFile file = do
   (r,c,p) <- loadFile file
-  let index = _index p
+  let index@(Index ns) = _index p
   cache <- readCache r
-  codes <- forM (M.toList $ (_byName index)) (compileRef index cache)
+  codes <- forM (M.toList ns) (compileRef index cache)
   putStrLn $ T.unpack $ T.concat codes
 
-compileRef ::  Index -> Cache -> (Name, CID) -> IO Text
-compileRef index cache (name,cid) = do
+compileRef ::  Index -> Cache -> (Name, (CID,CID)) -> IO Text
+compileRef index cache (name,(cid,_)) = do
   def  <- liftIO $ catchErr $ derefDagDefCID name cid index cache
   defs <- liftIO $ catchErr $ indexToDefs index cache
   let (trm,typ) = defToHoas name def
@@ -141,20 +143,20 @@ normDef name file = do
   (r,c,p) <- loadFile file
   let index = _index p
   cache <- readCache r
-  cid   <- catchErr (indexLookup name index)
-  def   <- catchErr (derefDagDefCID name cid index cache)
-  defs  <- catchErr (indexToDefs index cache)
+  (cid,_) <- catchErr (indexLookup name index)
+  def     <- catchErr (derefDagDefCID name cid index cache)
+  defs    <- catchErr (indexToDefs index cache)
   return $ Core.norm defs (fst $ defToHoas name def)
 
-whnfDef :: Name -> FilePath -> IO Hoas
-whnfDef name file = do
-  (r,c,p) <- loadFile file
-  let index = _index p
-  cache <- readCache r
-  cid   <- catchErr (indexLookup name index)
-  def   <- catchErr (derefDagDefCID name cid index cache)
-  defs  <- catchErr (indexToDefs index cache)
-  return $ Core.whnf defs (fst $ defToHoas name def)
+--whnfDef :: Name -> FilePath -> IO Hoas
+--whnfDef name file = do
+--  (r,c,p) <- loadFile file
+--  let index = _index p
+--  cache <- readCache r
+--  (cid,_) <- catchErr (indexLookup name index)
+--  def   <- catchErr (derefDagDefCID name cid index cache)
+--  defs  <- catchErr (indexToDefs index cache)
+--  return $ Core.whnf defs (fst $ defToHoas name def)
 
 whnf :: Defs -> Term -> Term
 whnf defs =
@@ -164,14 +166,14 @@ norm :: Defs -> Term -> Term
 norm defs =
   hoasToTerm Ctx.empty . Core.norm defs . termToHoas Ctx.empty
 
-infer :: Defs -> Term -> Either Core.CheckErr Term
+infer :: Defs -> Term -> Either CheckError Term
 infer defs term =
   let hTerm = termToHoas Ctx.empty term in
   case runExcept (Core.infer defs Ctx.empty Once hTerm) of
     Left err -> Left err
     Right (_,ty,_) -> Right (hoasToTerm Ctx.empty ty)
 
-check :: Defs -> Term -> Term -> Either Core.CheckErr Term
+check :: Defs -> Term -> Term -> Either CheckError Term
 check defs term typ_ =
   let hTerm = termToHoas Ctx.empty term in
   let hType = termToHoas Ctx.empty typ_ in
@@ -181,10 +183,10 @@ check defs term typ_ =
 
 prettyInfer :: Defs -> Term -> Text
 prettyInfer defs term = case infer defs term of
-  Left err -> Core.prettyError err
+  Left err -> prettyError err
   Right ty -> prettyTerm ty
 
 prettyCheck :: Defs -> Term -> Term -> Text
 prettyCheck defs term typ_ = case check defs term typ_ of
-  Left err -> Core.prettyError err
+  Left err -> prettyError err
   Right ty -> prettyTerm ty

@@ -30,6 +30,8 @@ library:
     - Yatima.Parse.Integer
     - Yatima.Parse.Package
     - Yatima.Parse.Term
+    - Yatima.Parse.Literal
+    - Yatima.Parse.Parser
     - Yatima.Parse
     - Yatima.Print
     - Yatima.QuasiQuoter

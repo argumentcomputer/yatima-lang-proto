@@ -18,11 +18,12 @@ import qualified Data.Map                             as M
 import           Data.Text                            (Text)
 import qualified Data.Text                            as T
 import qualified Data.Text.Encoding                   as T
+import           Data.Maybe
 
 import           Data.IPLD.CID
 import           Data.IPLD.DagAST
 import           Yatima.IPFS.IPLD
-import           Yatima.IPFS.Package
+import           Yatima.Package
 import           Yatima.Term
 
 import           Test.Hspec
@@ -65,7 +66,7 @@ instance Arbitrary Imports where
   arbitrary = Imports <$> arbitrary
 
 instance Arbitrary Index where
-  arbitrary = Index <$> arbitrary <*> arbitrary
+  arbitrary = Index <$> arbitrary
 
 instance Arbitrary Package where
   arbitrary =
@@ -79,11 +80,11 @@ prop_serial x = let s = serialise x in
 
 test_defs :: (Index,Cache)
 test_defs =
-  let trm = Lam "A" (Lam "x" (Var "x"))
-      typ = All "A" Many Typ (All "x" Many (Var "A") (Var "A"))
+  let trm = Lam "A" (Lam "x" (Var "x" 0))
+      typ = All "A" Many Typ (All "x" Many (Var "A" 1) (Var "A" 2))
       def = Def "" trm typ
-      Right (cid, cache) = runExcept (insertDef "id" def emptyIndex (Cache M.empty))
-   in (Index (M.singleton "id" cid) (M.singleton cid "id"), cache)
+      (defCid, trmCid, cache) = insertDef "id" def emptyIndex (Cache M.empty)
+   in (Index (M.singleton "id" (defCid,trmCid)), cache)
 
 test_index = fst test_defs
 test_cache = snd test_defs
@@ -134,20 +135,31 @@ instance Arbitrary LitType where
 instance Arbitrary PrimOp where
   arbitrary = arbitraryBoundedEnum
 
+var_gen :: [Name] -> Gen Term
+var_gen ctx = do
+  n <- elements ctx
+  return $ Var n (fromJust $ findByName n ctx)
+
+ref_gen :: Gen Term
+ref_gen = do
+  n <- elements (M.keys $ indexEntries $ test_index)
+  let (x,y) = (indexEntries test_index) M.! n
+  return $ Ref n x y
+
 term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
-  [ (100, Var <$> elements ctx)
-  , (100, Ref <$> elements (M.keys (_byName test_index)))
+  [ (100, var_gen ctx)
+  , (100, ref_gen)
   , (100, return Typ)
   , (100, Lit <$> arbitrary)
   , (100, LTy <$> arbitrary)
   , (100, Opr <$> arbitrary)
   , (50, (name_gen >>= \n -> Lam n <$> term_gen (n:ctx)))
   , (50, (name_gen >>= \n -> Slf n <$> term_gen (n:ctx)))
-  , (50, App <$> term_gen ctx <*> term_gen ctx)
-  , (50, Ann <$> term_gen ctx <*> term_gen ctx)
-  , (33, (name_gen >>= \n -> All n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)))
-  , (33, (name_gen >>= \n -> 
+  , (33, App <$> term_gen ctx <*> term_gen ctx)
+  , (33, Ann <$> term_gen ctx <*> term_gen ctx)
+  , (25, (name_gen >>= \n -> All n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)))
+  , (25, (name_gen >>= \n -> 
             Let <$> arbitrary <*> pure n <*> arbitrary <*> term_gen ctx 
               <*> term_gen (n:ctx) <*> term_gen (n:ctx)))
   ]

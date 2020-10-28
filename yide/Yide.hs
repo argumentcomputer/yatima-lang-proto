@@ -45,15 +45,17 @@ import           Path.IO
 import           HaskelineT
 
 import           Data.IPLD.CID
-import           Yatima.IPFS.Package
-import           Yatima.IPFS.Import
+import           Yatima.Package
 import           Yatima.IPFS.IPLD
 import qualified Yatima.Core.Ctx as Ctx
 import           Yatima.Term
 import qualified Yatima.Core as Core
 import           Yatima.Core.Hoas
-import           Yatima.Parse
 import           Yatima.Print
+import           Yatima.Parse
+import           Yatima.Parse.Parser
+import           Yatima.Parse.Package
+import           Yatima.Parse.Term
 import           Yatima
 
 
@@ -134,7 +136,7 @@ catchReplErr x = case runExcept x of
 process :: Text -> Repl ()
 process line = dontCrash' $ do
   index <- gets _yDefs
-  let env = ParseEnv Set.empty (M.keysSet (_byName index))
+  let env = ParseEnv [] (indexEntries index)
   a <- liftIO $ parseIO parseLine env "" line
   procCommand a
   where
@@ -145,12 +147,7 @@ process line = dontCrash' $ do
         root  <- gets _yRoot
         cache  <- liftIO $ readCache root
         defs  <- catchReplErr $ indexToDefs index cache
-        let go cids nam def = do
-              putStrLn ""
-              putStrLn $ T.unpack $ cidToText $ cids M.! nam
-              putStrLn $ T.unpack $ prettyDef nam def
-              return ()
-        liftIO $ M.traverseWithKey (go (_byName index)) defs
+        liftIO $ M.traverseWithKey (prettyIndexF index) defs
         return ()
       Help   -> liftIO $ putStrLn "help text fills you with determination "
       -- Quit   -> abort
@@ -167,7 +164,6 @@ process line = dontCrash' $ do
         index    <- gets _yDefs
         root     <- gets _yRoot
         cache    <- liftIO $ readCache root
-        t        <- catchReplErr (validateTerm t [] index cache)
         defs     <- catchReplErr (indexToDefs index cache)
         let hterm = termToHoas Ctx.empty t
         --(_,typ_) <- catchReplErr (Core.infer defs Ctx.empty Once hterm)
@@ -181,7 +177,7 @@ process line = dontCrash' $ do
         defs   <- catchReplErr (indexToDefs index cache)
         let (trm,typ) = defToHoas nam def
         catchReplErr (Core.check defs Ctx.empty Once trm typ)
-        (i',c') <- catchReplErr (insertDefs [(nam,def)] index cache)
+        let (i',c') = insertDefs [(nam,def)] index cache
         modify (\e -> e {_yDefs = i'})
         liftIO $ writeCache root c'
         return ()
@@ -189,8 +185,8 @@ process line = dontCrash' $ do
         index <- gets _yDefs
         (cid,p) <- liftIO $ checkFile (toFilePath file)
         case mergeIndex index (_index p) of
-          Left (n1,c1,n2,c2) -> do
-            let err = ConflictingImportNames (_title p) cid (n1,c1) (n2,c2)
+          Left (n1,c1,c2) -> do
+            let err = ConflictingImportNames (_title p) cid (n1,c1) (n1,c2)
             liftIO $ putStrLn (show err)
             return ()
           Right index -> do
@@ -205,7 +201,7 @@ complete :: CompletionFunc (StateT YideState IO)
 complete (ante, post)
   | prefixes ks p = noCompletion (ante, post)
   | otherwise     = do
-     ns <- gets (M.keys . _byName . _yDefs)
+     ns <- gets (M.keys . indexEntries . _yDefs)
      let ks' = T.pack <$> ks
      let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks' ++ ns)
      completeWord Nothing " " (pure . (map simpleCompletion) . f)  (ante, post)

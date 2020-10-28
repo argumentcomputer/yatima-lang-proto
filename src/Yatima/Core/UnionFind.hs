@@ -53,7 +53,6 @@ import qualified Data.Map.Strict  as M
 
 import           Data.IPLD.CID
 
-
 -- A reference to a node
 newtype NRef s = NRef { _ref :: STRef s (Node s) } deriving Eq
 

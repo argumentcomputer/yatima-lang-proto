@@ -44,8 +44,8 @@ import           Data.IPLD.CID
 import           Data.IPLD.DagJSON
 import           Data.IPLD.DagAST
 import           Yatima.IPFS.IPLD
-import           Yatima.IPFS.Package
-import           Yatima.IPFS.Import
+import           Yatima.Package
+import           Yatima.Parse.Package
 import           Yatima.Term
 
 

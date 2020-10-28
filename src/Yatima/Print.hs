@@ -51,8 +51,8 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
 
     go :: Term -> TB.Builder
     go t = case t of
-      Var nam                 -> name nam
-      Ref nam                 -> name nam
+      Var nam _               -> name nam
+      Ref nam _ _             -> name nam
       All nam use typ bod     -> "∀" <> alls nam use typ bod
       Slf nam bod             -> "@" <> name nam <> " " <> go bod
       New bod                 -> "case " <> go bod
@@ -82,13 +82,13 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
 
     isAtom :: Term -> Bool
     isAtom t = case t of
-      Var _   -> True
-      Ref _   -> True
-      Lit _   -> True
-      LTy _   -> True
-      Opr _   -> True
-      Ann _ _ -> True
-      _       -> False
+      Var _ _   -> True
+      Ref _ _ _ -> True
+      Lit _     -> True
+      LTy _     -> True
+      Opr _     -> True
+      Ann _ _   -> True
+      _         -> False
 
     pars' :: Term -> TB.Builder
     pars' t = if isAtom t then go t else pars (go t)

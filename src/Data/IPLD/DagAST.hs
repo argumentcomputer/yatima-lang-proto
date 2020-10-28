@@ -41,8 +41,10 @@ data DagAST
   | Data BS.ByteString
   deriving (Eq,Show,Ord)
 
--- | The computationally irrelevant metadata of an AST
-data Meta = Meta { _entries :: IntMap (Either Text CID) } deriving (Show,Eq)
+-- | The computationally irrelevant metadata of an AST:
+-- Specifically, the names of its binders, the names of its global references
+-- and the cids of the DagDefs that correspond to those global references
+data Meta = Meta { _entries :: IntMap (Text, Maybe CID) } deriving (Show,Eq)
 
 encodeDagAST :: DagAST -> Encoding
 encodeDagAST term = case term of
@@ -82,8 +84,8 @@ encodeMeta (Meta m) = encodeMapLen (fromIntegral (IM.size m))
   <> IM.foldrWithKey go mempty m
   where
     go = (\k v r -> encodeString (T.pack $ show k) <> encodeEntry v <> r)
-    encodeEntry (Left n)  = encodeInt 0 <> encodeString n
-    encodeEntry (Right c) = encodeInt 1 <> encodeCid c
+    encodeEntry (n, Nothing) = encodeListLen 1 <> encodeString n
+    encodeEntry (n, Just c)  = encodeListLen 2 <> encodeString n <> encodeCid c
 
 decodeMeta :: Decoder s Meta
 decodeMeta = do
@@ -93,14 +95,15 @@ decodeMeta = do
     decodeEntry = do
       keyString <- decodeString
       let  key = (read (T.unpack keyString) :: Int)
-      tag <- decodeInt
-      case tag of
-        0 -> do
-          n <- decodeString
-          return (key,Left n)
+      size <- decodeListLen
+      case size of
         1 -> do
+          n <- decodeString
+          return (key,(n,Nothing))
+        2 -> do
+          n <- decodeString
           c <- decodeCid
-          return (key,Right c)
+          return (key,(n,Just c))
         _ -> fail "invalid Meta map entry"
 
 instance Serialise Meta where

@@ -33,6 +33,8 @@ import           Language.Haskell.TH.Syntax hiding (Name)
 import qualified Language.Haskell.TH.Syntax as TH
 
 import           Yatima.Parse
+import           Yatima.Parse.Parser
+import           Yatima.Parse.Term
 import           Yatima.Term
 
 yatima :: QuasiQuoter

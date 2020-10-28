@@ -1,12 +1,12 @@
 {-
-Module      : Yatima.IPFS.Package
+Module      : Yatima.Package
 Description : Defines the Yatima package, which is a map of names to content identifiers
 Copyright   : 2020 Yatima Inc.
 License     : GPL-3
 Maintainer  : john@yatima.io
 Stability   : experimental
 -}
-module Yatima.IPFS.Package where
+module Yatima.Package where
 
 import           Codec.Serialise
 import           Codec.Serialise.Decoding
@@ -41,50 +41,39 @@ emptyImports :: Imports
 emptyImports = Imports M.empty
 
 emptyIndex :: Index
-emptyIndex = Index M.empty M.empty
+emptyIndex = Index M.empty
 
 emptyPackage :: Name -> Package
 emptyPackage n = Package n "" (makeCid BSL.empty) emptyImports emptyIndex
 
-newtype Imports = Imports (Map CID Text) deriving (Show, Eq)
-newtype Source  = Source  Text           deriving (Show, Eq)
+newtype Imports = Imports (Map CID Text)       deriving (Show, Eq)
+newtype Source  = Source  Text                 deriving (Show, Eq)
+newtype Index   = Index   (Map Name (CID,CID)) deriving (Show, Eq)
 
-data Index = Index { _byName :: Map Name CID , _byCID  :: Map CID Name }
-  deriving (Eq,Show)
+indexEntries :: Index -> Map Name (CID,CID)
+indexEntries (Index ns) = ns
 
-
-mergeIndex :: Index -> Index -> Either (Name,CID,Name,CID) Index
-mergeIndex (Index a b) (Index c d) = do
-  as <- merge  a c
-  bs <- merge' b d
-  return $ Index as (M.union b d)
-
+mergeIndex :: Index -> Index -> Either (Name,CID,CID) Index
+mergeIndex (Index a) (Index b) = do
+  Index <$> merge a b
   where
     merge   = M.mergeA M.preserveMissing M.preserveMissing (M.zipWithAMatched f)
-    merge'  = M.mergeA M.preserveMissing M.preserveMissing (M.zipWithAMatched g)
-    f k x y = if x == y then Right x else Left (k,x,k,y)
-    g k x y = if x == y then Right x else Left (x,k,y,k)
+    f k x y = if x == y then Right x else Left (k,fst x, fst y)
 
 data ImportDefs = Full | Some (Set Name) deriving (Eq,Show)
 
 filterIndex :: Index -> ImportDefs -> Index
-filterIndex (Index ns cs) ds = case ds of
-  Full     -> Index ns cs
-  Some ks -> runIdentity $ do
-    let ns' = M.restrictKeys ns ks
-    let cs' = M.restrictKeys cs (Set.fromList (M.elems ns'))
-    return $ Index ns' cs'
+filterIndex (Index ns) ds = case ds of
+  Full    -> Index ns
+  Some ks -> Index (M.restrictKeys ns ks)
 
 encodeIndex :: Index -> Encoding
-encodeIndex (Index byName byCID) = encodeListLen 3
+encodeIndex (Index ds) = encodeListLen 2
   <> (encodeString  ("Index" :: Text))
-  <> (encodeMapLen (fromIntegral $ M.size byName) <> encodeByName byName)
-  <> (encodeMapLen (fromIntegral $ M.size byCID ) <> encodeByCID  byCID)
+  <> (encodeMapLen (fromIntegral $ M.size ds) <> encodeEntries ds)
   where
-    f (k,v) r = encodeString k <> encodeCid v <> r
-    g (k,v) r = encodeCid k <> encodeString v <> r
-    encodeByName byName = foldr f mempty (sortBy cmp (M.toList byName))
-    encodeByCID byCID   = foldr g mempty (sortBy cmp (M.toList byCID))
+    encodeEntries ds = foldr f mempty (sortBy cmp (M.toList ds))
+    f (k,(d,t)) r = encodeString k <> encodeCid d <> encodeCid t <> r
     cmp (k1,_) (k2,_)   = cborCanonicalOrder (serialise k1) (serialise k2)
 
 cborCanonicalOrder :: BSL.ByteString -> BSL.ByteString -> Ordering
@@ -96,14 +85,13 @@ cborCanonicalOrder x y
 decodeIndex :: Decoder s Index
 decodeIndex = do
   size     <- decodeListLen
-  when (size /= 3) (fail $ "invalid Index list size: " ++ show size)
+  when (size /= 2) (fail $ "invalid Index list size: " ++ show size)
   tag    <- decodeString
   when (tag /= "Index") (fail $ "invalid Index tag: " ++ show tag)
-  n      <- decodeMapLen
-  byName <- M.fromList <$> replicateM n ((,) <$> decodeString <*> decodeCid)
-  c      <- decodeMapLen
-  byCID  <- M.fromList <$> replicateM c ((,) <$> decodeCid <*> decodeString)
-  return $ Index byName byCID
+  n  <- decodeMapLen
+  let decodeCids = (,) <$> decodeCid <*> decodeCid
+  ds <- M.fromList <$> replicateM n ((,) <$> decodeString <*> decodeCids)
+  return $ Index ds
 
 instance Serialise Index where
   encode = encodeIndex

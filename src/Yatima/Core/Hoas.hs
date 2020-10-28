@@ -11,6 +11,7 @@ module Yatima.Core.Hoas where
 
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
+import           Data.IPLD.CID
 
 import           Yatima.Core.Ctx            (Ctx (..), (<|))
 import qualified Yatima.Core.Ctx            as Ctx
@@ -21,7 +22,7 @@ import           Yatima.Term
 -- | Higher-Order Abstract Syntax
 data Hoas where
   VarH :: Name -> Int -> Hoas
-  RefH :: Name -> Hoas
+  RefH :: Name -> CID -> CID -> Hoas
   LamH :: Name -> (Hoas -> Hoas) -> Hoas
   AppH :: Hoas -> Hoas -> Hoas
   NewH :: Hoas -> Hoas
@@ -52,13 +53,12 @@ addCtx = Ctx.zipWith (\(uses,typ) (uses',_) -> (uses +# uses', typ))
 toContext :: PreContext -> Context
 toContext = fmap (\(term) -> (None, term))
 
-
 -- | Convert a lower-order `Term` to a GHC higher-order one
 termToHoas :: PreContext -> Term -> Hoas
 termToHoas ctx t = case t of
   Typ                         -> TypH
-  Var nam                     -> maybe (VarH nam 0) id (Ctx.find nam ctx)
-  Ref nam                     -> RefH nam
+  Var nam idx                 -> VarH nam idx
+  Ref nam def trm             -> RefH nam def trm
   Lam nam bod                 -> LamH nam (bind nam bod)
   App fun arg                 -> AppH (go fun) (go arg)
   New exp                     -> NewH (go exp)
@@ -79,8 +79,8 @@ termToHoas ctx t = case t of
 hoasToTerm :: PreContext -> Hoas -> Term
 hoasToTerm ctx t = case t of
   TypH                     -> Typ
-  RefH nam                 -> Ref nam
-  VarH nam idx             -> Var nam
+  RefH nam def trm         -> Ref nam def trm
+  VarH nam idx             -> Var nam idx
   LamH nam bod             -> Lam nam (bind nam bod)
   AppH fun arg             -> App (go fun) (go arg)
   UseH exp                 -> Use (go exp)

@@ -18,15 +18,17 @@ module Yatima.Term
   , Name
   , Term (..)
   , Def  (..)
-  , Defs 
+  , Defs
+  , findByName
+  , findByInt
   ) where
 
 import           Data.Text                  (Text)
-import qualified Data.Text                  as T hiding (find)
+import qualified Data.Text                  as T
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
-
 import           Data.Data
+import           Data.IPLD.CID
 
 import           Yatima.Term.Uses
 import           Yatima.Term.PrimOp
@@ -40,7 +42,7 @@ type Name = Text
 -- | A Yatima term with names and source locations
 data Term where
   -- | Local variable
-  Var :: Name -> Term
+  Var :: Name -> Int -> Term
   -- | A forall
   All :: Name -> Uses -> Term -> Term -> Term
   -- | A lambda
@@ -53,8 +55,8 @@ data Term where
   New :: Term -> Term
   -- | Self elimination
   Use :: Term -> Term
-  -- | An immutable global reference
-  Ref :: Name -> Term
+  -- | An immutable global reference to a named definition and anonymous term
+  Ref :: Name -> CID -> CID -> Term
   -- | An inline local definition,
   Let :: Bool -> Name -> Uses -> Term -> Term -> Term -> Term
   -- | The type of types.
@@ -73,11 +75,23 @@ deriving instance Eq Term
 deriving instance Data Term
 
 -- | A type annotated definition
-data Def = Def
-  { _doc    :: Text
-  , _term   :: Term
-  , _type   :: Term
-  } deriving Show
+data Def = Def { _doc :: Text, _term :: Term, _type :: Term } deriving Show
 
 type Defs = Map Name Def
+
+-- | Find a name in a binding context and return its index
+findByName :: Name -> [Name] -> Maybe Int
+findByName n cs = go n cs 0
+  where
+    go n (c:cs) i
+      | n == c    = Just i
+      | otherwise = go n cs (i+1)
+    go _ [] _     = Nothing
+
+findByInt :: Int -> [Name] -> Maybe Name
+findByInt i []     = Nothing
+findByInt i (x:xs)
+  | i < 0     = Nothing
+  | i == 0    = Just x
+  | otherwise = findByInt (i - 1) xs
 

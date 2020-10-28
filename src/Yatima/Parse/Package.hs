@@ -1,5 +1,5 @@
 {-
-Module      : Yatima.IPFS.Import
+Module      : Yatima.Parse.Package
 Description : This module implements the import stanza parser for Yatima packages
 Copyright   : 2020 Yatima Inc.
 License     : GPL-3
@@ -8,7 +8,7 @@ Stability   : experimental
 -}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Yatima.IPFS.Import where
+module Yatima.Parse.Package where
 
 import           Control.Monad.Except
 import           Control.Monad.Catch
@@ -35,17 +35,19 @@ import           Data.Char
 import           Debug.Trace
 
 import           Data.IPLD.CID
+import           Data.IPLD.DagAST
 import           Yatima.IPFS.IPLD
-import           Yatima.IPFS.Package
+import           Yatima.Package
 import           Yatima.Term
-import           Yatima.Parse      hiding (parseDefault)
+import           Yatima.Parse.Parser     hiding (parseDefault)
+import           Yatima.Parse.Term
 import           Yatima.Print
 
 import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 
-data ImportErr
+data ImportError
   = UnknownPackage Name
   | CorruptDefs IPLDErr
   | InvalidCID String Text
@@ -55,7 +57,7 @@ data ImportErr
   | ConflictingImportNames Name CID (Name,CID) (Name,CID)
   deriving (Eq,Ord,Show)
 
-instance ShowErrorComponent ImportErr where
+instance ShowErrorComponent ImportError where
   showErrorComponent (CorruptDefs e) =
     "ERR: The defined environment is corrupt: " ++ show e
   showErrorComponent (InvalidCID err txt) =
@@ -80,9 +82,9 @@ instance ShowErrorComponent ImportErr where
     [ "Package import creates a cycle: ", show imp
     ]
 
-type ParserIO a = Parser ImportErr IO a
+type ParserIO a = Parser ImportError IO a
 
-customIOFailure :: ImportErr -> ParserIO a
+customIOFailure :: ImportError -> ParserIO a
 customIOFailure = customFailure . ParseEnvironmentError
 
 -- | A utility for running a `Parser`, since the `RWST` monad wraps `ParsecT`
@@ -107,11 +109,9 @@ pPackageName = label "a package name" $ do
 pInsertDefs :: Path Abs Dir -> [(Name,Def)] -> Index -> ParserIO Index
 pInsertDefs dir defs index = do
   cache <- liftIO $ readCache dir
-  case runExcept (insertDefs defs index cache) of
-    Left  e -> customIOFailure $ CorruptDefs e
-    Right (index,cache) -> do
-      liftIO $ writeCache dir cache
-      return $ index
+  let (index, cache') = insertDefs defs index cache
+  liftIO $ writeCache dir cache
+  return $ index
 
 pDeserial :: forall a. Serialise a => Path Abs Dir -> CID -> ParserIO a
 pDeserial dir cid = do
@@ -141,7 +141,7 @@ pImportDefs = do
   string ")"
   return defs
 
-pCID :: Monad m => Parser ImportErr m CID
+pCID :: Monad m => Parser ImportError m CID
 pCID = do
   txt <- T.pack <$> (many alphaNumChar)
   case cidFromText txt of
@@ -151,7 +151,7 @@ pCID = do
 makePath :: Name -> ParserIO (Path Rel File)
 makePath n = liftIO go >>= \e -> either customIOFailure pure e
   where
-    go :: IO (Either ImportErr (Path Rel File))
+    go :: IO (Either ImportError (Path Rel File))
     go = do
       let filepath = (T.unpack $ (T.intercalate "/" $ T.splitOn "." n) <> ".ya")
       catch @IO @PathException (Right <$> parseRelFile filepath) $ \e ->
@@ -204,17 +204,17 @@ pImport env = label "an import" $ do
     --  return (nam,ali,cid,p)
 
 pImports :: IORef PackageEnv -> Imports -> Index -> ParserIO (Imports, Index)
-pImports env imp@(Imports is) ind@(Index ns cs) = next <|> (return (imp,ind))
+pImports env imp@(Imports is) ind@(Index ns) = next <|> (return (imp,ind))
   where
     next = do
       (nam,ali,ds,cid,p) <- pImport env <* space
-      let Index ns' cs' = filterIndex (_index p) ds
+      let Index ns = filterIndex (_index p) ds
       let prefix x = if ali == "" then x else ali <> "." <> x
-      let ind' = Index (M.mapKeys prefix ns') (prefix <$> cs')
-      let conflict = M.intersection ns (_byName ind')
-      case mergeIndex ind ind' of
-        Left (n1,c1,n2,c2) ->
-          customIOFailure $ ConflictingImportNames nam cid (n1,c1) (n2,c2)
+      let ns' = M.mapKeys prefix ns
+      let conflict = M.intersection ns ns'
+      case mergeIndex ind (Index ns) of
+        Left (n1,c1,c2) ->
+          customIOFailure $ ConflictingImportNames nam cid (n1,c1) (n1,c2)
         Right index -> 
           pImports env (Imports $ M.insert cid ali is) index
 
@@ -224,14 +224,12 @@ pPackage env cid file = do
   doc     <- maybe "" id <$> (optional $ pDoc)
   title   <- maybe "" id <$> (optional $ symbol "package" >> pPackageName)
   space
-  (imports, index) <- pImports env emptyImports emptyIndex
+  (imports, index@(Index ns)) <- pImports env emptyImports emptyIndex
   when (title /= "") (void $ symbol "where")
-  defs  <- local (\e -> e { _refs = M.keysSet (_byName index) }) pDefs
+  defs  <- local (\e -> e { _refs = ns }) pDefs
   root <- _root <$> (liftIO $ readIORef env)
   cache <- liftIO $ readCache root
-  (index, cache) <- case runExcept (insertDefs defs index cache) of
-    Left e              -> customIOFailure $ CorruptDefs e
-    Right (index,cache) -> return (index,cache)
+  let (index, cache) = insertDefs defs index cache
   let pack = Package title doc cid imports index
   let (cid,cache')   = insertPackage pack cache
   liftIO $ writeCache root cache'
@@ -281,4 +279,29 @@ catchErr x = do
   case runExcept x of
     Right x -> return x
     Left  e -> putStrLn (show e) >> fail ""
+
+pDoc :: (Ord e, Monad m) => Parser e m Text
+pDoc = do
+  d <- optional (string "{|" >> T.pack <$> (manyTill anySingle (symbol "|}")))
+  return $ maybe "" id d
+
+-- | Parse a definition
+pDef :: (Ord e, Monad m) => Parser e m (Name, Def)
+pDef = label "a definition" $ do
+  doc <- pDoc
+  symbol "def"
+  (nam,exp,typ) <- pDecl False
+  return $ (nam, Def doc exp typ)
+
+-- | Parse a sequence of definitions, e.g. in a file
+pDefs :: (Ord e, Monad m) => Parser e m [(Name,Def)]
+pDefs = (space >> next) <|> (space >> eof >> (return []))
+  where
+  next = do
+    (n,d) <- pDef
+    let dagDef = defToDag d
+    let defCid = makeCid dagDef
+    let trmCid = _anonTerm dagDef
+    ds    <- local (\e -> e { _refs = M.insert n (defCid, trmCid) (_refs e) }) pDefs
+    return $ (n,d):ds
 
