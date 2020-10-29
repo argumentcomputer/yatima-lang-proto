@@ -21,7 +21,7 @@
 Yatima is a pure functional programming language with the following features:
 
 - **Content-Addressing** powers reproducible builds, and peer-to-peer
-  package management over IPFS. An Yatima content-address represents an
+  package management over IPFS. A Yatima content-address represents an
   _immutable_ program and all its dependencies. That means if someones shares an
   address like with you, you can perfectly replicate their computation (and in
   principle even their computing environment!). Since the program is immutable,
@@ -29,7 +29,7 @@ Yatima is a pure functional programming language with the following features:
 - **First-class types**. This lets you the programmer to tell the compiler what
   you _intend_ to do in your program. Then, like a helpful robot assistant, the
   compiler will check to make sure that what you're _actually doing_ matches
-  those expression intentions. Type-driven programming lets the compiler act as
+  those expressed intentions. Type-driven programming lets the compiler act as
   your "correctness exocortex", i.e. a cognitive augmentation that helps you
   catch your mistakes.
 - **Linear, affine and erased types** give you fine-grained control over
