@@ -62,30 +62,30 @@ general-purpose digital computers were only switched on about 75 years ago.
 The living memory of your parents and grandparents extends into the past
 *before* computers. These machines are shockingly new, and as a species we
 really have no idea what they're for yet. We're in the middle of the epochal
-transformation whose nearest precedent is the invention of *writing* and the
-settlement of the first cities. There are a lot of prognostications of what that
-means for our future; lots of different, and sometimes contradictory, visions of
-how computing is going to continue to shape our minds, our bodies, and our
-relationships with one another.
+transformation whose nearest precedent is the invention of *writing*.
+There are a lot of prognostications of what that means for our future; lots 
+of different, and sometimes contradictory, visions of how computing is going 
+to continue to shape our minds, our bodies, and our relationships with one 
+another.
 
 Yatima, as a project, has an opinionated view of that future. We think computing
 should belong to individual users rather than mega-corporations or states. A
 programming language is an empowering medium of expression, where a user
 encounters, and extends their mind through, a computing machine. "Programmer"
-shouldn't be a job category, anymore than "scribe" is a job in a world with
-near-universal literacy. Computing belongs to everyone, and computer programming
-should therefore be maximally accesibile to everyone.
+shouldn't be a job description, anymore than "scribe" is a job description
+in a world with near-universal literacy. Computing belongs to everyone, 
+and computer programming should therefore be maximally accesibile to everyone.
 
 Currently, it's not: There are about 5 billion internet users worldwide, but
 only an estimated 25 million software developers. That's a "Programming Literacy
 rate" of less than 1%. Furthermore, that population is not demographically
 representative. It skews heavily toward men, the Global North, and those from
 priviledged socioeconomic or ethnic backgrounds. This, frankly, is a disgrace.
-Imagine a dystopia where only people with green eyes played or listened to music
-to get a sense of the absurdist horror at play here.
+Imagine a dystopia where only people with green eyes play music to get a 
+sense of the absurdist horror here.
 
 A new programming language isn't going to be some panacea that solves that
-problem on its own, but there are ways in which a programming language can help:
+problem on its own, but there are some ways in a programming language can help:
 
 1. Build a simple, but powerful programming language. Yatima's
    core logic is under 500 lines of code, but is incredibly expressive in its
@@ -115,14 +115,13 @@ problem on its own, but there are ways in which a programming language can help:
    configuring infrastructure.
 
 5. Integrate with decentralized technologies to remove, as much as possible,
-   social barriers and frictions. Having a centralized services like
-   package managers raise issues around "who controls that server?" The famous
-   [leftpad
-   incident](https://qz.com/646467/how-one-programmer-broke-the-internet-by-deleting-a-tiny-piece-of-code/from)
+   social barriers and frictions. Having centralized services like
+   most modern package managers raises the question "Who controls the package server?" 
+   The famous [leftpad incident](https://qz.com/646467/how-one-programmer-broke-the-internet-by-deleting-a-tiny-piece-of-code/from)
    is commonly presented as a build system issue (which it absolutely is), but
-   less frequently discussed is how what precipitated the incident was how the
+   less frequently discussed is that what precipitated the incident was how the
    `npm` administrators transfered ownership of a package from an individual
-   developer to a company which was threatening legal action.
+   developer, without their consent, to a big company with expensive lawyers.
 
 6. Have a clear code of conduct to combat the endemic toxicity of contemporary
    programming culture. Some might find this controverisial, but it shouldn't be.
@@ -131,7 +130,7 @@ problem on its own, but there are ways in which a programming language can help:
    run than ones which do not.
 
 The future we want to build is one where billions of people use, understand and
-love their mathematical and computing machines, as natural extensions of
+love their mathematical computing machines, as natural extensions of
 themselves. A future where users have autonomy and privacy over their own
 systems and their own data. A future where reliable, type-checked,
 formally-verified software is the norm, so you can use other people's code with
