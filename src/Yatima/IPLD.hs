@@ -81,6 +81,11 @@ defToDagDef def@(Def doc term typ_) = runIdentity $ do
   let typeASTCid = makeCid typeAST :: CID
   return $ DagDef termASTCid typeASTCid doc termMeta typeMeta
 
+defCid :: Name -> Def -> (CID,CID)
+defCid name def@(Def doc term typ_) =
+  let dagDef = defToDagDef def
+   in (makeCid dagDef, makeCid (_termAST dagDef))
+
 data DagError
   = FreeVariable [Name] DagAST DagMeta Int
   | NoDeserial [Name] DagAST DagMeta DeserialiseFailure
@@ -158,7 +163,3 @@ instance Show DagError where
       , "\nentire DagAST: ", show ast
       , "\nentire DagMeta: ", show meta
       ]
-
-
-
-

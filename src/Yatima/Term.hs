@@ -77,7 +77,7 @@ deriving instance Data Term
 -- | A type annotated definition
 data Def = Def { _doc :: Text, _term :: Term, _type :: Term } deriving (Show,Eq)
 
-type Defs = Map Name Def
+type Defs = Map CID Def
 
 -- | Find a name in a binding context and return its index
 findByName :: Name -> [Name] -> Maybe Int

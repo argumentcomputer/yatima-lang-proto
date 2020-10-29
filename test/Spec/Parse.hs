@@ -75,9 +75,9 @@ spec = do
     [ ("1", mkBad 1 $ LeadingDigit "1")
     , ("'a", mkBad 2 $ ReservedLeadingChar '\'' "'a")
     , ("let", mkBad 3 $ ReservedKeyword "let")
-    , ("A/Foo", Good "A/Foo")
+    , ("A.Foo", Good "A.Foo")
     ]
-    --parseIt (pName True >> eof) "A/Foo"  Ugly
+    --parseIt (pName True >> eof) "A.Foo"  Ugly
 
   parseDescribe pLam "Lambda"
     [ ("λ x => x", Good $ Lam "x" $ Var "x" 0)

@@ -69,15 +69,16 @@ prettyFile file = do
   (r,c,p) <- loadFile file
   path    <- parseFilePath file
   root    <- findYatimaRoot (parent path)
-  defs    <- indexToDefs (cacheDir root) (_index p)
-  M.traverseWithKey (prettyIndexF (_index p)) defs
+  let index@(Index ns) = _index p
+  defs    <- indexToDefs (cacheDir root) index
+  traverse (prettyIndexF defs) (M.toList ns)
   return ()
 
-prettyIndexF :: Index -> Name -> Def -> IO ()
-prettyIndexF (Index ns) nam def = do
+prettyIndexF :: Defs -> (Name,(CID,CID)) -> IO ()
+prettyIndexF defs (nam,(cid,_)) = do
   putStrLn ""
-  putStrLn $ T.unpack $ cidToText $ fst $ ns M.! nam
-  putStrLn $ T.unpack $ prettyDef nam def
+  putStrLn $ T.unpack $ cidToText $ cid
+  putStrLn $ T.unpack $ prettyDef nam (defs M.! cid)
   return ()
 
 checkFile :: FilePath -> IO (CID,Package)
@@ -86,14 +87,13 @@ checkFile file = do
   path    <- parseFilePath file
   let index@(Index ns) = _index p
   root    <- findYatimaRoot (parent path)
-  defs    <- indexToDefs (cacheDir root) (_index p)
-  M.traverseWithKey (checkRef (_index p) defs) defs
+  defs    <- indexToDefs (cacheDir root) index
+  traverse (checkRef defs) (M.toList ns)
   return (c,p)
 
-checkRef :: Index -> Defs -> Name -> Def -> IO ()
-checkRef (Index ns) defs name def = do
-  let (cid,_) = ns M.! name
-  let (trm,typ) = defToHoas name def
+checkRef :: Defs -> (Name,(CID,CID)) -> IO ()
+checkRef defs (name,(cid,_)) = do
+  let (trm,typ) = defToHoas name (defs M.! cid)
   case runExcept $ Core.check defs Ctx.empty Once trm typ of
     Left  e -> putStrLn $ T.unpack $ T.concat 
         ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
@@ -160,11 +160,11 @@ checkRef (Index ns) defs name def = do
 
 check :: Defs -> Term -> Term -> Either CheckError Term
 check defs term typ_ =
-  let hTerm = termToHoas Ctx.empty term in
-  let hType = termToHoas Ctx.empty typ_ in
+  let hTerm = termToHoas [] term in
+  let hType = termToHoas [] typ_ in
   case runExcept (Core.check defs Ctx.empty Once hTerm hType) of
     Left err     -> Left err
-    Right (_,ty,_) -> Right (hoasToTerm Ctx.empty ty)
+    Right (_,ty,_) -> Right (hoasToTerm 0 ty)
 --
 --prettyInfer :: Defs -> Term -> Text
 --prettyInfer defs term = case infer defs term of

@@ -31,6 +31,8 @@ import           Text.Megaparsec
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 
+import           Debug.Trace
+
 import           Data.IPLD.CID
 import           Yatima.Term
 import           Yatima.Print
@@ -97,7 +99,7 @@ pName bind = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
   where
     isReservedLead n = n `elem` ("'-" :: [Char])
     syms             = "_'-" :: [Char]
-    nameSymbol       = if bind then syms else syms ++ "/"
+    nameSymbol       = if bind then syms else syms ++ "."
 
 keywords :: Set Text
 keywords = Set.fromList $

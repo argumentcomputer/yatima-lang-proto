@@ -54,38 +54,41 @@ toContext :: PreContext -> Context
 toContext = fmap (\(term) -> (None, term))
 
 -- | Convert a lower-order `Term` to a GHC higher-order one
-termToHoas :: PreContext -> Term -> Hoas
-termToHoas ctx t = case t of
+termToHoas :: [Hoas] -> Term -> Hoas
+termToHoas clos t = case t of
   Typ                         -> TypH
-  Var nam idx                 -> VarH nam idx
+  Var nam idx                 -> if idx < length clos then clos !! idx
+                                 else VarH nam (length clos - idx)
   Ref nam def trm             -> RefH nam def trm
   Lam nam bod                 -> LamH nam (bind nam bod)
   App fun arg                 -> AppH (go fun) (go arg)
   New exp                     -> NewH (go exp)
   Use exp                     -> UseH (go exp)
   Ann val typ                 -> AnnH (go val) (go typ)
-  Let rec nam use typ exp bod -> LetH nam use (go typ) (fix rec nam exp) (bind nam bod)
+  Let rec nam use typ exp bod ->
+    LetH nam use (go typ) (fix rec nam exp) (bind nam bod)
   All nam use typ bod         -> AllH nam use (go typ) (bind nam bod)
   Slf nam bod                 -> SlfH nam (bind nam bod)
   Lit lit                     -> LitH lit
   LTy lty                     -> LTyH lty
   Opr opr                     -> OprH opr
   where
-    go      t   = termToHoas ctx t
-    bind  n t   = (\x   -> termToHoas ((n,x)<|ctx) t)
+    go      t   = termToHoas clos t
+    bind  n t   = (\x   -> termToHoas (x:clos) t)
     fix r n t   = if r then FixH n (bind n t) else go t
 
 -- | Convert a GHC higher-order representation to a lower-order one
-hoasToTerm :: PreContext -> Hoas -> Term
-hoasToTerm ctx t = case t of
+hoasToTerm :: Int -> Hoas -> Term
+hoasToTerm dep t = case t of
   TypH                     -> Typ
   RefH nam def trm         -> Ref nam def trm
-  VarH nam idx             -> Var nam idx
+  VarH nam idx             -> Var nam $ if idx < 0 then idx + dep else idx
   LamH nam bod             -> Lam nam (bind nam bod)
   AppH fun arg             -> App (go fun) (go arg)
   UseH exp                 -> Use (go exp)
   NewH exp                 -> New (go exp)
-  LetH nam use typ exp bod -> Let (isFix exp) nam use (go typ) (go exp) (bind nam bod)
+  LetH nam use typ exp bod ->
+    Let (isFix exp) nam use (go typ) (go exp) (bind nam bod)
   AllH nam use typ bod     -> All nam use (go typ) (bind nam bod)
   SlfH nam bod             -> Slf nam (bind nam bod)
   FixH nam bod             -> bind nam bod
@@ -96,20 +99,17 @@ hoasToTerm ctx t = case t of
   OprH opr                 -> Opr opr
   WhnH x                   -> go x
   where
-    dep                  = Ctx.depth ctx
-    go t                 = hoasToTerm ctx t
-    bind n b             = hoasToTerm ((n,TypH)<|ctx) (b (VarH n dep))
+    go t                 = hoasToTerm dep t
+    bind n b             = hoasToTerm (dep+1) (b (VarH n (-dep-1)))
     isFix exp@(FixH _ _) = True
     isFix exp            = False
 
 printHoas :: Hoas -> Text
-printHoas = prettyTerm . (hoasToTerm Ctx.empty)
+printHoas = prettyTerm . (hoasToTerm 0)
 
 instance Show Hoas where
  show t = T.unpack $ printHoas t
 
 defToHoas :: Name -> Def -> (Hoas,Hoas)
 defToHoas name (Def _ term typ_) =
-  ( FixH name (\s -> termToHoas (Ctx.singleton (name,s)) term)
-  , termToHoas Ctx.empty typ_
-  )
+  (FixH name (\s -> termToHoas [s] term), termToHoas [] typ_)

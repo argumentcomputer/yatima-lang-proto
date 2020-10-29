@@ -449,7 +449,7 @@ reduceOpr op arg = case (op,arg) of
     u64 = asWord64
 
 expandLit :: Literal -> Hoas
-expandLit t = termToHoas Ctx.empty $ case t of
+expandLit t = termToHoas [] $ case t of
   VNatural 0 -> [yatima| λ P z s => z|]
   VNatural n -> App [yatima| λ x P z s => s x|] (Lit $ VNatural (n-1))
   VString cs -> case T.uncons cs of
@@ -470,7 +470,7 @@ expandLit t = termToHoas Ctx.empty $ case t of
   _        -> error "TODO"
 
 litInduction :: LitType -> Hoas -> Hoas
-litInduction t val = (\x y -> AppH y x) val $ termToHoas Ctx.empty $ case t of
+litInduction t val = (\x y -> AppH y x) val $ termToHoas [] $ case t of
   TNatural -> [yatima|
     λ self => forall
     (P : forall #Natural -> Type)
@@ -487,9 +487,9 @@ litInduction t val = (\x y -> AppH y x) val $ termToHoas Ctx.empty $ case t of
     λ n self => forall
    (P    : forall (n: #Natural) (#BitVector n) -> Type)
    (& be : P 0 #b)
-   (& b0 : forall (n: #Natural) (xs : #String)
+   (& b0 : forall (n: #Natural) (xs : #BitVector n)
      -> P (#Natural_succ n) (#BitVector_b0 n xs))
-   (& b1 : forall (n: #Natural) (xs : #String)
+   (& b1 : forall (n: #Natural) (xs : #BitVector n)
      -> P (#Natural_succ n) (#BitVector_b1 n xs))
    -> P n self
   |]
@@ -513,7 +513,7 @@ typeOfLTy t = case t of
   _          -> TypH
 
 typeOfOpr :: PrimOp -> Hoas
-typeOfOpr t = termToHoas Ctx.empty $ case t of
+typeOfOpr t = termToHoas [] $ case t of
   Natural_succ   -> [yatima|∀ #Natural -> #Natural|]
   Natural_pred   -> [yatima|∀ #Natural -> #Natural|]
   Natural_add    -> [yatima|∀ #Natural #Natural -> #Natural|]

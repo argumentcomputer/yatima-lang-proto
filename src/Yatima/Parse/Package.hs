@@ -240,11 +240,10 @@ pImports env imp@(Imports is) ind@(Index ns) = next <|> (return (imp,ind))
       let Index ns = filterIndex (_index p) ds
       let prefix x = if ali == "" then x else ali <> "." <> x
       let ns' = M.mapKeys prefix ns
-      let conflict = M.intersection ns ns'
-      case mergeIndex ind (Index ns) of
+      case mergeIndex ind (Index ns') of
         Left (n1,c1,c2) ->
           customIOFailure $ ConflictingImportNames nam cid (n1,c1) (n1,c2)
-        Right index -> 
+        Right index -> do
           pImports env (Imports $ M.insert cid ali is) index
 
 pPackage :: IORef PackageEnv -> CID -> FilePath -> ParserIO (CID,Package)
@@ -257,8 +256,9 @@ pPackage env cid file = do
   when (title /= "") (void $ symbol "where")
   defs  <- local (\e -> e { _refs = ns }) pDefs
   root  <- _root <$> (liftIO $ readIORef env)
-  ns <- liftIO $ traverse (cachePutDef (cacheDir root)) defs
-  let pack = Package title doc cid imports (Index $ M.fromList ns)
+  ns' <- liftIO $ traverse (cachePutDef (cacheDir root)) defs
+  let (Right index) = mergeIndex (Index ns) (Index $ M.fromList ns')
+  let pack = Package title doc cid imports index
   packCid <- liftIO $ cachePut (cacheDir root) pack
   return $ (packCid, pack)
 
@@ -298,21 +298,20 @@ pDefs :: (Ord e, Monad m) => Parser e m [(Name,Def)]
 pDefs = (space >> next) <|> (space >> eof >> (return []))
   where
   next = do
+    rs <- asks _refs
     (n,d) <- pDef
     let (cid,cid') = defCid n d
     ds    <- local (\e -> e { _refs = M.insert n (cid, cid') (_refs e) }) pDefs
     return $ (n,d):ds
 
-defCid :: Name -> Def -> (CID,CID)
-defCid name def@(Def doc term typ_) =
-  let dagDef = defToDagDef def
-   in (makeCid dagDef, makeCid (_termAST dagDef))
 
 indexToDefs:: Path Abs Dir -> Index -> IO Defs
-indexToDefs cacheDir index = M.traverseWithKey go (indexEntries index)
+indexToDefs cacheDir i@(Index ns) = do
+  ds <- traverse go (M.toList ns)
+  return $ M.fromList ds
   where
-    go :: Name -> (CID,CID) -> IO Def
-    go name (defCid,trmCid) = do
+    go :: (Name,(CID,CID)) -> IO (CID,Def)
+    go (name,(defCid,trmCid)) = do
       dagDef  <- cacheGet @DagDef cacheDir defCid
       let (DagDef termASTCid typeASTCid doc termMeta typeMeta) = dagDef
       when (trmCid /= termASTCid) 
@@ -321,7 +320,7 @@ indexToDefs cacheDir index = M.traverseWithKey go (indexEntries index)
       typeAST <- cacheGet @DagAST cacheDir typeASTCid
       case runExcept (dagToDef doc name (termAST,termMeta) (typeAST,typeMeta)) of
         Left  e -> putStrLn (show e) >> fail ""
-        Right x -> return x
+        Right x -> return (defCid,x)
 
 catchErr:: Show e => Except e a -> IO a
 catchErr x = do

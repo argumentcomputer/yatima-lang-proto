@@ -41,7 +41,7 @@ import           Yatima.IPLD
 
 whnf :: Defs -> Hoas -> Hoas
 whnf defs trm = case trm of
-  RefH nam _ _ -> case defs M.!? nam of
+  RefH nam cid _ -> case defs M.!? cid of
     Just d  -> go $ fst (defToHoas nam d)
     Nothing -> trm
   FixH nam bod       -> go (bod trm)
@@ -80,8 +80,8 @@ norm defs term = go term 0 Set.empty
     go :: Hoas -> Int -> Set CID -> Hoas
     go term lvl seen =
       let step  = whnf defs term
-          hash  = makeCid $ termToAST $ hoasToTerm Ctx.empty term
-          hash' = makeCid $ termToAST $ hoasToTerm Ctx.empty step
+          hash  = makeCid $ termToAST $ hoasToTerm lvl term
+          hash' = makeCid $ termToAST $ hoasToTerm lvl step
        in
        if | hash  `Set.member` seen -> step
           | hash' `Set.member` seen -> step
@@ -108,8 +108,8 @@ equal defs a b lvl = runIdentity $ go a b lvl Set.empty
     go a b lvl seen = do
       let aWhnf = whnf defs a
       let bWhnf = whnf defs b
-      let aHash = makeCid $ termToAST $ hoasToTerm Ctx.empty aWhnf
-      let bHash = makeCid $ termToAST $ hoasToTerm Ctx.empty bWhnf
+      let aHash = makeCid $ termToAST $ hoasToTerm lvl aWhnf
+      let bHash = makeCid $ termToAST $ hoasToTerm lvl bWhnf
       if | (aHash == bHash)                -> return True
          | (aHash,bHash) `Set.member` seen -> return True
          | (bHash,aHash) `Set.member` seen -> return True
@@ -206,10 +206,10 @@ infer defs pre use term = case term of
     case Ctx.adjust lvl (toContext pre) (\(_,typ) -> (use,typ)) of
       Nothing            -> throwError $ UnboundVariable nam lvl
       Just ((_,typ),ctx) -> return (ctx,typ,ir)
-  RefH nam _ _ -> do
+  RefH nam cid _ -> do
     --traceM ("RefH " ++ show nam)
     let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
-    def         <- mapMaybe (defs M.!? nam)
+    def         <- mapMaybe (defs M.!? cid)
     let (_,typ) = (defToHoas nam def)
     let ir = RefI nam
     return (toContext pre,typ,ir)
