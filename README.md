@@ -1,4 +1,45 @@
-# yatima
+# Yatima: A programming language for the decentralized web
+
+> In one sense, the Truth Mines were just another indexscape. Hundreds of
+> thousands of specialized selections of the library's contents were accessible
+> in similar ways--and Yatima had climbed the Evolutionary Tree, hopscotched the
+> Periodic Table, walked the avenue-like Timelines for the histories of
+> fleshers, gleisners, and citizens. Half a megatau before, ve'd swum through
+> the Eukaryotic Cell; every protein, every nucleotide, even carbohydrate
+> drifting through the cytoplasm had broadcast gestalt tags with references to
+> everything the library had to say about the molecule in question.
+>
+> In the Truth Mines, though, the tags weren't just references; they included
+> complete statements of the particular definitions, axioms, or theorems the
+> objects represented. The Mines were self-contained: every mathematical result
+> that fleshers and their descendants had ever proven was on display in its
+> entirety. The library's exegesis was helpful-but the truths themselves were
+> all here.
+>
+> *Diaspora*, Greg Egan
+
+Yatima is a pure functional programming language with the following features:
+
+- **Content-Addressing** powers reproducible builds, and peer-to-peer
+  package management over IPFS. An Yatima content-address represents an
+  _immutable_ program and all its dependencies. That means if someones shares an
+  address like with you, you can perfectly replicate their computation (and in
+  principle even their computing environment!). Since the program is immutable,
+  the way it runs the first time is the way it runs everytime.
+- **First-class types**. This lets you the programmer to tell the compiler what
+  you _intend_ to do in your program. Then, like a helpful robot assistant, the
+  compiler will check to make sure that what you're _actually doing_ matches
+  those expression intentions. Type-driven programming lets the compiler act as
+  your "correctness exocortex", i.e. a cognitive augmentation that helps you
+  catch your mistakes.
+- **Linear, affine and erased types** give you fine-grained control over
+  resource usage during execution. Substructural types allow you to get the
+  memory safety benefits of using a high-level language, while also allowing you
+  to work "close to the metal" when you want to.
+- **Type-safe dependent metaprogramming** lets Yatima have the flexibility and
+  extensibility of a dynamically-typed language, without sacrificing the safety
+  of static-typing.
+
 
 ## Instructions
 
@@ -6,38 +47,125 @@
    https://docs.haskellstack.org/en/stable/README/
 1. Clone this repository, `cd` into it and `stack build`
 2. Enter a repl with `stack ghci`, and try:
-  ```
-  > prettyFile "test/test.ya"
-  λ x y z f g => f (g x y) z
-
-  > prettyFile "test/red.ya"
-  (λ x => x) λ x => x
-
-  > evalPrintFile "test/test.ya"
-  λ x => x
-  ```
 3. Examine Haddock documentation with `stack haddock --open yatima`
+4. Try the repl:
+
+```
+stack exec yide
+```
 
 
+## Motivation
+
+We're still in the early days of the Computing Revolution. The first
+general-purpose digital computers were only switched on about 75 years ago.
+The living memory of your parents and grandparents extends into the past
+*before* computers. These machines are shockingly new, and as a species we
+really have no idea what they're for yet. We're in the middle of the epochal
+transformation whose nearest precedent is the invention of *writing* and the
+settlement of the first cities. There are a lot of prognostications of what that
+means for our future; lots of different, and sometimes contradictory, visions of
+how computing is going to continue to shape our minds, our bodies, and our
+relationships with one another.
+
+Yatima, as a project, has an opinionated view of that future. We think computing
+should belong to individual users rather than mega-corporations or states. A
+programming language is an empowering medium of expression, where a user
+encounters, and extends their mind through, a computing machine. "Programmer"
+shouldn't be a job category, anymore than "scribe" is a job in a world with
+near-universal literacy. Computing belongs to everyone, and computer programming
+should therefore be maximally accesibile to everyone.
+
+Currently, it's not: There are about 5 billion internet users worldwide, but
+only an estimated 25 million software developers. That's a "Programming Literacy
+rate" of less than 1%. Furthermore, that population is not demographically
+representative. It skews heavily toward men, the Global North, and those from
+priviledged socioeconomic or ethnic backgrounds. This, frankly, is a disgrace.
+Imagine a dystopia where only people with green eyes played or listened to music
+to get a sense of the absurdist horror at play here.
+
+A new programming language isn't going to be some panacea that solves that
+problem on its own, but there are ways in which a programming language can help:
+
+1. Build a simple, but powerful programming language. Yatima's
+   core logic is under 500 lines of code, but is incredibly expressive in its
+   type system, runtime and syntax. We want to reduce the language's conceptual
+   prerequisites and barriers to entry, without hindering the language learners
+   future growth and power.
+
+2. Make explicit in the language the connection between computing and
+   mathematics. These two seemingly separate fields are actually, in essence,
+   the same: All proofs are programs, all programs are proofs. A student
+   doing math homework *is* programming, even if they don't conceptualize at
+   such.
+
+   Many people dislike math due to the tedium of manual computation and the
+   unclear relevance of the results. And many people dislike programming because
+   the concrete mechanics often seem arbitrary and frustrating. These are are
+   complementary complaints. Math is more fun when you have a computer to take
+   care of the detail-work. And computing is much easier when you have a clear
+   notion of the theory of what you're doing.
+
+3. Be portable in execution. Run locally, in the browser, on mobile, on a
+   blockchain. People shouldn't have to worry about the details of *where*
+   they want to do, only *what* they want to do
+
+4. Be portable in semantics. Pure semantics and reproducible builds let people
+   focus on the actual content of their programs rather than the scut-work of
+   configuring infrastructure.
+
+5. Integrate with decentralized technologies to remove, as much as possible,
+   social barriers and frictions. Having a centralized services like
+   package managers raise issues around "who controls that server?" The famous
+   [leftpad
+   incident](https://qz.com/646467/how-one-programmer-broke-the-internet-by-deleting-a-tiny-piece-of-code/from)
+   is commonly presented as a build system issue (which it absolutely is), but
+   less frequently discussed is how what precipitated the incident was how the
+   `npm` administrators transfered ownership of a package from an individual
+   developer to a company which was threatening legal action.
+
+6. Have a clear code of conduct to combat the endemic toxicity of contemporary
+   programming culture. Some might find this controverisial, but it shouldn't be.
+   Computing is a social and cultural project as much as it is a technical.
+   Cultures which perpetuate cycles of trauma are less successful in the long
+   run than ones which do not.
+
+The future we want to build is one where billions of people use, understand and
+love their mathematical and computing machines, as natural extensions of
+themselves. A future where users have autonomy and privacy over their own
+systems and their own data. A future where reliable, type-checked,
+formally-verified software is the norm, so you can use other people's code with
+the same confidence you have when you drive your car over a bridge. A future
+where computing is pure positive wonder.
+
+
+
+
+
+
+
+## Instructions
+
+0. Install The Haskell Tool Stack. Instructions here:
+   https://docs.haskellstack.org/en/stable/README/
+1. Clone this repository, `cd` into it and `stack build`
+2. Enter a repl with `stack ghci`, and try:
+3. Examine Haddock documentation with `stack haddock --open yatima`
 4. Try the repl:
 
 ```
 $ stack exec yide
-Welcome to yide, the Yatima interactive development environment!
-yide> :help
-help text fills you with determination 
-yide> (λ x => x) (λ x => x)
-λ x => x
-yide> def id = λ x => x
-yide> def snd = λ x y => y
-yide> def fst = λ x y => x
-yide> id fst
-λ x y => x
-yide> id fst snd snd 
-λ x y => y
-yide> :browse
-Defs {_index = fromList [("fst",zDPWYqFCqtnpLtNboHxPUoPxo1FjTxXDu9M22pX1uTqPccQEhvgU),("id",zDPWYqFCsmqD6T7QiTFfTHJFEHtMQPBGW8ymcVBQmCfvGz1vwmZU),("snd",zDPWYqFD1Z38aKEQKQxZvFRMDc1wA7VVzqPpW2sFdh1mP78iWNGe)], _cache = fromList [(zDPWYqFCqtnpLtNboHxPUoPxo1FjTxXDu9M22pX1uTqPccQEhvgU,"\164b$0gMetaDefb$1\216*X'\NUL\SOHq\160\228\STX !&\184=\204H\180\FS\202},\232 K-$\130\139j<\160`\GS\191\&1\153\136\147C\234\DC1\243b$2\163b$0dMetab$1\163\NULcfst\SOHax\STXayb$2\160b$3\163b$0dMetab$1\163\NULcfst\SOHax\STXayb$2\160"),(zDPWYqFCsmqD6T7QiTFfTHJFEHtMQPBGW8ymcVBQmCfvGz1vwmZU,"\164b$0gMetaDefb$1\216*X'\NUL\SOHq\160\228\STX ~\185\255\239\FS\234\137\231\164\129\166%o\162\n\222u\137\154Td\229\154L\226t\245\136\179\156\161*b$2\163b$0dMetab$1\162\NULbid\SOHaxb$2\160b$3\163b$0dMetab$1\162\NULbid\SOHaxb$2\160"),(zDPWYqFCswHyhy3VeB89KseiETmEsgvxSYUmfqp4pjPrzuFMGiBL,"\163b$0gAnonDefb$1\216*X'\NUL\SOHq\160\228\STX #d\170\146yS\132\184\253\164\250\164uQup\129\230\&2\158]\ETBl\160u\182\225\241\161o\SYNgb$2\216*X'\NUL\SOHq\160\228\STX #d\170\146yS\132\184\253\164\250\164uQup\129\230\&2\158]\ETBl\160u\182\225\241\161o\SYNg"),(zDPWYqFCt63aahH7sCYzNi9qCKwJ794iVSBP5xwABhJcK5oSfA9L,"\162b$0cLamb$1\162b$0cLamb$1\162b$0cVarb$1\SOH"),(zDPWYqFCwNgZwYmkK1hRyb52vNqBoQupVpQYUcteZym5AxaiYLx5,"\163b$0gAnonDefb$1\216*X'\NUL\SOHq\160\228\STX \159)`\139+Sw_0\159\&5\223\223>E\154f\DEL\194\226\DEL7Etl[\US9\148i $b$2\216*X'\NUL\SOHq\160\228\STX \159)`\139+Sw_0\159\&5\223\223>E\154f\DEL\194\226\DEL7Etl[\US9\148i $"),(zDPWYqFCzEa9dbTBeyZtrLR4YiZ7Yp6YEYQBNynBFtj8N9ywUmq3,"\163b$0gAnonDefb$1\216*X'\NUL\SOHq\160\228\STX \145\252\146\185G\a\213vR`Q\254\140\actP\166\bm\ENQ\153\196\&8k\244\255\CAN\241\166}\SOb$2\216*X'\NUL\SOHq\160\228\STX \145\252\146\185G\a\213vR`Q\254\140\actP\166\bm\ENQ\153\196\&8k\244\255\CAN\241\166}\SO"),(zDPWYqFD1Xkmq6KK7VYYY7485av1sy1jYLguw8HqtyTFksttU1ty,"\162b$0cLamb$1\162b$0cVarb$1\NUL"),(zDPWYqFD1Z38aKEQKQxZvFRMDc1wA7VVzqPpW2sFdh1mP78iWNGe,"\164b$0gMetaDefb$1\216*X'\NUL\SOHq\160\228\STX T:\215\244*\253\133#\208)\133\182\150\142\SOHp\172\r\153\vc\154q6+\210\162K\SUB\194\244nb$2\163b$0dMetab$1\163\NULcsnd\SOHax\STXayb$2\160b$3\163b$0dMetab$1\163\NULcsnd\SOHax\STXayb$2\160"),(zDPWYqFD2RBhUbVFT4skkXc2eWFg8dcfuju8vEZJhU557gDddW59,"\162b$0cLamb$1\162b$0cLamb$1\162b$0cVarb$1\NUL")]}
 ```
+
+## Influences:
+
+- Formality
+- Idris
+- Unison
+- Haskell
+- Lean
+- Clojure
+
 
 ## License
 
