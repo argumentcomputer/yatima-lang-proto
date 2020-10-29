@@ -40,39 +40,28 @@ import           Yatima.Term
 import           Yatima.IPLD
 
 whnf :: Defs -> Hoas -> Hoas
-whnf defs trm = case trm of
-  RefH nam cid _ -> case defs M.!? cid of
-    Just d  -> go $ fst (defToHoas nam d)
-    Nothing -> trm
-  FixH nam bod       -> go (bod trm)
-  AppH fun arg       -> case go fun of
-    LamH _ bod -> go (bod arg)
-    OprH opr   -> reduceOpr opr arg
-    x          -> AppH fun arg
-  UseH arg           -> case go arg of
-    NewH exp     -> go exp
-    LitH val     -> expandLit val
-    x            -> UseH arg
-  AnnH a _     -> go a
-  UnrH _ _ a _ -> go a
-  LetH _ _ _ exp bod -> go (bod exp)
-  WhnH x             -> x
-
-  x                  -> x
+whnf defs trm = go [] trm
   where
-    go x = whnf defs x
-
--- | Normalize a Hoas term
---norm :: Defs -> Hoas -> Hoas
---norm defs term = case whnf defs term of
---  AllH nam use typ bod -> AllH nam use (go typ) (\x -> go (bod x))
---  LamH nam bod         -> LamH nam (\x -> go (bod x))
---  AppH fun arg         -> AppH (go fun) (go arg)
---  FixH nam bod         -> go (bod (FixH nam bod))
---  SlfH nam bod         -> SlfH nam (\x -> go (bod x))
---  NewH exp             -> NewH (go exp)
---  UseH exp             -> UseH (go exp)
---  step                 -> step
+    go args trm = case trm of
+      RefH nam cid _ -> case defs M.!? cid of
+        Just d  -> go args $ fst (defToHoas nam d)
+        Nothing -> apply args $ trm
+      FixH nam bod -> go args (bod trm)
+      AppH fun arg -> go (arg : args) fun
+      LamH _   bod -> case args of
+        []          -> trm
+        (a : args') -> go args' (bod a)
+      OprH opr -> reduceOpr opr args
+      UseH arg -> case go [] arg of
+        NewH exp -> go args exp
+        LitH val -> go args $ expandLit val
+        _        -> apply args $ UseH arg
+      AnnH a _           -> go args a
+      UnrH _ _ a _       -> go args a
+      LetH _ _ _ exp bod -> go args (bod exp)
+      _                  -> apply args trm
+    apply []         trm = trm
+    apply (arg:args) trm = apply args (AppH trm arg)
 
 norm :: Defs -> Hoas -> Hoas
 norm defs term = go term 0 Set.empty
@@ -98,7 +87,6 @@ norm defs term = go term 0 Set.empty
       NewH exp             -> NewH (go exp lvl seen)
       UseH exp             -> UseH (go exp lvl seen)
 
-      WhnH x               -> go x lvl seen
       step                 -> step
 
 equal :: Defs -> Hoas -> Hoas -> Int -> Bool

@@ -37,7 +37,6 @@ data Hoas where
   LitH :: Literal -> Hoas
   LTyH :: LitType -> Hoas
   OprH :: PrimOp  -> Hoas
-  WhnH :: Hoas    -> Hoas
 
 type PreContext = Ctx Hoas
 type Context    = Ctx (Uses,Hoas)
@@ -46,7 +45,7 @@ mulCtx :: Uses -> Context -> Context
 mulCtx Once ctx = ctx
 mulCtx uses ctx = fmap (\(uses', typ) -> (uses *# uses', typ)) ctx
 
--- Assumes both context are compatible
+-- Assumes both contexts are compatible
 addCtx :: Context -> Context -> Context
 addCtx = Ctx.zipWith (\(uses,typ) (uses',_) -> (uses +# uses', typ))
 
@@ -97,7 +96,6 @@ hoasToTerm dep t = case t of
   LitH lit                 -> Lit lit
   LTyH lty                 -> LTy lty
   OprH opr                 -> Opr opr
-  WhnH x                   -> go x
   where
     go t                 = hoasToTerm dep t
     bind n b             = hoasToTerm (dep+1) (b (VarH n (-dep-1)))
