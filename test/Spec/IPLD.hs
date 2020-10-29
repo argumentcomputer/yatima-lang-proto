@@ -21,7 +21,7 @@ import qualified Data.Text.Encoding                   as T
 
 import           Data.IPLD.CID
 import           Data.IPLD.DagAST
-import           Yatima.IPFS.IPLD
+import           Yatima.IPLD
 import           Yatima.Package
 import           Yatima.Term
 
@@ -33,33 +33,33 @@ import           Test.QuickCheck.Instances.Text
 
 import           Spec.Instances
 
-fromRight (Right x) = x
-fromRight (Left e) = error "fromRight"
+prop_separate_term :: Term -> Bool
+prop_separate_term d = either (const False) (all id) (runExcept $ prop_separate_term_go d)
 
-term = App (Let False "l19" Once (Var "test" 0) Typ (Lam "m16" (App refId refId))) (Slf "A29" (Var "test" 1))
+prop_separate_term_go :: Term -> Except DagError [Bool]
+prop_separate_term_go term = do
+  let (termAST,termMeta) = (termToAST term, termToMeta term)
+  term' <- dagToTerm [] termAST termMeta
+  let (termAST',termMeta') = (termToAST term', termToMeta term')
+  return [term == term', termAST == termAST', termMeta == termMeta']
 
-refId =
-  let d = cidFromText "bafy2bzaceb7tzcelrtfuo4zl375mtm7dqwmvv7a4amlpziwbm7k3hr4bp3lfc"
-      t = cidFromText "bafy2bzaceagf5dbfewoq632a5x5mjhhv3ojftx2sdh3lc73cneocoe7chzsks"
-   in Ref "id" (fromRight d) (fromRight t)
+prop_separate_def :: Def -> Bool
+prop_separate_def d = either (const False) (all id) (runExcept $ prop_separate_def_go d)
 
-prop_separate :: Term -> Bool
-prop_separate t = either (const False) (all id) (runExcept $ prop_separate_go t)
-
-prop_separate_go :: Term -> Except IPLDErr [Bool]
-prop_separate_go term = do
-  let ast  = termToAST  term
-  let meta = termToMeta term
-  term'        <- astToTerm "test" test_index ast meta
-  let ast'  = termToAST term'
-  let meta' = termToMeta term'
-  return [term == term', ast == ast', meta == meta']
+prop_separate_def_go :: Def -> Except DagError [Bool]
+prop_separate_def_go def = do
+  let (termAST,termMeta,typeAST,typeMeta) = defToDag def
+  def' <- dagToDef (_doc def) "test" (termAST,termMeta) (typeAST,typeMeta)
+  let (termAST',termMeta',typeAST',typeMeta') = defToDag def'
+  return [def == def', termAST == termAST', termMeta == termMeta'
+         , typeAST == typeAST', typeMeta == typeMeta'
+         ]
 
 spec :: SpecWith ()
 spec = do
   describe "Checking serialisation correctness: `x == deserialise (serialise x)`" $ do
     it "Cid"      $ withMaxSuccess 1000 $ property $ prop_serial @CID
-    it "Meta"     $ withMaxSuccess 1000 $ property $ prop_serial @Meta
+    it "DagMeta"  $ withMaxSuccess 1000 $ property $ prop_serial @DagMeta
     it "DagAST"   $ withMaxSuccess 1000 $ property $ prop_serial @DagAST
     it "Literal"  $ withMaxSuccess 1000 $ property $ prop_serial @Literal
     it "LitType"  $ withMaxSuccess 1000 $ property $ prop_serial @LitType
@@ -67,5 +67,6 @@ spec = do
     it "DagDef"   $ withMaxSuccess 1000 $ property $ prop_serial @DagDef
     it "Package"  $ withMaxSuccess 1000 $ property $ prop_serial @Index
     it "Package"  $ withMaxSuccess 1000 $ property $ prop_serial @Package
-  describe "Checking metadata separation correctness" $
-    it "x == merge (separate x)" $ (withMaxSuccess 1000 $ property prop_separate)
+  describe "Checking metadata separation correctness" $ do
+    it "x == merge (separate x)" $ withMaxSuccess 1000 $ property prop_separate_term
+    it "x == merge (separate x)" $ withMaxSuccess 1000 $ property prop_separate_def

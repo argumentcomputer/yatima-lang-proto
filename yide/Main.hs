@@ -9,7 +9,8 @@ import           Yatima
 import           Yide
 
 main :: IO ()
-main = do
-  dir  <- getCurrentDir
-  root <- findYatimaRoot dir
-  evalStateT yide (emptyYideState root)
+main = undefined
+--main = do
+--  dir  <- getCurrentDir
+--  root <- findYatimaRoot dir
+--  evalStateT yide (emptyYideState root)

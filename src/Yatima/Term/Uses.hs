@@ -2,6 +2,9 @@
 module Yatima.Term.Uses where
 
 import           Data.Data
+import           Codec.Serialise
+import           Codec.Serialise.Decoding
+import           Codec.Serialise.Encoding
 
 data Uses = None | Affi | Once | Many deriving (Eq, Show, Enum, Data)
 
@@ -34,3 +37,25 @@ Many ≤# x    = False
 
 (>#) :: Uses -> Uses -> Bool
 (>#) x y = not (x ≤# y)
+
+
+encodeUses :: Uses -> Encoding
+encodeUses u = case u of
+  None -> encodeInt 0
+  Affi -> encodeInt 1
+  Once -> encodeInt 2
+  Many -> encodeInt 3
+
+decodeUses :: Decoder s Uses
+decodeUses = do
+  tag  <- decodeInt
+  case tag of
+    0 -> return None
+    1 -> return Affi
+    2 -> return Once
+    3 -> return Many
+    _ -> fail $ "invalid Uses tag: " ++ show tag
+
+instance Serialise Uses where
+  encode = encodeUses
+  decode = decodeUses

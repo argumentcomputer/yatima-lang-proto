@@ -55,8 +55,8 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       Ref nam _ _             -> name nam
       All nam use typ bod     -> "∀" <> alls nam use typ bod
       Slf nam bod             -> "@" <> name nam <> " " <> go bod
-      New bod                 -> "case " <> go bod
-      Use bod                 -> "data " <> go bod
+      New bod                 -> "data " <> go bod
+      Use bod                 -> "case " <> go bod
       Lam nam bod             -> "λ" <> lams nam bod
       Ann val typ             -> pars (go val <> " :: " <> go typ)
       App func argm           -> apps func argm

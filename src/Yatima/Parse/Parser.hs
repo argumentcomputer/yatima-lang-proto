@@ -92,6 +92,7 @@ data ParseError e
   | U32Overflow Integer
   | U64Underflow Integer
   | U32Underflow Integer
+  | InvalidCID Text Text
   | LeadingDigit Name
   | ParseEnvironmentError e
   deriving (Eq, Ord,Show)
@@ -113,6 +114,7 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseError e) where
     U64Underflow i            -> "Underflow: " <> show i <> "u64"
     U32Overflow  i            -> "Overflow: "  <> show i <> "u32"
     U32Underflow i            -> "Underflow: " <> show i <> "u32"
+    InvalidCID err txt        -> "Invalid CID: " <> show txt <> ", " <> show err
     ParseEnvironmentError e   -> showErrorComponent e
 
 instance ShowErrorComponent () where

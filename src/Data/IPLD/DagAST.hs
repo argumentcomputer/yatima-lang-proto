@@ -25,11 +25,11 @@ import           Data.IPLD.CID
 
 -- | A typed definition embedded in the IPLD DAG
 data DagDef = DagDef
-  { _anonTerm :: CID
-  , _anonType :: CID
+  { _termAST  :: CID
+  , _typeAST  :: CID
   , _document :: Text
-  , _termMeta :: Meta
-  , _typeMeta :: Meta
+  , _termMeta :: DagMeta
+  , _typeMeta :: DagMeta
   } deriving Show
 
 -- | An anonymous spine of a λ-like language
@@ -44,7 +44,12 @@ data DagAST
 -- | The computationally irrelevant metadata of an AST:
 -- Specifically, the names of its binders, the names of its global references
 -- and the cids of the DagDefs that correspond to those global references
-data Meta = Meta { _entries :: IntMap (Text, Maybe CID) } deriving (Show,Eq)
+data DagMeta
+  = MCtor [DagMeta]
+  | MBind Text DagMeta
+  | MLink Text CID
+  | MLeaf
+  deriving (Eq,Show,Ord)
 
 encodeDagAST :: DagAST -> Encoding
 encodeDagAST term = case term of
@@ -79,36 +84,35 @@ instance Serialise DagAST where
   encode = encodeDagAST
   decode = decodeDagAST
 
-encodeMeta :: Meta -> Encoding
-encodeMeta (Meta m) = encodeMapLen (fromIntegral (IM.size m))
-  <> IM.foldrWithKey go mempty m
-  where
-    go = (\k v r -> encodeString (T.pack $ show k) <> encodeEntry v <> r)
-    encodeEntry (n, Nothing) = encodeListLen 1 <> encodeString n
-    encodeEntry (n, Just c)  = encodeListLen 2 <> encodeString n <> encodeCid c
+encodeDagMeta :: DagMeta -> Encoding
+encodeDagMeta term = case term of
+  MCtor ts  -> encodeListLen 2 <> encodeInt 0
+    <> encodeListLen (fromIntegral $ length ts)
+       <> foldr (\v r -> encodeDagMeta v <> r) mempty ts
+  MBind n t -> encodeListLen 3 <> encodeInt 1
+    <> encodeString n <> encodeDagMeta t
+  MLink n c -> encodeListLen 3 <> encodeInt 2
+    <> encodeString n <> encodeCid c
+  MLeaf     -> encodeListLen 1 <> encodeInt 3
 
-decodeMeta :: Decoder s Meta
-decodeMeta = do
-  size  <- decodeMapLen
-  Meta . IM.fromList <$> replicateM size decodeEntry
-  where
-    decodeEntry = do
-      keyString <- decodeString
-      let  key = (read (T.unpack keyString) :: Int)
-      size <- decodeListLen
-      case size of
-        1 -> do
-          n <- decodeString
-          return (key,(n,Nothing))
-        2 -> do
-          n <- decodeString
-          c <- decodeCid
-          return (key,(n,Just c))
-        _ -> fail "invalid Meta map entry"
+decodeDagMeta :: Decoder s DagMeta
+decodeDagMeta = do
+  size <- decodeListLen
+  tag  <- decodeInt
+  case (size,tag) of
+    (2,0) -> do
+      arity <- decodeListLen
+      args  <- replicateM arity decodeDagMeta
+      return $ MCtor args
+    (3,1) -> MBind <$> decodeString <*> decodeDagMeta
+    (3,2) -> MLink <$> decodeString <*> decodeCid
+    (1,3) -> return MLeaf
+    _     -> fail $ concat
+      ["invalid DagMeta with size: ", show size, " and tag: ", show tag]
 
-instance Serialise Meta where
-  encode = encodeMeta
-  decode = decodeMeta
+instance Serialise DagMeta where
+  encode = encodeDagMeta
+  decode = decodeDagMeta
 
 encodeDagDef :: DagDef -> Encoding
 encodeDagDef (DagDef anonTerm anonType doc termMeta typeMeta) = encodeListLen 6
@@ -116,8 +120,8 @@ encodeDagDef (DagDef anonTerm anonType doc termMeta typeMeta) = encodeListLen 6
   <> (encodeCid    anonTerm)
   <> (encodeCid    anonType)
   <> (encodeString doc)
-  <> (encodeMeta   termMeta)
-  <> (encodeMeta   typeMeta)
+  <> (encodeDagMeta termMeta)
+  <> (encodeDagMeta typeMeta)
 
 decodeDagDef :: Decoder s DagDef
 decodeDagDef = do
@@ -125,7 +129,8 @@ decodeDagDef = do
   when (size /= 6) (fail $ "invalid DagDef list size: " ++ show size)
   tag <- decodeString
   when (tag /= "DagDef") (fail $ "invalid DagDef tag: " ++ show tag)
-  DagDef <$> decodeCid <*> decodeCid <*> decodeString <*> decodeMeta <*> decodeMeta
+  DagDef <$> decodeCid     <*> decodeCid <*> decodeString 
+         <*> decodeDagMeta <*> decodeDagMeta
 
 instance Serialise DagDef where
   encode = encodeDagDef

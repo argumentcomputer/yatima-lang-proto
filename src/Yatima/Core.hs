@@ -19,6 +19,7 @@ import           Data.Sequence                  (Seq (..))
 import qualified Data.Sequence                  as Seq
 import           Data.Set                       (Set)
 import qualified Data.Set                       as Set
+import           Data.IPLD.CID
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -36,6 +37,7 @@ import           Yatima.Core.UnionFind
 import           Yatima.Core.CheckError
 import           Yatima.Print
 import           Yatima.Term
+import           Yatima.IPLD
 
 whnf :: Defs -> Hoas -> Hoas
 whnf defs trm = case trm of
@@ -75,17 +77,17 @@ whnf defs trm = case trm of
 norm :: Defs -> Hoas -> Hoas
 norm defs term = go term 0 Set.empty
   where
-    go :: Hoas -> Int -> Set LT.Text -> Hoas
+    go :: Hoas -> Int -> Set CID -> Hoas
     go term lvl seen =
       let step  = whnf defs term
-          hash  = serialize lvl term
-          hash' = serialize lvl step
+          hash  = makeCid $ termToAST $ hoasToTerm Ctx.empty term
+          hash' = makeCid $ termToAST $ hoasToTerm Ctx.empty step
        in
        if | hash  `Set.member` seen -> step
           | hash' `Set.member` seen -> step
           | otherwise -> next step lvl (Set.insert hash' (Set.insert hash seen))
 
-    next :: Hoas -> Int -> Set LT.Text -> Hoas
+    next :: Hoas -> Int -> Set CID -> Hoas
     next step lvl seen = case step of
       AllH nam use typ bod ->
         AllH nam use (go typ lvl seen) (\x -> go (bod x) (lvl+1) seen)
@@ -99,62 +101,15 @@ norm defs term = go term 0 Set.empty
       WhnH x               -> go x lvl seen
       step                 -> step
 
--- Converts a term to a unique string representation. This is used by equal.
--- TODO: use a hash function instead
-serialize :: Int -> Hoas -> LT.Text
-serialize lvl term = TB.toLazyText (go term lvl lvl)
-  where
-    name :: Name -> TB.Builder
-    name "" = "_"
-    name x  = TB.fromText x
-
-    uses :: Uses -> TB.Builder
-    uses None = "0"
-    uses Affi = "&"
-    uses Once = "1"
-    uses Many = "ω"
-
-    go :: Hoas -> Int -> Int -> TB.Builder
-    go term lvl ini = case term of
-      TypH                     -> "*"
-      VarH _ idx               ->
-        if idx >= ini
-        then "^" <> TB.decimal (lvl-idx-1)
-        else "#" <> TB.decimal idx
-      RefH nam _ _ -> "$" <> name nam
-      AllH nam use typ bod     ->
-        "∀" <> uses use <> name nam
-        <> go typ lvl ini
-        <> go (bod (VarH nam lvl)) (lvl+1) ini
-      SlfH nam bod             ->
-        "@" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
-      LamH nam bod             ->
-        "λ" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
-      AppH fun arg             -> "+" <> go fun lvl ini <> go arg lvl ini
-      NewH exp                 -> "ν" <> go exp lvl ini
-      UseH exp                 -> "σ" <> go exp lvl ini
-      LetH nam use typ exp bod ->
-        "~" <> uses use <> name nam
-        <> go typ lvl ini <> go exp lvl ini
-        <> go (bod (VarH nam lvl)) (lvl+1) ini
-      FixH nam bod             ->
-        "%" <> name nam <> go (bod (VarH nam lvl)) (lvl+1) ini
-      AnnH trm _               -> go trm lvl ini
-      UnrH _ _ trm _           -> go trm lvl ini
-      LitH lit                 -> "(" <> TB.fromText (prettyLiteral lit) <> ")"
-      LTyH lit                 -> "<" <> TB.fromText (prettyLitType lit) <> ">"
-      OprH opr                 -> "{" <> TB.fromText (prettyPrimOp opr) <> "}"
-      WhnH trm                 -> go trm lvl ini
-
 equal :: Defs -> Hoas -> Hoas -> Int -> Bool
 equal defs a b lvl = runIdentity $ go a b lvl Set.empty
   where
-    go :: Hoas -> Hoas -> Int -> Set (LT.Text,LT.Text) -> Identity Bool
+    go :: Hoas -> Hoas -> Int -> Set (CID,CID) -> Identity Bool
     go a b lvl seen = do
       let aWhnf = whnf defs a
       let bWhnf = whnf defs b
-      let aHash = serialize lvl aWhnf
-      let bHash = serialize lvl bWhnf
+      let aHash = makeCid $ termToAST $ hoasToTerm Ctx.empty aWhnf
+      let bHash = makeCid $ termToAST $ hoasToTerm Ctx.empty bWhnf
       if | (aHash == bHash)                -> return True
          | (aHash,bHash) `Set.member` seen -> return True
          | (bHash,aHash) `Set.member` seen -> return True
@@ -162,7 +117,7 @@ equal defs a b lvl = runIdentity $ go a b lvl Set.empty
              let seen' = Set.insert (aHash,bHash) seen
              next aWhnf bWhnf lvl seen'
 
-    next :: Hoas -> Hoas -> Int -> Set (LT.Text, LT.Text) -> Identity Bool
+    next :: Hoas -> Hoas -> Int -> Set (CID, CID) -> Identity Bool
     next a b lvl seen = case (a, b) of
       (AllH aNam aUse aTyp aBod, AllH bNam bUse bTyp bBod) -> do
         let aBod' = aBod (VarH aNam lvl)

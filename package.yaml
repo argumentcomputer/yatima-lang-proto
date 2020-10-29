@@ -25,7 +25,7 @@ library:
     - Yatima.Core.IR
     - Yatima.Compiler.Scheme
     - Yatima.IPFS.Client
-    - Yatima.IPFS.IPLD
+    - Yatima.IPLD
     - Yatima.Package
     - Yatima.Parse.Integer
     - Yatima.Parse.Package

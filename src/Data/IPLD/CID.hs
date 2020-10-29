@@ -33,6 +33,7 @@ module Data.IPLD.CID
     , getCid
 
     , cidFromText
+    , cidFromText'
     , cidFromMultihashBytes
     , cidFromMultibaseBytes
     , cidToText
@@ -43,6 +44,7 @@ module Data.IPLD.CID
     , decodeCid
     , encodeCid
     , makeCid
+    , makeCidFromBytes
     )
 where
 
@@ -214,6 +216,12 @@ cidFromText t = decodeBase >=> cidFromMultihashBytes $ encodeUtf8 t
         Just (x, _) | x == 18 -> Left "CID > V0 starts with reserved byte 0x12"
         _                     -> Right bs
 
+cidFromText' :: Text -> CID
+cidFromText' t = case cidFromText t of
+  Left  e -> error e
+  Right x -> x
+
+
 -- | Encode a 'CID' to a textual representation.
 --
 -- The result is either a base58 (bitcoin) encoded string of just the 'cidHash'
@@ -290,3 +298,6 @@ mkCborCidV1 alg a = newCidV1 DagCbor (hashLazyWith alg (serialise a))
 
 makeCid :: Serialise a => a -> CID
 makeCid a = mkCborCidV1 C.Blake2b_256 a
+
+makeCidFromBytes :: LBS.ByteString -> CID
+makeCidFromBytes bs = newCidV1 DagCbor (hashLazyWith C.Blake2b_256 bs)

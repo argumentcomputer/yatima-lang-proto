@@ -30,7 +30,7 @@ library
       Yatima.Core.IR
       Yatima.Compiler.Scheme
       Yatima.IPFS.Client
-      Yatima.IPFS.IPLD
+      Yatima.IPLD
       Yatima.Package
       Yatima.Parse.Integer
       Yatima.Parse.Package
@@ -50,6 +50,7 @@ library
       Yatima.Core.CheckError
       Yatima.Core.Prim
       Yatima.Core.UnionFind
+      Yatima.IPFS.IPLD
       Paths_yatima
   hs-source-dirs:
       src

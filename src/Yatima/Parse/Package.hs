@@ -8,6 +8,7 @@ Stability   : experimental
 -}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Yatima.Parse.Package where
 
 import           Control.Monad.Except
@@ -36,7 +37,7 @@ import           Debug.Trace
 
 import           Data.IPLD.CID
 import           Data.IPLD.DagAST
-import           Yatima.IPFS.IPLD
+import           Yatima.IPLD
 import           Yatima.Package
 import           Yatima.Term
 import           Yatima.Parse.Parser     hiding (parseDefault)
@@ -47,21 +48,19 @@ import           Text.Megaparsec            hiding (State)
 import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 
-data ImportError
+data PackageError
   = UnknownPackage Name
-  | CorruptDefs IPLDErr
-  | InvalidCID String Text
   | InvalidLocalImport Name
   | MisnamedPackageImport Name Name CID
   | LocalImportCycle (Path Rel File)
   | ConflictingImportNames Name CID (Name,CID) (Name,CID)
+  | MisnamedCacheFile (Path Abs File) CID CID
+  | CacheFileNoDeserial (Path Abs File) CID DeserialiseFailure
   deriving (Eq,Ord,Show)
 
-instance ShowErrorComponent ImportError where
-  showErrorComponent (CorruptDefs e) =
-    "ERR: The defined environment is corrupt: " ++ show e
-  showErrorComponent (InvalidCID err txt) =
-    "Invalid CID: " ++ show txt ++ ", " ++ err
+instance ShowErrorComponent PackageError where
+--  showErrorComponent (CorruptDefs e) =
+--    "ERR: The defined environment is corrupt: " ++ show e
   showErrorComponent (InvalidLocalImport name) =
     "Invalid Local Import: " ++ show name -- ++ ", " ++ show e
   showErrorComponent (UnknownPackage nam) =
@@ -82,9 +81,9 @@ instance ShowErrorComponent ImportError where
     [ "Package import creates a cycle: ", show imp
     ]
 
-type ParserIO a = Parser ImportError IO a
+type ParserIO a = Parser PackageError IO a
 
-customIOFailure :: ImportError -> ParserIO a
+customIOFailure :: PackageError -> ParserIO a
 customIOFailure = customFailure . ParseEnvironmentError
 
 -- | A utility for running a `Parser`, since the `RWST` monad wraps `ParsecT`
@@ -106,25 +105,72 @@ pPackageName = label "a package name" $ do
   let nam = T.pack (n : ns)
   return nam
 
-pInsertDefs :: Path Abs Dir -> [(Name,Def)] -> Index -> ParserIO Index
-pInsertDefs dir defs index = do
-  cache <- liftIO $ readCache dir
-  let (index, cache') = insertDefs defs index cache
-  liftIO $ writeCache dir cache
-  return $ index
+cacheDir :: Path Abs Dir -> Path Abs Dir
+cacheDir root = root </> [reldir|.yatima/cache|]
 
-pDeserial :: forall a. Serialise a => Path Abs Dir -> CID -> ParserIO a
-pDeserial dir cid = do
-  cache <- liftIO $ readCache dir
-  case runExcept (deserial @a cid cache) of
-    Left  e -> customIOFailure $ CorruptDefs $ e
+findYatimaRoot :: Path a Dir -> IO (Path Abs Dir)
+findYatimaRoot initialDir = makeAbsolute initialDir >>= go
+  where
+    go :: Path Abs Dir -> IO (Path Abs Dir)
+    go dir = do
+      (ds,_) <- listDir dir
+      let yati = dir </> [reldir|.yatima|]
+      if | elem yati ds       -> return dir
+         | parent dir == dir  -> initYatimaRoot initialDir
+         | otherwise          -> go (parent dir)
+
+initYatimaRoot :: Path a Dir -> IO (Path Abs Dir)
+initYatimaRoot dir = do
+  ensureDir (dir </> [reldir|.yatima/cache|])
+  makeAbsolute dir
+
+pCacheGet :: forall a. Serialise a => Path Abs Dir -> CID -> ParserIO a
+pCacheGet cacheDir cid = do
+  file <- liftIO $ parseRelFile $ T.unpack $ cidToText cid
+  let path = cacheDir </> file
+  bs <- liftIO $ BSL.readFile (toFilePath path)
+  let cid' = makeCidFromBytes bs
+  when (cid' /= cid) (customIOFailure $ MisnamedCacheFile path cid cid')
+  case (deserialiseOrFail @a bs) of
+    Left  e -> customIOFailure $ CacheFileNoDeserial path cid e
     Right a -> return a
 
+cacheGet :: forall a. Serialise a => Path Abs Dir -> CID -> IO a
+cacheGet cacheDir cid = do
+  file <- parseRelFile $ T.unpack $ cidToText cid
+  let path = cacheDir </> file
+  bs <- BSL.readFile (toFilePath path)
+  let cid' = makeCidFromBytes bs
+  when (cid' /= cid) 
+    (fail $ "Cache file contents do not match given CID: " ++ show cid)
+  case (deserialiseOrFail @a bs) of
+    Left  e -> fail $ "Cannot deserialise cache file: " ++ show e
+    Right a -> return a
+
+cachePut :: forall a. Serialise a => Path Abs Dir -> a -> IO CID
+cachePut cacheDir x = do
+  let cid = makeCid x
+  file <- parseRelFile $ T.unpack $ cidToText cid
+  let path = cacheDir </> file
+  exists <- doesFileExist path
+  unless exists (BSL.writeFile (toFilePath path) (serialise x))
+  return cid
+
+cachePutDef :: Path Abs Dir -> (Name,Def) ->  IO (Name,(CID,CID))
+cachePutDef cacheDir (n,d@(Def doc trm typ)) = do
+  termASTCid <- cachePut cacheDir (termToAST trm)
+  typeASTCid <- cachePut cacheDir (termToAST typ)
+  let termMeta = termToMeta trm
+  let typeMeta = termToMeta typ
+  let dagDef = DagDef termASTCid typeASTCid doc termMeta typeMeta
+  dagDefCid <- cachePut cacheDir dagDef
+  return (n,(dagDefCid,termASTCid))
+
 data PackageEnv = PackageEnv
-  { _root      :: Path Abs Dir
-  , _openFiles :: Set (Path Rel File)
-  , _doneFiles :: Map (Path Rel File) CID
-  }
+ { _root      :: Path Abs Dir
+ , _openFiles :: Set (Path Rel File)
+ , _doneFiles :: Map (Path Rel File) CID
+ }
 
 data From
   = Local Name (Path Rel File)
@@ -141,17 +187,10 @@ pImportDefs = do
   string ")"
   return defs
 
-pCID :: Monad m => Parser ImportError m CID
-pCID = do
-  txt <- T.pack <$> (many alphaNumChar)
-  case cidFromText txt of
-    Left  err  -> customFailure $ ParseEnvironmentError $ InvalidCID err txt
-    Right cid  -> return $ cid
-
 makePath :: Name -> ParserIO (Path Rel File)
 makePath n = liftIO go >>= \e -> either customIOFailure pure e
   where
-    go :: IO (Either ImportError (Path Rel File))
+    go :: IO (Either PackageError (Path Rel File))
     go = do
       let filepath = (T.unpack $ (T.intercalate "/" $ T.splitOn "." n) <> ".ya")
       catch @IO @PathException (Right <$> parseRelFile filepath) $ \e ->
@@ -180,9 +219,7 @@ pImport env = label "an import" $ do
           liftIO $ pFile env path
         Just cid -> do
           root <- _root <$> (liftIO $ readIORef env)
-          bs <- liftIO $ BS.readFile (toFilePath $ root </> path)
-          p  <- either (customIOFailure . CorruptDefs . NoDeserial . pure) pure
-                  (deserialiseOrFail $ BSL.fromStrict bs)
+          p <- pCacheGet @Package (cacheDir root) cid
           return (cid,p)
       unless (name == (_title p))
         (customIOFailure $ MisnamedPackageImport name (_title p) cid)
@@ -194,14 +231,6 @@ pImport env = label "an import" $ do
     --    (customIOFailure $ MisnamedPackageImport nam (_title p) cid)
     --  let pre = maybe "" (\x -> T.append x "/") ali
     --  return (nam,cid, M.mapKeys (T.append pre) (_index p))
-    --Local nam ali -> do
-    --  open  <- _open <$> (liftIO $ readIORef env)
-    --  let file = (T.unpack nam ++ ".ya")
-    --  when (Set.member file open) (customIOFailure $ LocalImportCycle file)
-    --  (cid,p) <- liftIO $ pFile env (T.unpack nam ++ ".ya")
-    --  unless (nam == (_title p))
-    --    (customIOFailure $ MisnamedPackageImport nam (_title p) cid)
-    --  return (nam,ali,cid,p)
 
 pImports :: IORef PackageEnv -> Imports -> Index -> ParserIO (Imports, Index)
 pImports env imp@(Imports is) ind@(Index ns) = next <|> (return (imp,ind))
@@ -227,58 +256,29 @@ pPackage env cid file = do
   (imports, index@(Index ns)) <- pImports env emptyImports emptyIndex
   when (title /= "") (void $ symbol "where")
   defs  <- local (\e -> e { _refs = ns }) pDefs
-  root <- _root <$> (liftIO $ readIORef env)
-  cache <- liftIO $ readCache root
-  let (index, cache) = insertDefs defs index cache
-  let pack = Package title doc cid imports index
-  let (cid,cache')   = insertPackage pack cache
-  liftIO $ writeCache root cache'
-  return $ (cid, pack)
+  root  <- _root <$> (liftIO $ readIORef env)
+  ns <- liftIO $ traverse (cachePutDef (cacheDir root)) defs
+  let pack = Package title doc cid imports (Index $ M.fromList ns)
+  packCid <- liftIO $ cachePut (cacheDir root) pack
+  return $ (packCid, pack)
 
 -- | Parse a file
 pFile :: IORef PackageEnv -> Path Rel File -> IO (CID,Package)
 pFile env relPath = do
-  root <- _root <$> (liftIO $ readIORef env)
+  root       <- _root <$> (liftIO $ readIORef env)
   let absPath = root </> relPath
-  let file = toFilePath absPath
+  let file    = toFilePath absPath
   modifyIORef' env (\e -> e { _openFiles = Set.insert relPath (_openFiles e)})
-  txt   <- TIO.readFile file
-  cache <- readCache root
-  let (fileCID, cache') = insertSource (Source txt) cache
-  writeCache root cache'
-  (cid,pack)  <- parseIO (pPackage env fileCID file) defaultParseEnv file txt
+  txt        <- TIO.readFile file
+  sourceCid  <- cachePut (cacheDir root) (Source txt)
+  (cid,pack) <- parseIO (pPackage env sourceCid file) defaultParseEnv file txt
   modifyIORef' env (\e -> e { _openFiles = Set.delete relPath (_openFiles e)})
   modifyIORef' env (\e -> e { _doneFiles = M.insert relPath cid (_doneFiles e)})
   putStrLn $ concat
     [ "parsed: ", (T.unpack $ _title pack), " "
-    , (T.unpack $ cidToText cid)
+    , show cid
     ]
   return (cid,pack)
-
---readPackages :: IO (Map Name CID)
---readPackages = do
---  createDirectoryIfMissing True ".yatima/packages"
---  ns <- listDirectory ".yatima/packages"
---  M.fromList <$> traverse go ns
---  where
---    go :: FilePath -> IO (Name,CID)
---    go f = do
---      txt <- TIO.readFile (".yatima/packages/" ++ f)
---      case cidFromText txt of
---        Left e  -> error $ "CORRUPT PACKAGE INDEX ENTRY: " ++ f ++ ", " ++ e
---        Right c -> return (T.pack f, c)
---
---writePackage :: Name -> CID -> IO ()
---writePackage title cid = do
---  createDirectoryIfMissing True ".yatima/packages"
---  let file = (".yatima/packages/" ++ (T.unpack $ title))
---  TIO.writeFile file (cidToText cid)
-
-catchErr:: Show e => Except e a -> IO a
-catchErr x = do
-  case runExcept x of
-    Right x -> return x
-    Left  e -> putStrLn (show e) >> fail ""
 
 pDoc :: (Ord e, Monad m) => Parser e m Text
 pDoc = do
@@ -299,9 +299,32 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
   where
   next = do
     (n,d) <- pDef
-    let dagDef = defToDag d
-    let defCid = makeCid dagDef
-    let trmCid = _anonTerm dagDef
-    ds    <- local (\e -> e { _refs = M.insert n (defCid, trmCid) (_refs e) }) pDefs
+    let (cid,cid') = defCid n d
+    ds    <- local (\e -> e { _refs = M.insert n (cid, cid') (_refs e) }) pDefs
     return $ (n,d):ds
 
+defCid :: Name -> Def -> (CID,CID)
+defCid name def@(Def doc term typ_) =
+  let dagDef = defToDagDef def
+   in (makeCid dagDef, makeCid (_termAST dagDef))
+
+indexToDefs:: Path Abs Dir -> Index -> IO Defs
+indexToDefs cacheDir index = M.traverseWithKey go (indexEntries index)
+  where
+    go :: Name -> (CID,CID) -> IO Def
+    go name (defCid,trmCid) = do
+      dagDef  <- cacheGet @DagDef cacheDir defCid
+      let (DagDef termASTCid typeASTCid doc termMeta typeMeta) = dagDef
+      when (trmCid /= termASTCid) 
+        (fail $ "indexToDefs failure: termAST CIDS don't match")
+      termAST <- cacheGet @DagAST cacheDir termASTCid
+      typeAST <- cacheGet @DagAST cacheDir typeASTCid
+      case runExcept (dagToDef doc name (termAST,termMeta) (typeAST,typeMeta)) of
+        Left  e -> putStrLn (show e) >> fail ""
+        Right x -> return x
+
+catchErr:: Show e => Except e a -> IO a
+catchErr x = do
+  case runExcept x of
+    Right x -> return x
+    Left  e -> putStrLn (show e) >> fail ""

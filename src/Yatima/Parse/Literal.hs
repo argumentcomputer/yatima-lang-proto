@@ -206,3 +206,10 @@ pEscape = do
     , chr <$> L.decimal
     ]
 
+pCID :: (Ord e, Monad m) => Parser e m CID
+pCID = do
+  txt <- T.pack <$> (many alphaNumChar)
+  case cidFromText txt of
+    Left  err  -> customFailure $ InvalidCID (T.pack err) txt
+    Right cid  -> return $ cid
+

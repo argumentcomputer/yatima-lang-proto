@@ -22,7 +22,7 @@ import           Data.Maybe
 
 import           Data.IPLD.CID
 import           Data.IPLD.DagAST
-import           Yatima.IPFS.IPLD
+import           Yatima.IPLD
 import           Yatima.Package
 import           Yatima.Term
 
@@ -47,15 +47,24 @@ instance Arbitrary DagAST where
     , Bind <$> arbitrary
     , Data <$> arbitrary
     , do
-        n <- (\n -> (n * 2) `div` 3) <$> getSize
+        n <- (\n -> (n * 3) `div` 5) <$> getSize
         i <- choose (0,n)
         c <- name_gen
         ts <- resize n $ vector i
         return $ Ctor c ts
     ]
 
-instance Arbitrary Meta where
-  arbitrary = Meta <$> arbitrary
+instance Arbitrary DagMeta where
+  arbitrary = oneof
+    [ return MLeaf
+    , MLink <$> name_gen <*> arbitrary
+    , MBind <$> name_gen <*> arbitrary
+    , do
+        n <- (\n -> (n * 3) `div` 5) <$> getSize
+        i <- choose (0,n)
+        ts <- resize n $ vector i
+        return $ MCtor ts
+    ]
 
 instance Arbitrary DagDef where
   arbitrary = DagDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
@@ -78,16 +87,13 @@ prop_serial x = let s = serialise x in
     Left _   -> False
     Right x' -> x == x' && (serialise x' == s)
 
-test_defs :: (Index,Cache)
-test_defs =
+test_index :: Index
+test_index =
   let trm = Lam "A" (Lam "x" (Var "x" 0))
-      typ = All "A" Many Typ (All "x" Many (Var "A" 1) (Var "A" 2))
+      typ = All "A" Many Typ (All "x" Many (Var "A" 0) (Var "A" 1))
       def = Def "" trm typ
-      (defCid, trmCid, cache) = insertDef "id" def emptyIndex (Cache M.empty)
-   in (Index (M.singleton "id" (defCid,trmCid)), cache)
-
-test_index = fst test_defs
-test_cache = snd test_defs
+      (defCid, trmCid) = defCid "id" def
+   in Index (M.singleton "id" (defCid,trmCid))
 
 name_gen :: Gen Text
 name_gen = do
@@ -148,7 +154,7 @@ ref_gen = do
 
 term_gen :: [Name] -> Gen Term
 term_gen ctx = frequency
-  [ (100, var_gen ctx)
+  [ if ctx == [] then (0, return Typ) else (100, var_gen ctx)
   , (100, ref_gen)
   , (100, return Typ)
   , (100, Lit <$> arbitrary)
@@ -158,11 +164,15 @@ term_gen ctx = frequency
   , (50, (name_gen >>= \n -> Slf n <$> term_gen (n:ctx)))
   , (33, App <$> term_gen ctx <*> term_gen ctx)
   , (33, Ann <$> term_gen ctx <*> term_gen ctx)
-  , (25, (name_gen >>= \n -> All n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)))
+  , (25, (name_gen >>= \n ->
+            All n <$> arbitrary <*> term_gen ctx <*> term_gen (n:ctx)))
   , (25, (name_gen >>= \n -> 
             Let <$> arbitrary <*> pure n <*> arbitrary <*> term_gen ctx 
               <*> term_gen (n:ctx) <*> term_gen (n:ctx)))
   ]
 
 instance Arbitrary Term where
-  arbitrary = term_gen ["test"]
+  arbitrary = term_gen []
+
+instance Arbitrary Def where
+  arbitrary = Def <$> arbitrary <*> term_gen ["test"] <*> term_gen []

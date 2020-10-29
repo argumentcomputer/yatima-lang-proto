@@ -30,3 +30,4 @@ data IR where
   LitI :: Literal -> IR
   LTyI :: LitType -> IR
   OprI :: PrimOp  -> IR
+  deriving Show

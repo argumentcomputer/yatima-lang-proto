@@ -111,5 +111,5 @@ instance Show Hoas where
 defToHoas :: Name -> Def -> (Hoas,Hoas)
 defToHoas name (Def _ term typ_) =
   ( FixH name (\s -> termToHoas (Ctx.singleton (name,s)) term)
-  , FixH name (\s -> termToHoas (Ctx.singleton (name,s)) typ_)
+  , termToHoas Ctx.empty typ_
   )
