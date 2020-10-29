@@ -3,9 +3,14 @@ module Main where
 import           Control.Monad.State.Strict
 
 import           Data.Map (empty)
+import           Path.IO
+import           Yatima
 
 import           Yide
 
 main :: IO ()
-main = evalStateT yide (emptyYideState "/home/john/Documents/yatima/test")
---main = evalStateT yide (YideState empty)
+main = undefined
+--main = do
+--  dir  <- getCurrentDir
+--  root <- findYatimaRoot dir
+--  evalStateT yide (emptyYideState root)

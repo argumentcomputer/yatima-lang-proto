@@ -1,9 +1,9 @@
 name:           yatima
 version:        0.1.0.0
 homepage:       "moonad/yatima"
-author:         "Gabriel Barreto, John C. Burnham, Victor Maia"
-maintainer:     john@sunshinecybernetics.com
-copyright:      2020 Sunshine Cybernetics
+author:         "Gabriel Barreto, John C. Burnham"
+maintainer:     john@yatima.io
+copyright:      2020 Yatima Inc
 
 extra-source-files:
 - README.md
@@ -15,17 +15,31 @@ description:
 library:
   source-dirs: src
   exposed-modules:
-    - Language.Yatima.Term
-    - Language.Yatima.IPLD
-    - Language.Yatima.CID
-    - Language.Yatima.Uses
-    - Language.Yatima.Print
-    - Language.Yatima.Parse
-    - Language.Yatima.Import
-    - Language.Yatima.Core
-    - Language.Yatima.Ctx
-    - Language.Yatima.IPFS
-    - Language.Yatima
+    - Data.IPLD.CID
+    - Data.IPLD.DagAST
+    - Data.IPLD.DagJSON
+    - Yatima.Core
+    - Yatima.Core.Wasm
+    - Yatima.Core.Ctx
+    - Yatima.Core.Hoas
+    - Yatima.Core.IR
+    - Yatima.Compiler.Scheme
+    - Yatima.IPFS.Client
+    - Yatima.IPLD
+    - Yatima.Package
+    - Yatima.Parse.Integer
+    - Yatima.Parse.Package
+    - Yatima.Parse.Term
+    - Yatima.Parse.Literal
+    - Yatima.Parse.Parser
+    - Yatima.Parse
+    - Yatima.Print
+    - Yatima.QuasiQuoter
+    - Yatima.Term.Literal
+    - Yatima.Term.PrimOp
+    - Yatima.Term.Uses
+    - Yatima.Term
+    - Yatima
 
   dependencies:
     - base >= 4.7 && < 5
@@ -33,27 +47,40 @@ library:
     - text
     - mtl
     - megaparsec
-
-    - directory
-
+    - path
+    - path-io
+    - exceptions
+    - file-embed
     - serialise
     - bytestring
-    - base16-bytestring
+    - base16
     - multibase
     - cryptonite
     - multihash-cryptonite
     - ipld-cid
     - cborg
-    - cborg-json
-
+    - vector
+    - scientific
+    - unordered-containers
     - unsafeperformst
-
     - servant
     - servant-client
     - http-client
+    - http-client-tls
+    - http-types
     - aeson
     - ipfs-api
-
+    - numeric-extras
+    - ieee754
+    - cereal
+    - array
+    - template-haskell
+    - syb
+    - binary
+    - deepseq
+    - binary-varint
+    - hashable
+    - memory
 
   default-extensions:
     - OverloadedStrings
@@ -63,6 +90,10 @@ library:
     - TupleSections
 
 executables:
+  #yatima:
+  #  main: Main.hs
+  #  source-dirs: yide
+
   yide:
     main: Main.hs
     source-dirs: yide
@@ -75,6 +106,8 @@ executables:
       - megaparsec
       - haskeline
       - process
+      - path
+      - path-io
       # - serialise
       # - bytestring
       # - base16-bytestring
@@ -116,13 +149,13 @@ tests:
       - text
       - vector
       - unsafeperformst
+      - utf8-string
       - hspec
       - QuickCheck
       - quickcheck-instances
       - raw-strings-qq
       - bytestring
       - multibase
-      - ipld-cid
       - serialise
       - cborg
       - cryptonite
@@ -139,4 +172,5 @@ tests:
       - Spec.IPLD
       - Spec.Parse
       - Spec.Print
+      - Spec.Instances
 

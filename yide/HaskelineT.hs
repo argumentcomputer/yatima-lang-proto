@@ -1,3 +1,16 @@
+{-
+Module      : HaskelineT
+Description : This module defines a HaskelineT monad transformer for the Yatima REPL
+Copyright   : 2020 Yatima Inc.
+License     : GPL-3
+Maintainer  : john@yatima.io
+Stability   : experimental
+
+This module modifies work by [Stephen
+Diehl](https://github.com/sdiehl/repline/blob/master/src/System/Console/Repline.hs)
+which is licensed under MIT terms included with this package in the
+@licenses/2016_2020_Stephen_Diehl@ file.
+-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
