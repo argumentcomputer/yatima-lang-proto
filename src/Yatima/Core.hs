@@ -20,6 +20,7 @@ import qualified Data.Sequence                  as Seq
 import           Data.Set                       (Set)
 import qualified Data.Set                       as Set
 import           Data.IPLD.CID
+import           Data.List (foldl')
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -40,28 +41,27 @@ import           Yatima.Term
 import           Yatima.IPLD
 
 whnf :: Defs -> Hoas -> Hoas
-whnf defs trm = go [] trm
+whnf defs trm = go trm []
   where
-    go args trm = case trm of
+    go :: Hoas -> [Hoas] -> Hoas
+    go trm args = case trm of
       RefH nam cid _ -> case defs M.!? cid of
-        Just d  -> go args $ fst (defToHoas nam d)
-        Nothing -> apply args $ trm
-      FixH nam bod -> go args (bod trm)
-      AppH fun arg -> go (arg : args) fun
+        Just d  -> go (fst (defToHoas nam d)) args
+        Nothing -> foldl' AppH trm args
+      FixH nam bod -> go (bod trm) args
+      AppH fun arg -> go fun (arg : args)
       LamH _   bod -> case args of
         []          -> trm
-        (a : args') -> go args' (bod a)
+        (a : args') -> go (bod a) args'
       OprH opr -> reduceOpr opr args
-      UseH arg -> case go [] arg of
-        NewH exp -> go args exp
-        LitH val -> go args $ expandLit val
-        _        -> apply args $ UseH arg
-      AnnH a _           -> go args a
-      UnrH _ _ a _       -> go args a
-      LetH _ _ _ exp bod -> go args (bod exp)
-      _                  -> apply args trm
-    apply []         trm = trm
-    apply (arg:args) trm = apply args (AppH trm arg)
+      UseH arg -> case go arg [] of
+        NewH exp -> go exp args
+        LitH val -> go (expandLit val) args
+        _        -> foldl' AppH (UseH arg) args
+      AnnH a _           -> go a args
+      UnrH _ _ a _       -> go a args
+      LetH _ _ _ exp bod -> go (bod exp) args
+      _                  -> foldl' AppH trm args
 
 norm :: Defs -> Hoas -> Hoas
 norm defs term = go term 0 Set.empty
