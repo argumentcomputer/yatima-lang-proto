@@ -43,7 +43,7 @@ import           Codec.Serialise
 import           Data.IPLD.CID
 import           Data.IPLD.DagJSON
 import           Data.IPLD.DagAST
-import           Yatima.IPFS.IPLD
+import           Yatima.IPLD
 import           Yatima.Package
 import           Yatima.Parse.Package
 import           Yatima.Term

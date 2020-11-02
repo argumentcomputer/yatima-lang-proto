@@ -27,7 +27,6 @@ import           Text.Megaparsec.Char       hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
 import           Text.RawString.QQ
 
-
 data Result a
   = Good a
   | Bad Int (ErrorFancy (ParseError ()))

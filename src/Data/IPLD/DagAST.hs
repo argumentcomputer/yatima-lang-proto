@@ -18,8 +18,6 @@ import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString            as BS
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
-import           Data.IntMap                (IntMap)
-import qualified Data.IntMap                as IM
 
 import           Data.IPLD.CID
 

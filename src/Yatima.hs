@@ -21,7 +21,7 @@ import           Yatima.Term            (Def (..), Defs, Name, Term (..),
 import qualified Yatima.Term            as Term
 
 import           Data.IPLD.CID
-import           Yatima.IPFS.IPLD
+import           Yatima.IPLD
 import           Yatima.Package
 import qualified Yatima.Parse.Package as Package
 import           Yatima.Parse.Package
@@ -45,7 +45,6 @@ import           Debug.Trace
 
 import           Path
 import           Path.IO
-
 
 parseFilePath :: FilePath -> IO (Path Abs File)
 parseFilePath file =

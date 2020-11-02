@@ -149,7 +149,7 @@ buildCid CID{..} = case cidVersion of
 -- | Decode a 'CID' from a strict 'ByteString'.
 --
 -- @
---    cidFromBytes . buildCid ≡ Right
+--    cidFromMultihashBytes . buildCid ≡ Right
 -- @
 cidFromMultihashBytes :: ByteString -> Either String CID
 cidFromMultihashBytes bs
@@ -191,7 +191,6 @@ cidFromMultibaseBytes bs = do
   mb  <- Multibase.decode bs
   cid <- cidFromMultihashBytes mb
   return cid
-
 
 -- | Decode a 'CID' from a textual representation.
 --

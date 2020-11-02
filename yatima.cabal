@@ -27,6 +27,7 @@ library
       Yatima.Core.Wasm
       Yatima.Core.Ctx
       Yatima.Core.Hoas
+      Yatima.Core.CheckError
       Yatima.Core.IR
       Yatima.Compiler.Scheme
       Yatima.IPFS.Client
@@ -47,10 +48,8 @@ library
       Yatima
   other-modules:
       Data.Multihash
-      Yatima.Core.CheckError
       Yatima.Core.Prim
       Yatima.Core.UnionFind
-      Yatima.IPFS.IPLD
       Paths_yatima
   hs-source-dirs:
       src
@@ -127,6 +126,7 @@ test-suite spec
       Spec.Parse
       Spec.Print
       Spec.Instances
+      Spec.Core
   hs-source-dirs:
       test
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables

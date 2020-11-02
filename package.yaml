@@ -22,6 +22,7 @@ library:
     - Yatima.Core.Wasm
     - Yatima.Core.Ctx
     - Yatima.Core.Hoas
+    - Yatima.Core.CheckError
     - Yatima.Core.IR
     - Yatima.Compiler.Scheme
     - Yatima.IPFS.Client
@@ -173,4 +174,5 @@ tests:
       - Spec.Parse
       - Spec.Print
       - Spec.Instances
+      - Spec.Core
 

@@ -10,16 +10,19 @@ Stability   : experimental
 {-# LANGUAGE DerivingVia #-}
 module Yatima.Core where
 
+import           Control.Applicative
 import           Control.Monad.Except
 import           Control.Monad.Identity
+import           Control.Monad.ST
 
 import           Data.Map                       (Map)
 import qualified Data.Map                       as M
-import           Data.Sequence                  (Seq (..))
+import           Data.Sequence                  (Seq (..), (><))
 import qualified Data.Sequence                  as Seq
 import           Data.Set                       (Set)
 import qualified Data.Set                       as Set
 import           Data.IPLD.CID
+import           Data.List (foldl')
 
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -40,39 +43,27 @@ import           Yatima.Term
 import           Yatima.IPLD
 
 whnf :: Defs -> Hoas -> Hoas
-whnf defs trm = case trm of
-  RefH nam cid _ -> case defs M.!? cid of
-    Just d  -> go $ fst (defToHoas nam d)
-    Nothing -> trm
-  FixH nam bod       -> go (bod trm)
-  AppH fun arg       -> case go fun of
-    LamH _ bod -> go (bod arg)
-    OprH opr   -> reduceOpr opr arg
-    x          -> AppH fun arg
-  UseH arg           -> case go arg of
-    NewH exp     -> go exp
-    LitH val     -> expandLit val
-    x            -> UseH arg
-  AnnH a _     -> go a
-  UnrH _ _ a _ -> go a
-  LetH _ _ _ exp bod -> go (bod exp)
-  WhnH x             -> x
-
-  x                  -> x
+whnf defs trm = go trm []
   where
-    go x = whnf defs x
-
--- | Normalize a Hoas term
---norm :: Defs -> Hoas -> Hoas
---norm defs term = case whnf defs term of
---  AllH nam use typ bod -> AllH nam use (go typ) (\x -> go (bod x))
---  LamH nam bod         -> LamH nam (\x -> go (bod x))
---  AppH fun arg         -> AppH (go fun) (go arg)
---  FixH nam bod         -> go (bod (FixH nam bod))
---  SlfH nam bod         -> SlfH nam (\x -> go (bod x))
---  NewH exp             -> NewH (go exp)
---  UseH exp             -> UseH (go exp)
---  step                 -> step
+    go :: Hoas -> [Hoas] -> Hoas
+    go trm args = case trm of
+      RefH nam cid _ -> case defs M.!? cid of
+        Just d  -> go (fst (defToHoas nam d)) args
+        Nothing -> foldl' AppH trm args
+      FixH nam bod -> go (bod trm) args
+      AppH fun arg -> go fun (arg : args)
+      LamH _   bod -> case args of
+        []          -> trm
+        (a : args') -> go (bod a) args'
+      OprH opr -> reduceOpr opr args
+      UseH arg -> case go arg [] of
+        NewH exp -> go exp args
+        LitH val -> go (expandLit val) args
+        _        -> foldl' AppH (UseH arg) args
+      AnnH a _           -> go a args
+      UnrH _ _ a _       -> go a args
+      LetH _ _ _ exp bod -> go (bod exp) args
+      _                  -> foldl' AppH trm args
 
 norm :: Defs -> Hoas -> Hoas
 norm defs term = go term 0 Set.empty
@@ -98,51 +89,66 @@ norm defs term = go term 0 Set.empty
       NewH exp             -> NewH (go exp lvl seen)
       UseH exp             -> UseH (go exp lvl seen)
 
-      WhnH x               -> go x lvl seen
       step                 -> step
 
-equal :: Defs -> Hoas -> Hoas -> Int -> Bool
-equal defs a b lvl = runIdentity $ go a b lvl Set.empty
-  where
-    go :: Hoas -> Hoas -> Int -> Set (CID,CID) -> Identity Bool
-    go a b lvl seen = do
-      let aWhnf = whnf defs a
-      let bWhnf = whnf defs b
-      let aHash = makeCid $ termToAST $ hoasToTerm lvl aWhnf
-      let bHash = makeCid $ termToAST $ hoasToTerm lvl bWhnf
-      if | (aHash == bHash)                -> return True
-         | (aHash,bHash) `Set.member` seen -> return True
-         | (bHash,aHash) `Set.member` seen -> return True
-         | otherwise -> do
-             let seen' = Set.insert (aHash,bHash) seen
-             next aWhnf bWhnf lvl seen'
 
-    next :: Hoas -> Hoas -> Int -> Set (CID, CID) -> Identity Bool
-    next a b lvl seen = case (a, b) of
-      (AllH aNam aUse aTyp aBod, AllH bNam bUse bTyp bBod) -> do
-        let aBod' = aBod (VarH aNam lvl)
-        let bBod' = bBod (VarH bNam lvl)
-        let useEq = aUse == bUse
-        typEq <- go aTyp bTyp lvl seen
-        bodEq <- go aBod' bBod' (lvl+1) seen
-        return $ useEq && typEq && bodEq
-      (SlfH aNam aBod, SlfH bNam bBod) -> do
-        let aBod' = aBod (VarH aNam lvl)
-        let bBod' = bBod (VarH bNam lvl)
-        go aBod' bBod' (lvl+1) seen
-      (LamH aNam aBod, LamH bNam bBod) -> do
-        let aBod' = aBod (VarH aNam lvl)
-        let bBod' = bBod (VarH bNam lvl)
-        go aBod' bBod' (lvl+1) seen
-      (NewH aExp, NewH bExp) -> do
-        go aExp bExp lvl seen
-      (UseH aExp, UseH bExp) -> do
-        go aExp bExp lvl seen
-      (AppH aFun aArg, AppH bFun bArg) -> do
-        funEq <- go aFun bFun lvl seen
-        argEq <- go aArg bArg lvl seen
-        return $ funEq && argEq
-      _         -> return False
+-- Equality
+-- ========
+congruent :: Equiv s -> Term -> Term -> ST s Bool
+congruent eq a b = do
+  let getHash = makeCid . termToAST
+  t <- equivalent eq (getHash a) (getHash b)
+  if t then return True
+    else do
+    let go = congruent eq
+    case (a,b) of
+      (All _ u h b,     All _ u' h' b')      -> pure (u == u') &&* go h h' &&* go b b'
+      (Lam _ b,         Lam _ b')            -> go b b'
+      (App f a,         App f' a')           -> go f f' &&* go a a'
+      (Let r _ u _ x b, Let r' _ u' _ x' b') -> pure (r == r' && u == u') &&* go x x' &&* go b b'
+      (Ann x _,         Ann x' _)            -> go x x'
+      (Slf _ x,         Slf _ x')            -> go x x'
+      (New x,           New x')              -> go x x'
+      (Use x,           Use x')              -> go x x'
+      _                                      -> return False
+   where
+     (&&*) = liftA2 (&&)
+
+equal :: Defs -> Hoas -> Hoas -> Int -> Bool
+equal defs term1 term2 dep = runST $ do
+  eq <- newEquiv
+  go eq (Seq.singleton (term1, term2, dep))
+  where
+    go :: Equiv s -> Seq (Hoas, Hoas, Int) -> ST s Bool
+    go eq Seq.Empty = return True
+    go eq ((t1, t2, dep) :<| tris) = do
+      let term1 = whnf defs t1
+      let term2 = whnf defs t2
+      let hash1 = getHash term1
+      let hash2 = getHash term2
+      equate eq (getHash t1) hash1
+      equate eq (getHash t2) hash2
+      b <- congruent eq (hoasToTerm dep term1) (hoasToTerm dep term2)
+      equate eq hash1 hash2
+      if b
+        then go eq tris
+        else
+        case (term1, term2) of
+          (AppH f a, AppH f' a') ->
+            go eq $ tris >< Seq.fromList [(f, f', dep+1), (a, a', dep+1)]
+          (LamH n b, LamH n' b') ->
+            go eq $ tris >< Seq.singleton (b (VarH n dep), b' (VarH n' dep), dep+1)
+          (AllH n u h b, AllH n' u' h' b') ->
+            go eq $ tris >< Seq.fromList [(h, h', dep+1), (b (VarH n dep), b' (VarH n' dep), dep+1)]
+          (SlfH n b, SlfH n' b') ->
+            go eq $ tris >< Seq.singleton (b (VarH n dep), b' (VarH n' dep), dep+1)
+          (NewH b, NewH b') ->
+            go eq $ tris >< Seq.singleton (b, b', dep+1)
+          (UseH b, UseH b') ->
+            go eq $ tris >< Seq.singleton (b, b', dep+1)
+          _ ->
+            return False
+    getHash = makeCid . termToAST . hoasToTerm dep
 
 -- * Type System
 check :: Defs -> PreContext -> Uses -> Hoas -> Hoas

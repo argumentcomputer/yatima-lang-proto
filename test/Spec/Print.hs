@@ -34,7 +34,6 @@ prop_print_term t = case ParseSpec.parse (pExpr False) (prettyTerm t) of
   ParseSpec.Good a -> a == t
   _      -> False
 
-
 fromRight (Right x) = x
 fromRight (Left e) = error "fromRight"
 

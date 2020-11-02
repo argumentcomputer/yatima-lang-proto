@@ -18,6 +18,7 @@ which is licensed under BSD3 terms included with this package in the
 @licenses/2017_Duncan_Coutts@ file.
 
 -}
+
 module Data.IPLD.DagJSON where
 
 import           Data.Monoid

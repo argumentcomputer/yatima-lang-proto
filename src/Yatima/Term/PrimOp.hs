@@ -22,11 +22,7 @@ import           Data.Data
 
 data PrimOp
   -- WASMNumeric
-  = I32_const
-  | I64_const
-  | F32_const
-  | F64_const
-  | I32_eqz
+  = I32_eqz
   | I32_eq
   | I32_ne
   | I32_lt_s
@@ -197,10 +193,6 @@ instance Serialise PrimOp where
 
 primOpName :: PrimOp -> Text
 primOpName p = case p of
-  I32_const          -> "I32_const"
-  I64_const          -> "I64_const"
-  F32_const          -> "F32_const"
-  F64_const          -> "F64_const"
   I32_eqz            -> "I32_eqz"
   I32_eq             -> "I32_eq"
   I32_ne             -> "I32_ne"
