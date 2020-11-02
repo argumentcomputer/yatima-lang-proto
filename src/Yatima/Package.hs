@@ -37,18 +37,18 @@ data Package = Package
   , _index   :: Index
   } deriving (Show, Eq)
 
-emptyImports :: Imports
-emptyImports = Imports M.empty
-
-emptyIndex :: Index
-emptyIndex = Index M.empty
-
 emptyPackage :: Name -> Package
 emptyPackage n = Package n "" (makeCid BSL.empty) emptyImports emptyIndex
 
 newtype Imports = Imports (Map CID Text)       deriving (Show, Eq)
 newtype Source  = Source  Text                 deriving (Show, Eq)
 newtype Index   = Index   (Map Name (CID,CID)) deriving (Show, Eq)
+
+emptyImports :: Imports
+emptyImports = Imports M.empty
+
+emptyIndex :: Index
+emptyIndex = Index M.empty
 
 indexEntries :: Index -> Map Name (CID,CID)
 indexEntries (Index ns) = ns

@@ -304,7 +304,6 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
     ds    <- local (\e -> e { _refs = M.insert n (cid, cid') (_refs e) }) pDefs
     return $ (n,d):ds
 
-
 indexToDefs:: Path Abs Dir -> Index -> IO Defs
 indexToDefs cacheDir i@(Index ns) = do
   ds <- traverse go (M.toList ns)

@@ -82,12 +82,6 @@ instance Arbitrary Package where
   arbitrary =
     Package <$> name_gen <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
-prop_serial :: (Eq a, Serialise a) => a -> Bool
-prop_serial x = let s = serialise x in 
-  case (deserialiseOrFail s) of
-    Left _   -> False
-    Right x' -> x == x' && (serialise x' == s)
-
 test_index :: Index
 test_index =
   let trm = Lam "A" (Lam "x" (Var "x" 0))

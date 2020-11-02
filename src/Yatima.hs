@@ -46,7 +46,6 @@ import           Debug.Trace
 import           Path
 import           Path.IO
 
-
 parseFilePath :: FilePath -> IO (Path Abs File)
 parseFilePath file =
   catch @IO @PathException (parseAbsFile file) $ \e ->

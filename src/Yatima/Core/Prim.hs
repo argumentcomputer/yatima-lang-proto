@@ -253,7 +253,7 @@ reduceOpr op args = apply rest $
            else LitH (VI32 (truncate a))
         I64_trunc_F64_s     ->
            if (isNaN a || isInfinite a || a >= 2^63 || a < -2^63)
-           then noredex -- WasmTrap
+           then LitH VException
            else LitH (VI64 (u64 $ truncate a))
         I64_trunc_F64_u     ->
            if (isNaN a || isInfinite a || a >= 2^64 || a <= -1)
