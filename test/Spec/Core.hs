@@ -64,7 +64,6 @@ eval_spec = do
     it "" $ whnf [yatima| (case 1)|] `shouldBe` [yatima| λ P z s => s 0 |]
     it "" $ whnf [yatima| (case 2)|] `shouldBe` [yatima| λ P z s => s 1 |]
   describe "`whnf` evaluation of I32 operations" $ do
-    it "" $ whnf [yatima| #I32_const 1u32 2u32|] `shouldBe` [yatima| 1u32 |]
     it "I32_eq"   $ property $ rel_I32_prop I32_eq (==)
     it "I32_ne"   $ property $ rel_I32_prop I32_ne (/=)
     it "I32_lt_u" $ property $ rel_I32_prop I32_lt_u (<)
@@ -86,7 +85,6 @@ eval_spec = do
     it "" $ whnf [yatima| #I32_shr_u 0b1000u32 3u32 |] `shouldBe` [yatima| 0b1u32 |]
     -- todo: mul, rem, mod, or, shr_s, rotl, rotr
   describe "`whnf` evaluation of F32 operations" $ do
-    it "" $ whnf [yatima| #F32_const 1.0f32 2.0f32 |] `shouldBe` [yatima| 1.0f32 |]
     it "" $ whnf [yatima| #F32_eq 1.0f32 2.0f32 |] `shouldBe` [yatima| 0u32 |]
     it "" $ whnf [yatima| #F32_mul 2.0f32 2.0f32 |] `shouldBe` [yatima| 4.0f32 |]
   describe "`whnf` evaluation of I64 operations" $ do
