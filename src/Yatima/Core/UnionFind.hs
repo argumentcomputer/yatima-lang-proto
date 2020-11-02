@@ -44,6 +44,7 @@ a       b         *1  b
 
 module Yatima.Core.UnionFind where
 
+import           Control.Applicative
 import           Control.Monad.ST
 import           Control.Monad
 import           Data.STRef
@@ -104,35 +105,21 @@ union refX refY = do
       writeSTRef (_ref refToRootY) (Root vy (wx + wy))
 
 -- Are these two references pointing to the same root?
-equivalent :: NRef s -> NRef s -> ST s Bool
-equivalent x y = (==) <$> findRoot x <*> findRoot y
-
 getRef :: Equiv s -> CID -> ST s (Maybe (NRef s))
 getRef eq x = do
   m <- readSTRef (_elems eq)
   return $ M.lookup x m
 
-equate :: Equiv s -> CID -> CID -> ST s Bool
+equivalent :: Equiv s -> CID -> CID -> ST s Bool
+equivalent eq x y = do
+  rx <- getRef eq x
+  ry <- getRef eq y
+  case (rx, ry) of
+    (Just x, Just y) -> liftA2 (==) (findRoot x) (findRoot y)
+    _                -> return $ x == y
+
+equate :: Equiv s -> CID -> CID -> ST s ()
 equate eq x y = do
   rx <- (maybe (singleton eq x) return) =<< (getRef eq x)
   ry <- (maybe (singleton eq y) return) =<< (getRef eq y)
-  equivalent rx ry
-
--- Equality
--- ========
-
---congruent :: Equiv s -> Term -> Term -> ST s Bool
---congruent eq a b = do
---  let getHash = fromIntegral . _word32 ._hash
---  t <- equate eq (getHash a) (getHash b)
---  if t then return True
---  else do
---  let go = congruent eq
---  case (a,b) of
---    (All _ _ _ _ h b, All _ _ _ _ h' b') -> (&&) <$> go h h' <*> go b b'
---    (Lam _ _ _ b,     Lam _ _ _ b')      -> go b b'
---    (App _ _ f a,     App _ _ f' a')     -> (&&) <$> go f f' <*> go a a'
---    (Let _ _ x b,     Let _ _ x' b')     -> (&&) <$> go x x' <*> go b b'
---    (Ann _ _ t x,     Ann _ _ t' x')     -> (&&) <$> go t t' <*> go x x'
---    _                                      -> return False
-
+  union rx ry

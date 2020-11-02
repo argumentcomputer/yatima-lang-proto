@@ -34,80 +34,13 @@ import           Yatima.QuasiQuoter
 
 oprArity :: PrimOp -> Int
 oprArity opr = case opr of
-  I32_const           -> 2
-  I64_const           -> 2
-  F32_const           -> 2
-  F64_const           -> 2
   I32_eqz             -> 1
-  I32_eq              -> 2
-  I32_ne              -> 2
-  I32_lt_s            -> 2
-  I32_lt_u            -> 2
-  I32_gt_s            -> 2
-  I32_gt_u            -> 2
-  I32_le_s            -> 2
-  I32_le_u            -> 2
-  I32_ge_s            -> 2
-  I32_ge_u            -> 2
-  I64_eqz             -> 2
-  I64_eq              -> 2
-  I64_ne              -> 2
-  I64_lt_s            -> 2
-  I64_lt_u            -> 2
-  I64_gt_s            -> 2
-  I64_gt_u            -> 2
-  I64_le_s            -> 2
-  I64_le_u            -> 2
-  I64_ge_s            -> 2
-  I64_ge_u            -> 2
-  F32_eq              -> 2
-  F32_ne              -> 2
-  F32_lt              -> 2
-  F32_gt              -> 2
-  F32_le              -> 2
-  F32_ge              -> 2
-  F64_eq              -> 2
-  F64_ne              -> 2
-  F64_lt              -> 2
-  F64_gt              -> 2
-  F64_le              -> 2
-  F64_ge              -> 2
   I32_clz             -> 1
   I32_ctz             -> 1
   I32_popcnt          -> 1
-  I32_add             -> 2
-  I32_sub             -> 2
-  I32_mul             -> 2
-  I32_div_s           -> 2
-  I32_div_u           -> 2
-  I32_rem_s           -> 2
-  I32_rem_u           -> 2
-  I32_and             -> 2
-  I32_or              -> 2
-  I32_xor             -> 2
-  I32_shl             -> 2
-  I32_shr_s           -> 2
-  I32_shr_u           -> 2
-  I32_rotl            -> 2
-  I32_rotr            -> 2
   I64_clz             -> 1
   I64_ctz             -> 1
   I64_popcnt          -> 1
-  I64_add             -> 2
-  I64_sub             -> 2
-  I64_mul             -> 2
-  I64_div_s           -> 2
-  I64_div_u           -> 2
-  I64_rem_s           -> 2
-  I64_rem_u           -> 2
-  I64_and             -> 2
-  I64_or              -> 2
-  I64_xor             -> 2
-  I64_shl             -> 2
-  I64_shr_s           -> 2
-  I64_shr_u           -> 2
-  I64_rotl            -> 2
-  I64_rotr            -> 2
   F32_abs             -> 1
   F32_neg             -> 1
   F32_ceil            -> 1
@@ -115,13 +48,6 @@ oprArity opr = case opr of
   F32_trunc           -> 1
   F32_nearest         -> 1
   F32_sqrt            -> 1
-  F32_add             -> 2
-  F32_sub             -> 2
-  F32_mul             -> 2
-  F32_div             -> 2
-  F32_min             -> 2
-  F32_max             -> 2
-  F32_copysign        -> 2
   F64_abs             -> 1
   F64_neg             -> 1
   F64_ceil            -> 1
@@ -129,13 +55,6 @@ oprArity opr = case opr of
   F64_trunc           -> 1
   F64_nearest         -> 1
   F64_sqrt            -> 1
-  F64_add             -> 2
-  F64_sub             -> 2
-  F64_mul             -> 2
-  F64_div             -> 2
-  F64_min             -> 2
-  F64_max             -> 2
-  F64_copysign        -> 2
   I32_wrap_I64        -> 1
   I32_trunc_F32_s     -> 1
   I32_trunc_F32_u     -> 1
@@ -163,33 +82,24 @@ oprArity opr = case opr of
   F64_reinterpret_I64 -> 1
   Natural_succ        -> 1
   Natural_pred        -> 1
-  Natural_add         -> 2
-  Natural_mul         -> 2
-  Natural_sub         -> 2
-  Natural_div         -> 2
-  Natural_mod         -> 2
-  Natural_gt          -> 2
-  Natural_ge          -> 2
-  Natural_eq          -> 2
-  Natural_ne          -> 2
-  Natural_lt          -> 2
-  Natural_le          -> 2
   Natural_to_I64      -> 1
   Natural_to_I32      -> 1
   Natural_from_I64    -> 1
   Natural_from_I32    -> 1
   BitVector_b0        -> 1
   BitVector_b1        -> 1
-  BitVector_concat    -> 2
   BitVector_length    -> 1
-  String_cons         -> 2
-  String_concat       -> 2
   Char_chr            -> 1
   Char_ord            -> 1
+  _                   -> 2
 
 reduceOpr :: PrimOp -> [Hoas] -> Hoas
 reduceOpr op args = apply rest $
   case operands of
+    [AppH (OprH Natural_succ) a]                   ->
+      case op of
+        Natural_pred -> a
+        _            -> noredex
     [LitH (VNatural a)]                            ->
       case op of
         Natural_succ     -> LitH (VNatural $ a+1)
@@ -321,7 +231,6 @@ reduceOpr op args = apply rest $
         _                -> noredex
     [LitH (VI64 a), LitH (VI64 b)]                 ->
       case op of
-        I64_const -> LitH (VI64 a)
         I64_eq    -> LitH (bool (a == b))
         I64_ne    -> LitH (bool (a /= b))
         I64_lt_s  -> LitH (bool (i64 a < i64 b))
@@ -363,7 +272,6 @@ reduceOpr op args = apply rest $
         _         -> noredex
     [LitH (VI32 a), LitH (VI32 b)]                 ->
       case op of
-        I32_const -> LitH (VI32 a)
         I32_eq    -> LitH (bool (a == b))
         I32_ne    -> LitH (bool (a /= b))
         I32_lt_s  -> LitH (bool (i32 a < i32 b))
@@ -404,7 +312,6 @@ reduceOpr op args = apply rest $
         _         -> noredex
     [LitH (VF64 a), LitH (VF64 b)]                 ->
       case op of
-        F64_const    -> LitH (VF64 a)
         F64_eq       -> LitH (bool (a == b))
         F64_ne       -> LitH (bool (a /= b))
         F64_lt       -> LitH (bool (a < b))
@@ -421,7 +328,6 @@ reduceOpr op args = apply rest $
         _            -> noredex
     [LitH (VF32 a), LitH (VF32 b)]                 ->
       case op of
-        F32_const    -> LitH (VF32 a)
         F32_eq       -> LitH (bool (a == b))
         F32_ne       -> LitH (bool (a /= b))
         F32_lt       -> LitH (bool (a < b))
