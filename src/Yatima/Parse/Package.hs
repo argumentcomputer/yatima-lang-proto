@@ -106,27 +106,34 @@ pPackageName = label "a package name" $ do
   return nam
 
 cacheDir :: Path Abs Dir -> Path Abs Dir
-cacheDir root = root </> [reldir|.yatima/cache|]
+cacheDir root = root </> [reldir|.yatima_cache|]
 
-findYatimaRoot :: Path a Dir -> IO (Path Abs Dir)
-findYatimaRoot initialDir = makeAbsolute initialDir >>= go
+findYatimaProjectDir :: Path a Dir -> IO (Maybe (Path Abs Dir))
+findYatimaProjectDir initialDir = makeAbsolute initialDir >>= go
   where
-    go :: Path Abs Dir -> IO (Path Abs Dir)
+    go :: Path Abs Dir -> IO (Maybe (Path Abs Dir))
     go dir = do
       (ds,_) <- listDir dir
       let yati = dir </> [reldir|.yatima|]
-      if | elem yati ds       -> return dir
-         | parent dir == dir  -> initYatimaRoot initialDir
+      if | elem yati ds       -> return (Just dir)
+         | parent dir == dir  -> return Nothing
          | otherwise          -> go (parent dir)
 
-initYatimaRoot :: Path a Dir -> IO (Path Abs Dir)
-initYatimaRoot dir = do
-  ensureDir (dir </> [reldir|.yatima/cache|])
+getYatimaCacheDir :: IO (Path Abs Dir)
+getYatimaCacheDir = do
+  homeDir <- getHomeDir
+  ensureDir (cacheDir homeDir)
+  return (cacheDir homeDir)
+
+initYatimaProject :: Path a Dir -> IO (Path Abs Dir)
+initYatimaProject dir = do
+  ensureDir (dir </> [reldir|.yatima|])
   makeAbsolute dir
 
-pCacheGet :: forall a. Serialise a => Path Abs Dir -> CID -> ParserIO a
-pCacheGet cacheDir cid = do
+pCacheGet :: forall a. Serialise a => CID -> ParserIO a
+pCacheGet cid = do
   file <- liftIO $ parseRelFile $ T.unpack $ cidToText cid
+  cacheDir <- liftIO $ getYatimaCacheDir
   let path = cacheDir </> file
   bs <- liftIO $ BSL.readFile (toFilePath path)
   let cid' = makeCidFromBytes bs
@@ -135,9 +142,10 @@ pCacheGet cacheDir cid = do
     Left  e -> customIOFailure $ CacheFileNoDeserial path cid e
     Right a -> return a
 
-cacheGet :: forall a. Serialise a => Path Abs Dir -> CID -> IO a
-cacheGet cacheDir cid = do
+cacheGet :: forall a. Serialise a => CID -> IO a
+cacheGet cid = do
   file <- parseRelFile $ T.unpack $ cidToText cid
+  cacheDir <- getYatimaCacheDir
   let path = cacheDir </> file
   bs <- BSL.readFile (toFilePath path)
   let cid' = makeCidFromBytes bs
@@ -147,23 +155,24 @@ cacheGet cacheDir cid = do
     Left  e -> fail $ "Cannot deserialise cache file: " ++ show e
     Right a -> return a
 
-cachePut :: forall a. Serialise a => Path Abs Dir -> a -> IO CID
-cachePut cacheDir x = do
+cachePut :: forall a. Serialise a => a -> IO CID
+cachePut x = do
   let cid = makeCid x
+  cacheDir <- getYatimaCacheDir
   file <- parseRelFile $ T.unpack $ cidToText cid
   let path = cacheDir </> file
   exists <- doesFileExist path
   unless exists (BSL.writeFile (toFilePath path) (serialise x))
   return cid
 
-cachePutDef :: Path Abs Dir -> (Name,Def) ->  IO (Name,(CID,CID))
-cachePutDef cacheDir (n,d@(Def doc trm typ)) = do
-  termASTCid <- cachePut cacheDir (termToAST trm)
-  typeASTCid <- cachePut cacheDir (termToAST typ)
+cachePutDef :: (Name,Def) -> IO (Name,(CID,CID))
+cachePutDef (n,d@(Def doc trm typ)) = do
+  termASTCid <- cachePut (termToAST trm)
+  typeASTCid <- cachePut (termToAST typ)
   let termMeta = termToMeta trm
   let typeMeta = termToMeta typ
   let dagDef = DagDef termASTCid typeASTCid doc termMeta typeMeta
-  dagDefCid <- cachePut cacheDir dagDef
+  dagDefCid <- cachePut dagDef
   return (n,(dagDefCid,termASTCid))
 
 data PackageEnv = PackageEnv
@@ -219,7 +228,7 @@ pImport env = label "an import" $ do
           liftIO $ pFile env path
         Just cid -> do
           root <- _root <$> (liftIO $ readIORef env)
-          p <- pCacheGet @Package (cacheDir root) cid
+          p <- pCacheGet @Package cid
           return (cid,p)
       unless (name == (_title p))
         (customIOFailure $ MisnamedPackageImport name (_title p) cid)
@@ -256,10 +265,10 @@ pPackage env cid file = do
   when (title /= "") (void $ symbol "where")
   defs  <- local (\e -> e { _refs = ns }) pDefs
   root  <- _root <$> (liftIO $ readIORef env)
-  ns' <- liftIO $ traverse (cachePutDef (cacheDir root)) defs
+  ns' <- liftIO $ traverse cachePutDef defs
   let (Right index) = mergeIndex (Index ns) (Index $ M.fromList ns')
   let pack = Package title doc cid imports index
-  packCid <- liftIO $ cachePut (cacheDir root) pack
+  packCid <- liftIO $ cachePut pack
   return $ (packCid, pack)
 
 -- | Parse a file
@@ -270,7 +279,7 @@ pFile env relPath = do
   let file    = toFilePath absPath
   modifyIORef' env (\e -> e { _openFiles = Set.insert relPath (_openFiles e)})
   txt        <- TIO.readFile file
-  sourceCid  <- cachePut (cacheDir root) (Source txt)
+  sourceCid  <- cachePut (Source txt)
   (cid,pack) <- parseIO (pPackage env sourceCid file) defaultParseEnv file txt
   modifyIORef' env (\e -> e { _openFiles = Set.delete relPath (_openFiles e)})
   modifyIORef' env (\e -> e { _doneFiles = M.insert relPath cid (_doneFiles e)})
@@ -304,19 +313,19 @@ pDefs = (space >> next) <|> (space >> eof >> (return []))
     ds    <- local (\e -> e { _refs = M.insert n (cid, cid') (_refs e) }) pDefs
     return $ (n,d):ds
 
-indexToDefs:: Path Abs Dir -> Index -> IO Defs
-indexToDefs cacheDir i@(Index ns) = do
+indexToDefs:: Index -> IO Defs
+indexToDefs i@(Index ns) = do
   ds <- traverse go (M.toList ns)
   return $ M.fromList ds
   where
     go :: (Name,(CID,CID)) -> IO (CID,Def)
     go (name,(defCid,trmCid)) = do
-      dagDef  <- cacheGet @DagDef cacheDir defCid
+      dagDef  <- cacheGet @DagDef defCid
       let (DagDef termASTCid typeASTCid doc termMeta typeMeta) = dagDef
       when (trmCid /= termASTCid) 
         (fail $ "indexToDefs failure: termAST CIDS don't match")
-      termAST <- cacheGet @DagAST cacheDir termASTCid
-      typeAST <- cacheGet @DagAST cacheDir typeASTCid
+      termAST <- cacheGet @DagAST termASTCid
+      typeAST <- cacheGet @DagAST typeASTCid
       case runExcept (dagToDef doc name (termAST,termMeta) (typeAST,typeMeta)) of
         Left  e -> putStrLn (show e) >> fail ""
         Right x -> return (defCid,x)

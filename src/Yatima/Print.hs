@@ -88,6 +88,7 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
       LTy _     -> True
       Opr _     -> True
       Ann _ _   -> True
+      Typ       -> True
       _         -> False
 
     pars' :: Term -> TB.Builder
