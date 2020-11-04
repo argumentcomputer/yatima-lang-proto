@@ -14,10 +14,14 @@ which is released under MIT terms included with this package in the
 {-# LANGUAGE QuasiQuotes #-}
 module Yatima.Core.Prim where
 
-import           Data.ByteString                (ByteString)
-import qualified Data.ByteString                as BS
-import           Data.Text                      (Text)
-import qualified Data.Text                      as T
+import           Data.ByteString         (ByteString)
+import qualified Data.ByteString         as BS
+import qualified Data.ByteString.Char8   as C
+import qualified Data.ByteString.Builder as BB
+import           Data.ByteString.Lazy    (toStrict)
+import           Data.Text               (Text)
+import qualified Data.Text               as T
+import           Data.Bits
 import           Data.Word
 import           Data.Int
 import           Data.Bits
@@ -91,15 +95,38 @@ oprArity opr = case opr of
   BitVector_length    -> 1
   Char_chr            -> 1
   Char_ord            -> 1
+  Char_to_U8          -> 1
+  Char_from_U8        -> 1
+  I32_to_U32          -> 1
+  I32_from_U32        -> 1
+  F32_to_U32          -> 1
+  F32_from_U32        -> 1
+  I64_to_U64          -> 1
+  I64_from_U64        -> 1
+  F64_to_U64          -> 1
+  F64_from_U64        -> 1
   _                   -> 2
+
+inverseOpr :: PrimOp -> PrimOp -> Bool
+inverseOpr op op' = case (op, op') of
+  (Natural_pred, Natural_succ) -> True
+  (I32_to_U32,   I32_from_U32) -> True
+  (I32_from_U32, I32_to_U32)   -> True
+  (F32_to_U32,   I32_from_U32) -> True
+  (F32_from_U32, I32_to_U32)   -> True
+  (I64_to_U64,   I64_from_U64) -> True
+  (I64_from_U64, I64_to_U64)   -> True
+  (F64_to_U64,   F64_from_U64) -> True
+  (F64_from_U64, F64_to_U64)   -> True
+  (Char_to_U8,   Char_from_U8) -> True
+  (Char_from_U8, Char_to_U8)   -> True
+  _                            -> False
 
 reduceOpr :: PrimOp -> [Hoas] -> Hoas
 reduceOpr op args = apply rest $
   case operands of
-    [AppH (OprH Natural_succ) a]                   ->
-      case op of
-        Natural_pred -> a
-        _            -> noredex
+    [AppH (OprH op') a]                            ->
+      if inverseOpr op op' then a else noredex
     [LitH (VNatural a)]                            ->
       case op of
         Natural_succ     -> LitH (VNatural $ a+1)
@@ -127,6 +154,7 @@ reduceOpr op args = apply rest $
         F64_reinterpret_I64 -> LitH (VF64 (wordToDouble a))
         F64_convert_I64_s   -> LitH (VF64 (realToFrac $ i64 a))
         F64_convert_I64_u   -> LitH (VF64 (realToFrac a))
+        I64_to_U64          -> LitH (VBitVector 64 (build $ BB.word64LE a))
         _                   -> noredex
     [LitH (VI32 a)]                                ->
       case op of
@@ -141,6 +169,7 @@ reduceOpr op args = apply rest $
         F32_convert_I32_u   -> LitH (VF32 (realToFrac a))
         F64_convert_I32_s   -> LitH (VF64 (realToFrac $ i32 a))
         F64_convert_I32_u   -> LitH (VF64 (realToFrac a))
+        I32_to_U32          -> LitH (VBitVector 32 (build $ BB.word32LE a))
         _                   -> noredex
     [LitH (VF64 a)]                                ->
       case op of
@@ -169,6 +198,7 @@ reduceOpr op args = apply rest $
            if (isNaN a || isInfinite a || a >= 2^64 || a <= -1)
            then LitH VException
            else LitH (VI64 (truncate a))
+        F64_to_U64          -> LitH (VBitVector 64 (build $ BB.word64LE $ doubleToWord a))
         _                   -> noredex
     [LitH (VF32 a)]                                ->
       case op of
@@ -196,25 +226,38 @@ reduceOpr op args = apply rest $
            if (isNaN a || isInfinite a || a >= 2^32 || a <= -1)
            then LitH VException
            else LitH (VI64 (truncate a))
+        F32_to_U32          -> LitH (VBitVector 32 (build $ BB.word32LE $ floatToWord a))
         _                   -> noredex
     [LitH (VBitVector n bs)]                        ->
       case op of
         BitVector_b0     -> LitH $ VBitVector (n+1) $
-          case BS.uncons bs of
-            Nothing       -> BS.singleton 0
-            Just (255,cs) -> BS.cons 0 $ BS.cons 255 $ cs
-            Just (c,cs)   -> bs
+          if n `mod` 8 == 0 then BS.cons 0 bs else bs
         BitVector_b1     -> LitH $ VBitVector (n+1) $
-            case BS.uncons bs of
+          case BS.uncons bs of
               Nothing       -> BS.singleton 1
-              Just (255,cs) -> BS.cons 1 $ BS.cons 0 $ cs
-              Just (c,cs)   -> BS.cons (c+1) bs
+              Just (c,cs)   -> if n `mod` 8 == 0
+                then BS.cons 1 bs
+                else BS.cons (setBit c (fromEnum (n `mod` 8))) cs
         BitVector_length -> LitH (VNatural n)
+        Char_from_U8     -> if n == 8 then LitH (VChar $ head $ C.unpack bs) else noredex
+        I32_from_U32     -> if n == 32
+          then LitH $ VI32 $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          else noredex
+        F32_from_U32     -> if n == 32
+          then LitH $ VF32 $ wordToFloat $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          else noredex
+        I64_from_U64     -> if n == 64
+          then LitH $ VI64 $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          else noredex
+        F64_from_U64     -> if n == 64
+          then LitH $ VF64 $ wordToDouble $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          else noredex
         _                -> noredex
     [LitH (VChar c)]                               ->
       case op of
-        Char_ord -> LitH (VI64 $ fromIntegral $ ord c)
-        _        -> noredex
+        Char_to_U8 -> LitH (VBitVector 8 (C.singleton c))
+        Char_ord   -> LitH (VI64 $ fromIntegral $ ord c)
+        _          -> noredex
     [LitH (VNatural a), LitH (VNatural b)]         ->
       case op of
         Natural_add -> LitH (VNatural $ a + b)
@@ -358,8 +401,7 @@ reduceOpr op args = apply rest $
   where
     arity = oprArity op
     (operands, rest) = splitAt arity args
-    apply []         trm = trm
-    apply (arg:args) trm = apply args (AppH trm arg)
+    apply args trm = foldl AppH trm args
     noredex  = apply operands (OprH op)
     ite c t f = if c then t else f
     bool c = ite c (VI32 1) (VI32 0)
@@ -371,16 +413,18 @@ reduceOpr op args = apply rest $
     i64 = asInt64
     u32 = asWord32
     u64 = asWord64
+    build = toStrict . BB.toLazyByteString
+    toWord bs = foldr (\b bs i -> shift b i + bs (i+8)) (\_ -> 0) bs 0
 
-expandLit :: Literal -> Hoas
-expandLit t = termToHoas [] $ case t of
-  VNatural 0 -> [yatima| λ P z s => z|]
-  VNatural n -> App [yatima| λ x P z s => s x|] (Lit $ VNatural (n-1))
-  VString cs -> case T.uncons cs of
+expandLit :: Literal -> Maybe Hoas
+expandLit t = termToHoas [] <$> case t of
+  VNatural 0 -> Just $ [yatima| λ P z s => z|]
+  VNatural n -> Just $ App [yatima| λ x P z s => s x|] (Lit $ VNatural (n-1))
+  VString cs -> Just $ case T.uncons cs of
     Nothing     -> [yatima| λ P n c => n|]
     Just (x,xs) -> let f = [yatima| λ x xs P n c => c x xs|]
                     in App (App f (Lit $ VChar x)) (Lit $ VString xs)
-  VBitVector l bs -> case BS.uncons bs of
+  VBitVector l bs -> Just $ case BS.uncons bs of
     Nothing -> [yatima| λ P be b0 b1 => be |]
     Just (0,xs) -> let f = [yatima| λ n xs P be b0 b1 => b0 n xs|]
                     in App (App f (Lit $ VNatural (l-1))) (Lit $ VBitVector (l-1) xs)
@@ -391,10 +435,10 @@ expandLit t = termToHoas [] $ case t of
          | x `mod` 2 == 1 ->
            let f = [yatima| λ n xs P be b0 b1 => b1 n xs|]
             in (App (App f (Lit $ VNatural (l-1))) (Lit $ VBitVector (l-1) (BS.cons (x `div` 2) xs)))
-  _        -> error "TODO"
+  _        -> Nothing
 
 litInduction :: LitType -> Hoas -> Hoas
-litInduction t val = (\x y -> AppH y x) val $ termToHoas [] $ case t of
+litInduction t val = (\y -> AppH y val) $ termToHoas [] $ case t of
   TNatural -> [yatima|
     λ self => forall
     (0 P : forall #Natural -> Type)
@@ -417,7 +461,7 @@ litInduction t val = (\x y -> AppH y x) val $ termToHoas [] $ case t of
      -> P (#Natural_succ n) (#BitVector_b1 n xs))
    -> P n self
   |]
-  _    -> error "TODO"
+  _    -> error "Non-inductive type"
 
 typeOfLit :: Literal -> Hoas
 typeOfLit t = case t of

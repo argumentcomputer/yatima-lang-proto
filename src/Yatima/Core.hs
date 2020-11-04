@@ -58,8 +58,8 @@ whnf defs trm = go trm []
       OprH opr -> reduceOpr opr args
       UseH arg -> case go arg [] of
         NewH exp -> go exp args
-        LitH val -> go (expandLit val) args
-        _        -> foldl' AppH (UseH arg) args
+        LitH val -> maybe (foldl' AppH trm args) (\t -> go t args) (expandLit val)
+        _        -> foldl' AppH trm args
       AnnH a _           -> go a args
       UnrH _ _ a _       -> go a args
       LetH _ _ _ exp bod -> go (bod exp) args
@@ -234,6 +234,8 @@ infer defs pre use term = case term of
       SlfH _ body -> do
         return (exprCtx,body expr,UseI exprIR Nothing)
       LTyH typ -> do
+        when (typ /= TNatural || typ /= TString) $
+          throwError $ UseOnNonInductiveType exprCtx expr typ
         return (exprCtx, litInduction typ expr,UseI exprIR (Just typ))
       AppH (LTyH TBitVector) (LitH (VNatural n)) -> do
         let expr' = AppH (litInduction TBitVector (LitH (VNatural n))) expr
