@@ -127,6 +127,10 @@ reduceOpr op args = apply rest $
   case operands of
     [AppH (OprH op') a]                            ->
       if inverseOpr op op' then a else noredex
+    [AppH (OprH Natural_succ) a, b]                ->
+      case op of
+        Natural_add -> AppH (OprH Natural_succ) (AppH (AppH (OprH Natural_add) a) b)
+        _           -> noredex
     [LitH (VNatural a)]                            ->
       case op of
         Natural_succ     -> LitH (VNatural $ a+1)
@@ -155,6 +159,7 @@ reduceOpr op args = apply rest $
         F64_convert_I64_s   -> LitH (VF64 (realToFrac $ i64 a))
         F64_convert_I64_u   -> LitH (VF64 (realToFrac a))
         I64_to_U64          -> LitH (VBitVector 64 (build $ BB.word64LE a))
+        Char_chr            -> LitH (VChar $ chr $ fromIntegral a)
         _                   -> noredex
     [LitH (VI32 a)]                                ->
       case op of
@@ -212,7 +217,8 @@ reduceOpr op args = apply rest $
         F32_demote_F64      -> LitH (VF32 (realToFrac a))
         I32_reinterpret_F32 -> LitH (VI32 (floatToWord a))
         I32_trunc_F32_s     ->
-           if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31) then noredex
+           if (isNaN a || isInfinite a || a >= 2^31 || a < -2^31)
+           then LitH VException
            else LitH (VI32 (u32 $ truncate a))
         I32_trunc_F32_u     ->
            if (isNaN a || isInfinite a || a >= 2^32 || a <= -1)
@@ -311,7 +317,6 @@ reduceOpr op args = apply rest $
         I64_shr_s -> LitH (VI64 (u64 $ i64 a `shiftR` (fromIntegral b `rem` 64)))
         I64_rotl  -> LitH (VI64 (a `rotateL` fromIntegral b))
         I64_rotr  -> LitH (VI64 (a `rotateR` fromIntegral b))
-        Char_chr -> LitH (VChar $ chr $ fromIntegral a)
         _         -> noredex
     [LitH (VI32 a), LitH (VI32 b)]                 ->
       case op of
@@ -482,19 +487,163 @@ typeOfLTy t = case t of
 
 typeOfOpr :: PrimOp -> Hoas
 typeOfOpr t = termToHoas [] $ case t of
-  Natural_succ   -> [yatima|∀ #Natural -> #Natural|]
-  Natural_pred   -> [yatima|∀ #Natural -> #Natural|]
-  Natural_add    -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_sub    -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_div    -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_mod    -> [yatima|∀ #Natural #Natural -> #Natural|]
-  Natural_gt     -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_ge     -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_eq     -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_ne     -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_lt     -> [yatima|∀ #Natural #Natural -> #I32|]
-  Natural_le     -> [yatima|∀ #Natural #Natural -> #I32|]
-  String_cons    -> [yatima|∀ #Char #String -> #String|]
-  String_concat  -> [yatima|∀ #String #String -> #String|]
-  BitVector_b0   -> [yatima|∀ (n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
-  BitVector_b1   -> [yatima|∀ (n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
+  Natural_from_I64    -> [yatima|∀ #I64 -> #Natural|]
+  Natural_from_I32    -> [yatima|∀ #I32 -> #Natural|]
+  Natural_succ        -> [yatima|∀ #Natural -> #Natural|]
+  Natural_pred        -> [yatima|∀ #Natural -> #Natural|]
+  Natural_add         -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_sub         -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_mul         -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_gt          -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_ge          -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_eq          -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_ne          -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_lt          -> [yatima|∀ #Natural #Natural -> #I32|]
+  Natural_le          -> [yatima|∀ #Natural #Natural -> #I32|]
+  I64_eqz             -> [yatima|∀ #I64 -> #I32|]
+  I64_clz             -> [yatima|∀ #I64 -> #I64|]
+  I64_ctz             -> [yatima|∀ #I64 -> #I64|]
+  I64_popcnt          -> [yatima|∀ #I64 -> #I64|]
+  I32_wrap_I64        -> [yatima|∀ #I64 -> #I32|]
+  F32_convert_I64_s   -> [yatima|∀ #I64 -> #F32|]
+  F32_convert_I64_u   -> [yatima|∀ #I64 -> #F32|]
+  F64_reinterpret_I64 -> [yatima|∀ #I64 -> #F64|]
+  F64_convert_I64_s   -> [yatima|∀ #I64 -> #F64|]
+  F64_convert_I64_u   -> [yatima|∀ #I64 -> #F64|]
+  I64_to_U64          -> [yatima|∀ #I64 -> (#BitVector 64)|]
+  Char_chr            -> [yatima|∀ #I64 -> #Char|]
+  I32_eqz             -> [yatima|∀ #I32 -> #I32|]
+  I32_clz             -> [yatima|∀ #I32 -> #I32|]
+  I32_ctz             -> [yatima|∀ #I32 -> #I32|]
+  I32_popcnt          -> [yatima|∀ #I32 -> #I32|]
+  I64_extend_I32_s    -> [yatima|∀ #I32 -> #I64|]
+  I64_extend_I32_u    -> [yatima|∀ #I32 -> #I64|]
+  F32_reinterpret_I32 -> [yatima|∀ #I32 -> #F32|]
+  F32_convert_I32_s   -> [yatima|∀ #I32 -> #F32|]
+  F32_convert_I32_u   -> [yatima|∀ #I32 -> #F64|]
+  F64_convert_I32_s   -> [yatima|∀ #I32 -> #F64|]
+  F64_convert_I32_u   -> [yatima|∀ #I32 -> #F64|]
+  I32_to_U32          -> [yatima|∀ #I32 -> (#BitVector 32)|]
+  F64_abs             -> [yatima|∀ #F64 -> #F64|]
+  F64_neg             -> [yatima|∀ #F64 -> #F64|]
+  F64_ceil            -> [yatima|∀ #F64 -> #F64|]
+  F64_floor           -> [yatima|∀ #F64 -> #F64|]
+  F64_trunc           -> [yatima|∀ #F64 -> #F64|]
+  F64_nearest         -> [yatima|∀ #F64 -> #F64|]
+  F64_sqrt            -> [yatima|∀ #F64 -> #F64|]
+  F64_promote_F32     -> [yatima|∀ #F64 -> #F64|]
+  I64_reinterpret_F64 -> [yatima|∀ #F64 -> #I64|]
+  F64_to_U64          -> [yatima|∀ #F64 -> (#BitVector 64)|]
+  F32_abs             -> [yatima|∀ #F32 -> #F32|]
+  F32_neg             -> [yatima|∀ #F32 -> #F32|]
+  F32_ceil            -> [yatima|∀ #F32 -> #F32|]
+  F32_floor           -> [yatima|∀ #F32 -> #F32|]
+  F32_trunc           -> [yatima|∀ #F32 -> #F32|]
+  F32_nearest         -> [yatima|∀ #F32 -> #F32|]
+  F32_sqrt            -> [yatima|∀ #F32 -> #F32|]
+  F32_demote_F64      -> [yatima|∀ #F32 -> #F32|]
+  I32_reinterpret_F32 -> [yatima|∀ #F32 -> #I32|]
+  F32_to_U32          -> [yatima|∀ #F32 -> (#BitVector 32)|]
+  String_cons         -> [yatima|∀ #Char #String -> #String|]
+  String_concat       -> [yatima|∀ #String #String -> #String|]
+  BitVector_b0        -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
+  BitVector_b1        -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
+  BitVector_length    -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> #Natural|]
+  BitVector_concat    ->
+    [yatima|∀ (0 n: #Natural) (0 m: #Natural) (#BitVector n) (#BitVector m) -> (#BitVector (#Natural_add n m))|]
+  Char_from_U8        -> [yatima|∀ (#BitVector 8) -> #Natural|]
+  I32_from_U32        -> [yatima|∀ (#BitVector 32) -> #Natural|]
+  F32_from_U32        -> [yatima|∀ (#BitVector 32) -> #Natural|]
+  I64_from_U64        -> [yatima|∀ (#BitVector 64) -> #Natural|]
+  F64_from_U64        -> [yatima|∀ (#BitVector 64) -> #Natural|]
+  Char_to_U8          -> [yatima|∀ #Char -> (#BitVector 8)|]
+  Char_ord            -> [yatima|∀ #Char -> #I64|]
+  I64_eq              -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_ne              -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_lt_s            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_lt_u            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_gt_s            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_gt_u            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_le_s            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_le_u            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_ge_s            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_ge_u            -> [yatima|∀ #I64 #I64 -> #I32|]
+  I64_add             -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_sub             -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_mul             -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_and             -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_or              -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_xor             -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_shl             -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_shr_u           -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_shr_s           -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_rotl            -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_rotr            -> [yatima|∀ #I64 #I64 -> #I64|]
+  I32_eq              -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_ne              -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_lt_s            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_lt_u            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_gt_s            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_gt_u            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_le_s            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_le_u            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_ge_s            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_ge_u            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_add             -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_sub             -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_mul             -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_and             -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_or              -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_xor             -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_shl             -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_shr_u           -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_shr_s           -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_rotl            -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_rotr            -> [yatima|∀ #I32 #I32 -> #I32|]
+  F64_eq              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F64_ne              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F64_lt              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F64_gt              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F64_le              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F64_ge              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F64_add             -> [yatima|∀ #F64 #F64 -> #F64|]
+  F64_sub             -> [yatima|∀ #F64 #F64 -> #F64|]
+  F64_mul             -> [yatima|∀ #F64 #F64 -> #F64|]
+  F64_div             -> [yatima|∀ #F64 #F64 -> #F64|]
+  F64_min             -> [yatima|∀ #F64 #F64 -> #F64|]
+  F64_max             -> [yatima|∀ #F64 #F64 -> #F64|]
+  F64_copysign        -> [yatima|∀ #F64 #F64 -> #F64|]
+  F32_eq              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F32_ne              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F32_lt              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F32_gt              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F32_le              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F32_ge              -> [yatima|∀ #F64 #F64 -> #I32|]
+  F32_add             -> [yatima|∀ #F64 #F64 -> #F32|]
+  F32_sub             -> [yatima|∀ #F64 #F64 -> #F32|]
+  F32_mul             -> [yatima|∀ #F64 #F64 -> #F32|]
+  F32_div             -> [yatima|∀ #F64 #F64 -> #F32|]
+  F32_min             -> [yatima|∀ #F64 #F64 -> #F32|]
+  F32_max             -> [yatima|∀ #F64 #F64 -> #F32|]
+  F32_copysign        -> [yatima|∀ #F64 #F64 -> #F32|]
+  -- These ones might raise exceptions.
+  Natural_to_I64      -> [yatima|∀ #Natural -> #I64|]
+  Natural_to_I32      -> [yatima|∀ #Natural -> #I32|]
+  Natural_div         -> [yatima|∀ #Natural #Natural -> #Natural|]
+  Natural_mod         -> [yatima|∀ #Natural #Natural -> #Natural|]
+  I32_trunc_F64_s     -> [yatima|∀ #F64 -> #I32|]
+  I32_trunc_F64_u     -> [yatima|∀ #F64 -> #I32|]
+  I64_trunc_F64_s     -> [yatima|∀ #F64 -> #I64|]
+  I64_trunc_F64_u     -> [yatima|∀ #F64 -> #I64|]
+  I32_trunc_F32_s     -> [yatima|∀ #F32 -> #I32|]
+  I32_trunc_F32_u     -> [yatima|∀ #F32 -> #I32|]
+  I64_trunc_F32_s     -> [yatima|∀ #F32 -> #I64|]
+  I64_trunc_F32_u     -> [yatima|∀ #F32 -> #I64|]
+  I64_div_s           -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_div_u           -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_rem_s           -> [yatima|∀ #I64 #I64 -> #I64|]
+  I64_rem_u           -> [yatima|∀ #I64 #I64 -> #I64|]
+  I32_div_s           -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_div_u           -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_rem_s           -> [yatima|∀ #I32 #I32 -> #I32|]
+  I32_rem_u           -> [yatima|∀ #I32 #I32 -> #I32|]

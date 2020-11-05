@@ -55,7 +55,7 @@ whnf defs trm = go trm []
       LamH _   bod -> case args of
         []          -> trm
         (a : args') -> go (bod a) args'
-      OprH opr -> reduceOpr opr args
+      OprH opr -> reduceOpr opr (map (\arg -> go arg []) args)
       UseH arg -> case go arg [] of
         NewH exp -> go exp args
         LitH val -> maybe (foldl' AppH trm args) (\t -> go t args) (expandLit val)
