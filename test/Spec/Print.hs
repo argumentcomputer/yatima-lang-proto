@@ -38,7 +38,7 @@ fromRight (Right x) = x
 fromRight (Left e) = error "fromRight"
 
 term :: Term
-term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit VException)
+term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit $ VException "")
 
 
 refId =

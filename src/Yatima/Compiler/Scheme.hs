@@ -12,6 +12,9 @@ import           Data.Text              (Text)
 import qualified Data.Text              as T
 import qualified Data.Text.Lazy         as LT
 import qualified Data.Text.Lazy.Builder as TB
+import qualified Data.ByteString        as BS
+import           Data.Map               (Map)
+import qualified Data.Map               as Map
 
 import           Yatima.Core.IR
 import           Yatima.Core.Prim
@@ -78,8 +81,7 @@ termToScheme trm = go [] Once trm where
     TypI                 -> noArgs args Nil
     LTyI typ             -> noArgs args Nil
   nonPrim nam = T.cons ':' nam
-  apply []         trm = trm
-  apply (arg:args) trm = apply args (Apply trm [arg])
+  apply args trm = foldl (\acc arg -> Apply acc [arg]) trm args
   noArgs args trm = if args == [] then trm else error "Compilation error"
   captureLet use trm lets = case trm of
     AppI None fun _     -> captureLet use fun lets
@@ -115,7 +117,7 @@ schemeToCode trm = LT.toStrict $ TB.toLazyText (go 0 False trm) where
     Operator opr           -> oprToCode opr
     Begin    exps end      -> "(begin" <> mconcat (map (go (dep+2) True) (exps ++ [end])) <> ")"
     Assign   nam  exp      -> "(set! " <> name nam <> go (dep+7+T.length nam) False exp <> ")"
-    Equal    exp1 exp2     -> "(= " <> go (dep+3) False exp1 <> go (dep+3) True exp2 <> ")"
+    Equal    exp1 exp2     -> "(equal? " <> go (dep+8) False exp1 <> go (dep+8) True exp2 <> ")"
     If       exp  tru  fal -> "(if " <> go (dep+4) False exp <> go (dep+4) True tru <> go (dep+4) True fal <> ")"
     Nil                    -> "'()"
   name :: Name -> TB.Builder
@@ -128,14 +130,28 @@ schemeToCode trm = LT.toStrict $ TB.toLazyText (go 0 False trm) where
 
 litToCode :: Literal -> TB.Builder
 litToCode lit = case lit of
-  VNatural x -> TB.fromString $ show x
-  _          -> "'()" -- TODO
+  VNatural   x    -> show' x
+  VI64       x    -> show' x
+  VI32       x    -> show' x
+  VF64       x    -> show' x
+  VF32       x    -> show' x
+  VBitVector n bs ->
+    case BS.uncons bs of
+      Nothing       -> "#vu8()"
+      Just (c,cs)   -> "#vu8(" <> BS.foldl' (\cs c -> cs <> " " <> show' c) (show' c) cs <> ")"
+  VString    t    -> show' t
+  VChar      c    -> "#\\" <> TB.singleton c
+  VException s    -> "(throw-error " <> TB.fromText s <> ")"
+  VWorld          -> error "Cannot compile a world value."
+  where
+    show' :: Show a => a -> TB.Builder
+    show' = TB.fromString . show
 
 oprToCode :: PrimOp  -> TB.Builder
 oprToCode opr = case opr of
   -- Natural number operations
   Natural_succ        -> "1+"
-  Natural_pred        -> "(lambda (x) (if (= x 0) 0 (1- x)))"
+  Natural_pred        -> "pred"
   Natural_add         -> "+"
   Natural_mul         -> "*"
   Natural_sub         -> "-"
@@ -144,7 +160,7 @@ oprToCode opr = case opr of
   Natural_gt          -> ">"
   Natural_ge          -> ">="
   Natural_eq          -> "="
-  Natural_ne          -> "(lambda (x y) (not (= x y)))"
+  Natural_ne          -> "neq"
   Natural_lt          -> "<"
   Natural_le          -> "<="
   Natural_to_I64      -> error "TODO"
@@ -152,10 +168,9 @@ oprToCode opr = case opr of
   -- Char and string operations
   Char_to_U8          -> error "TODO"
   Char_ord            -> error "TODO"
-  String_cons         -> "(lambda (c cs) (string-append (make-string 1 c) cs))"
+  String_cons         -> "string-cons"
   String_concat       -> "string-append"
   -- Fixnum operations
-  I64_eqz             -> "fxzero?"
   I64_clz             -> error "TODO"
   I64_ctz             -> error "TODO"
   I64_popcnt          -> error "TODO"
@@ -168,8 +183,9 @@ oprToCode opr = case opr of
   Natural_from_I64    -> error "TODO"
   Char_chr            -> error "TODO"
   I64_to_U64          -> error "TODO"
+  I64_eqz             -> "fxzero?"
   I64_eq              -> "fx="
-  I64_ne              ->  "(lambda (x y) (not (fx= x y)))"       
+  I64_ne              -> "fxneq"
   I64_lt_s            -> "fx<"
   I64_lt_u            -> error "TODO"
   I64_gt_s            -> "fx>"
@@ -300,15 +316,52 @@ oprToCode opr = case opr of
 useLit :: LitType -> [Scheme] -> Scheme -> Scheme
 useLit typ args trm = case typ of
   TNatural ->
-    let bod z s = Lets [("tmp", trm)] $
-                  If (Equal (Variable "tmp") (Value (VNatural 0))) z $
-                  Apply s [Apply (Operator Natural_pred) [Variable "tmp"]]
+    let bod z s = Apply (Variable "match-nat") [trm]
     in case args of
       []       -> enclose "case_zero" $ enclose "case_succ" . bod
       (x:[])   -> enclose "case_succ" $ bod x
       (x:y:xs) -> apply xs $ bod x y
-  _ -> trm -- TODO
+  TString ->
+    let bod z s = Apply (Variable "match-string") [trm]
+    in case args of
+      []       -> enclose "case_nil" $ enclose "case_cons" . bod
+      (x:[])   -> enclose "case_cons" $ bod x
+      (x:y:xs) -> apply xs $ bod x y
+  TBitVector ->
+    let bod z s = Apply (Variable "match-bitvector") [trm]
+    in case args of
+      []       -> enclose "case_nil" $ enclose "case_cons" . bod
+      (x:[])   -> enclose "case_cons" $ bod x
+      (x:y:xs) -> apply xs $ bod x y
+  _ -> error "Use of non-inductive type in the compiler. Implementation is broken."
   where
     enclose nam bod = Lambda [nam] (bod (Variable nam))
-    apply []         trm = trm
-    apply (arg:args) trm = apply args (Apply trm [arg])
+    apply args trm = foldl (\acc arg -> Apply acc [arg]) trm args
+
+auxiliaryDefs :: Map Text Text
+auxiliaryDefs = Map.fromList $
+  [ ("throw-error",
+     "(define (throw-error msg)\n" <>
+     "  (raise (condition (make-error) (make-message-condition msg))))")
+  , ("neq", "(define (neq x y) (not (= x y)))")
+  , ("fxneq", "(define (fxneq x y) (not (fx= x y)))")
+  , ("pred", "(define (pred x) (if (= x 0) 0 (1- x)))")
+  , ("string-cons",
+     "(define (string-cons c cs)\n" <>
+     "  (string-append (make-string 1 c) cs))")
+  , ("match-string",
+     "(define (match-string str n c)" <>
+     "  (if (equal? str \"\")" <>
+     "      n" <>
+     "      (c (string-ref str 0)" <>
+     "         (substring str 1 (string-length str)))))")
+  , ("match-nat",
+     "(define (match-nat n z s)" <>
+     "  (if (equal? n 0) z (s (1- n))))")
+  , ("bytevector-tail",
+     "(define (bytevector-tail bs)" <>
+     "  (let* ((n (1- (bytevector-length bs)))" <>
+     "         (cs (make-bytevector n)))" <>
+     "    (bytevector-copy! bs 1 cs 0 n)" <>
+     "    cs))")
+  ]
