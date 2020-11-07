@@ -91,9 +91,19 @@ spec = do
     [("(A:Type)", Good [("A",Many,Typ)])
     ,("(A B C :Type)", Good [("A",Many,Typ), ("B",Many,Typ), ("C",Many,Typ)])
     ]
+
   parseDescribe (pBinder True) "Binder, name optional"
     [("Type", Good [("",Many,Typ)])
     ,("Type", Good [("",Many,Typ)])
+    ]
+
+  parseDescribe pAll "Binder, in forall, with repetition "
+    [("∀ (A: Type) (a: A) (b: A) -> A" , Good $
+       All "A" Many Typ (All "a" Many (Var "A" 0) (All "b" Many (Var "A" 1) (Var "A" 2))))
+    ,("∀ (A: Type) (a b: A) -> A" , Good $
+       All "A" Many Typ (All "a" Many (Var "A" 0) (All "b" Many (Var "A" 1) (Var "A" 2))))
+    ,("∀ (A B: Type) (a b: A) (c d: B) -> A" , Good $
+      All "A" Many Typ (All "B" Many Typ (All "a" Many (Var "A" 1) (All "b" Many (Var "A" 2) (All "c" Many (Var "B" 2) (All "d" Many (Var "B" 3) (Var "A" 5)))))))
     ]
 
 

@@ -73,7 +73,7 @@ encodeIndex (Index ds) = encodeListLen 2
   <> (encodeMapLen (fromIntegral $ M.size ds) <> encodeEntries ds)
   where
     encodeEntries ds = foldr f mempty (sortBy cmp (M.toList ds))
-    f (k,(d,t)) r = encodeString k <> encodeCid d <> encodeCid t <> r
+    f (k,(d,t)) r = encodeString k <> encodeListLen 2 <> encodeCid d <> encodeCid t <> r
     cmp (k1,_) (k2,_)   = cborCanonicalOrder (serialise k1) (serialise k2)
 
 cborCanonicalOrder :: BSL.ByteString -> BSL.ByteString -> Ordering
@@ -89,7 +89,7 @@ decodeIndex = do
   tag    <- decodeString
   when (tag /= "Index") (fail $ "invalid Index tag: " ++ show tag)
   n  <- decodeMapLen
-  let decodeCids = (,) <$> decodeCid <*> decodeCid
+  let decodeCids = decodeListLen >> (,) <$> decodeCid <*> decodeCid
   ds <- M.fromList <$> replicateM n ((,) <$> decodeString <*> decodeCids)
   return $ Index ds
 

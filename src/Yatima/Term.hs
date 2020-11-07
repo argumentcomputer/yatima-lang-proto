@@ -21,6 +21,7 @@ module Yatima.Term
   , Defs
   , findByName
   , findByInt
+  , shift
   ) where
 
 import           Data.Text                  (Text)
@@ -94,4 +95,22 @@ findByInt i (x:xs)
   | i < 0     = Nothing
   | i == 0    = Just x
   | otherwise = findByInt (i - 1) xs
+
+shift :: Int -> Int -> Term -> Term
+shift inc dep term = case term of
+  Var n i         -> Var n (if i < dep then i else (i + inc))
+  All n u t b     -> All n u (go t) (bind b)
+  Lam n b         -> Lam n (bind b)
+  App f a         -> App (go f) (go a)
+  Slf n b         -> Slf n (bind b)
+  New x           -> New (go x)
+  Use x           -> Use (go x)
+  Ann t x         -> Ann (go t) (go x)
+  Let r n u t x b -> Let r n u (go t) (bind x) (bind b)
+  x               -> x
+  where
+    go x   = shift inc dep x
+    bind x = shift inc (dep+1) x
+
+
 
