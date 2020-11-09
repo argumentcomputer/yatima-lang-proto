@@ -172,8 +172,8 @@ process line = dontCrash' $ do
         defs   <- liftIO $ indexToDefs index
         let (trm,typ) = defToHoas nam def
         catchReplErr (Core.check defs Ctx.empty Once trm typ)
-        (n,(c,c')) <- liftIO $ cachePutDef (nam,def)
-        let i' = Index $ M.insert nam (c,c') (indexEntries index)
+        cids <- liftIO $ cachePutDef def
+        let i' = Index $ M.insert nam cids (indexEntries index)
         modify (\e -> e {_replIndex = i'})
         return ()
       Load file -> do

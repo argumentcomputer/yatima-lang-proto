@@ -40,12 +40,12 @@ data Package = Package
 emptyPackage :: Name -> Package
 emptyPackage n = Package n "" (makeCid BSL.empty) emptyImports emptyIndex
 
-newtype Imports = Imports (Map CID Text)       deriving (Show, Eq)
+newtype Imports = Imports [(CID,Text)]         deriving (Show, Eq)
 newtype Source  = Source  Text                 deriving (Show, Eq)
 newtype Index   = Index   (Map Name (CID,CID)) deriving (Show, Eq)
 
 emptyImports :: Imports
-emptyImports = Imports M.empty
+emptyImports = Imports []
 
 emptyIndex :: Index
 emptyIndex = Index M.empty
@@ -98,16 +98,16 @@ instance Serialise Index where
   decode = decodeIndex
 
 encodeImports :: Imports -> Encoding
-encodeImports (Imports is) = encodeMapLen (fromIntegral $ M.size is ) <> go is
+encodeImports (Imports is) = encodeListLen (fromIntegral $ length is) <> go is
   where
-    f (k,v) r = encodeCid k <> encodeString v <> r
-    go is = foldr f mempty (sortBy cmp (M.toList is))
-    cmp (k1,_) (k2,_)   = cborCanonicalOrder (serialise k1) (serialise k2)
+    f (k,v) r = encodeListLen 2 <> encodeCid k <> encodeString v <> r
+    go is = foldr f mempty is
 
 decodeImports :: Decoder s Imports
 decodeImports = do
-  n      <- decodeMapLen
-  Imports . M.fromList <$> replicateM n ((,) <$> decodeCid <*> decodeString)
+  n      <- decodeListLen
+  let decodeEntry = decodeListLen >> ((,) <$> decodeCid <*> decodeString)
+  Imports <$> replicateM n decodeEntry
 
 instance Serialise Imports where
   encode = encodeImports

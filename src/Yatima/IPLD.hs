@@ -22,6 +22,13 @@ import           Data.IPLD.CID
 import           Data.IPLD.DagAST
 import           Data.Text              (Text)
 import qualified Data.Text              as T hiding (find)
+import           Data.Map                   (Map)
+import qualified Data.Map                   as M
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
+
+import           Path
+import           Path.IO
 
 import           Yatima.Package
 import           Yatima.Term
@@ -81,11 +88,6 @@ defToDagDef def@(Def doc term typ_) = runIdentity $ do
   let typeASTCid = makeCid typeAST :: CID
   return $ DagDef termASTCid typeASTCid doc termMeta typeMeta
 
-defCid :: Name -> Def -> (CID,CID)
-defCid name def@(Def doc term typ_) =
-  let dagDef = defToDagDef def
-   in (makeCid dagDef, makeCid (_termAST dagDef))
-
 data DagError
   = FreeVariable [Name] DagAST DagMeta Int
   | NoDeserial [Name] DagAST DagMeta DeserialiseFailure
@@ -95,6 +97,35 @@ data DagError
 
 deriving instance Ord DeserialiseFailure
 deriving instance Ord DagError
+
+instance Show DagError where
+  show e = case e of
+    FreeVariable ctx ast meta idx -> concat
+      ["DagError: Free Variable ", show idx
+      , "\ncontext: ", show ctx
+      , "\nDagAST: ", show ast
+      , "\nDagMeta: ", show meta
+      ]
+    NoDeserial ctx ast meta err -> concat
+      ["DagError: Deserialisation failure ", show err
+      , "\ncontext: ", show ctx
+      , "\nDagAST: ", show ast
+      , "\nDagMeta: ", show meta
+      ]
+    LetNameMismatch ctx ast meta n -> concat
+      ["DagError: Name mismatch in Let constructor ", show n
+      , "\ncontext: ", show ctx
+      , "\nDagAST: ", show ast
+      , "\nDagMeta: ", show meta
+      ]
+    UnexpectedASTMeta ctx ast meta ast' meta' -> concat
+      ["DagError: Unexpected DagAST and DagMeta"
+      , "\nunexpected DagAST: ", show ast'
+      , "\nunexpected DagMeta: ", show meta'
+      , "\ncontext: ", show ctx
+      , "\nentire DagAST: ", show ast
+      , "\nentire DagMeta: ", show meta
+      ]
 
 dagToTerm :: [Name] -> DagAST -> DagMeta -> Except DagError Term
 dagToTerm ns ast meta = case (ast,meta) of
@@ -135,31 +166,99 @@ dagToDef doc n (termAST, termMeta) (typeAST,typeMeta) = do
   typ <- dagToTerm [] typeAST typeMeta
   return $ Def doc trm typ
 
-instance Show DagError where
-  show e = case e of
-    FreeVariable ctx ast meta idx -> concat
-      ["DagError: Free Variable ", show idx
-      , "\ncontext: ", show ctx
-      , "\nDagAST: ", show ast
-      , "\nDagMeta: ", show meta
-      ]
-    NoDeserial ctx ast meta err -> concat
-      ["DagError: Deserialisation failure ", show err
-      , "\ncontext: ", show ctx
-      , "\nDagAST: ", show ast
-      , "\nDagMeta: ", show meta
-      ]
-    LetNameMismatch ctx ast meta n -> concat
-      ["DagError: Name mismatch in Let constructor ", show n
-      , "\ncontext: ", show ctx
-      , "\nDagAST: ", show ast
-      , "\nDagMeta: ", show meta
-      ]
-    UnexpectedASTMeta ctx ast meta ast' meta' -> concat
-      ["DagError: Unexpected DagAST and DagMeta"
-      , "\nunexpected DagAST: ", show ast'
-      , "\nunexpected DagMeta: ", show meta'
-      , "\ncontext: ", show ctx
-      , "\nentire DagAST: ", show ast
-      , "\nentire DagMeta: ", show meta
-      ]
+-- * Cache
+
+cacheDir :: Path Abs Dir -> Path Abs Dir
+cacheDir root = root </> [reldir|.yatima_cache|]
+
+getYatimaCacheDir :: IO (Path Abs Dir)
+getYatimaCacheDir = do
+  homeDir <- getHomeDir
+  ensureDir (cacheDir homeDir)
+  return (cacheDir homeDir)
+
+cacheGet :: forall a. Serialise a => CID -> IO a
+cacheGet cid = do
+  file <- parseRelFile $ T.unpack $ cidToText cid
+  cacheDir <- getYatimaCacheDir
+  let path = cacheDir </> file
+  bs <- BSL.readFile (toFilePath path)
+  let cid' = makeCidFromBytes bs
+  when (cid' /= cid) 
+    (fail $ "Cache file contents do not match given CID: " ++ show cid)
+  case (deserialiseOrFail @a bs) of
+    Left  e -> fail $ "Cannot deserialise cache file: " ++ show e
+    Right a -> return a
+
+cachePut :: forall a. Serialise a => a -> IO CID
+cachePut x = cachePutBytes (serialise x)
+
+cachePutBytes :: BSL.ByteString -> IO CID
+cachePutBytes bs = do
+  let cid = makeCidFromBytes bs
+  cacheDir <- getYatimaCacheDir
+  file <- parseRelFile $ T.unpack $ cidToText cid
+  let path = cacheDir </> file
+  exists <- doesFileExist path
+  unless exists (BSL.writeFile (toFilePath path) bs)
+  return cid
+
+cacheHas :: CID -> IO Bool
+cacheHas cid = do
+  cacheDir <- getYatimaCacheDir
+  file <- parseRelFile $ T.unpack $ cidToText cid
+  let path = cacheDir </> file
+  doesFileExist path
+
+cachePutDef :: Def -> IO (CID,CID)
+cachePutDef d@(Def doc trm typ) = do
+  termASTCid <- cachePut (termToAST trm)
+  typeASTCid <- cachePut (termToAST typ)
+  let termMeta = termToMeta trm
+  let typeMeta = termToMeta typ
+  let dagDef = DagDef termASTCid typeASTCid doc termMeta typeMeta
+  dagDefCid <- cachePut dagDef
+  return (dagDefCid,termASTCid)
+
+indexToDefs:: Index -> IO Defs
+indexToDefs i@(Index ns) = do
+  ds <- traverse go (M.toList ns)
+  return $ M.fromList ds
+  where
+    go :: (Name,(CID,CID)) -> IO (CID,Def)
+    go (name,(defCid,trmCid)) = do
+      dagDef  <- cacheGet @DagDef defCid
+      let (DagDef termASTCid typeASTCid doc termMeta typeMeta) = dagDef
+      when (trmCid /= termASTCid) 
+        (fail $ "indexToDefs failure: termAST CIDS don't match")
+      termAST <- cacheGet @DagAST termASTCid
+      typeAST <- cacheGet @DagAST typeASTCid
+      case runExcept (dagToDef doc name (termAST,termMeta) (typeAST,typeMeta)) of
+        Left  e -> putStrLn (show e) >> fail ""
+        Right x -> return (defCid,x)
+
+catchErr:: Show e => Except e a -> IO a
+catchErr x = do
+  case runExcept x of
+    Right x -> return x
+    Left  e -> putStrLn (show e) >> fail ""
+
+dagDefDepCids :: CID -> IO (Set CID)
+dagDefDepCids cid = do
+  (DagDef termASTCid typeASTCid _ termMeta typeMeta) <- cacheGet @DagDef cid
+  termAST <- cacheGet @DagAST termASTCid
+  typeAST <- cacheGet @DagAST typeASTCid
+  return $ Set.unions
+    [ Set.singleton cid
+    , Set.singleton termASTCid
+    , Set.singleton termASTCid
+    , dagASTCids termAST
+    , dagASTCids typeAST
+    , dagMetaCids termMeta
+    , dagMetaCids typeMeta
+    ]
+
+packageDepCIDs :: Package -> IO (Set CID)
+packageDepCIDs (Package _ _ srcCid _ (Index ns)) = do
+  defCids <- traverse dagDefDepCids (fst <$> M.elems ns)
+  return $ Set.unions $ (Set.singleton srcCid):defCids

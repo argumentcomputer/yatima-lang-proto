@@ -20,17 +20,23 @@ import           Yatima.Term            (Def (..), Defs, Name, Term (..),
                                          Uses (..))
 import qualified Yatima.Term            as Term
 
+import           Codec.Serialise
+import           Data.Aeson
+
 import           Data.IPLD.CID
+import           Data.IPLD.DagJSON
 import           Yatima.IPLD
 import           Yatima.Package
 import qualified Yatima.Parse.Package as Package
 import           Yatima.Parse.Package
+import           Yatima.IPFS.Client
 
 import           Control.Monad.Catch
 import           Control.Monad.Except
 
 import           Data.ByteString      (ByteString)
 import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Lazy as BSL
 import           Data.IORef
 import           Data.Map             (Map)
 import qualified Data.Map             as M
@@ -111,6 +117,64 @@ checkRef defs (name,(cid,_)) = do
         , T.pack $ show e]
     Right (_,t,_) -> putStrLn $ T.unpack $ T.concat
         ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHoas t]
+
+localPutCID :: CID -> IO ()
+localPutCID cid = do
+  resp <- runLocalDagPutCID cid
+  case resp of
+    Left e  -> putStrLn $ concat ["\ESC[31m\STX⚠ ",show cid," \ESC[m\STX ", show e]
+    Right _ -> putStrLn $ concat ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX pinned"]
+
+localPutPackageDeps :: CID -> IO ()
+localPutPackageDeps cid = do
+  pack <- cacheGet @Package cid
+  putStrLn $ concat ["Pinning package ", T.unpack (_title pack), " ", show cid]
+  cids <- Set.toList <$> packageDepCIDs pack
+  traverse localPutCID cids
+  localPutCID cid
+  return ()
+
+localGetCID :: CID -> IO ()
+localGetCID cid = do
+  hasCid <- cacheHas cid
+  if hasCid 
+  then do
+    putStrLn $ concat ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already in cache"]
+    return ()
+  else do
+    bytes <- runLocalDagGetCID cid
+    case eitherDecode' (BSL.fromStrict bytes) of
+      Left e  -> putStrLn $ concat
+        ["\ESC[31m\STX⚠ ",show cid,"\ESC[m\STX "
+        , "JSON Parse Error: ", show e
+        ]
+      Right v -> do
+        let bs   = serialise (v :: DagJSON)
+        let cid' = makeCidFromBytes bs
+        when (cid == cid') 
+          (putStrLn $ concat ["\ESC[31m\STX⚠ CID",show cid," \ESC[m\STX "
+          , "CID Mismatch with downloaded bytes: ", show cid'
+          ])
+        cachePutBytes bs
+        putStrLn $ concat ["\ESC[32m\STX📥 ", show cid, "\ESC[m\STX downloaded from localhost"]
+
+localGetPackageDeps :: CID -> IO ()
+localGetPackageDeps cid = do
+  localGetCID cid
+  pack <- cacheGet @Package cid
+  putStrLn $ concat ["Downloaded package ", T.unpack (_title pack)]
+  cids <- Set.toList <$> packageDepCIDs pack
+  traverse localGetCID cids
+  putStrLn $ concat ["Downloaded dependencies for package ", T.unpack (_title pack)]
+  return ()
+
+--infuraPutCID :: CID -> IO ()
+--infuraPutCIDInfura = do
+--  resp <- runInfuralDagPutCID cid
+--  case resp of
+--    Left e  -> putStrLn $ concat ["\ESC[31m\STX⚠ ",show cid," \ESC[m\STX ", show e]
+--    Right _ -> putStrLn $ concat ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX "]
+  
 
 --compileFile :: FilePath -> IO ()
 --compileFile file = do

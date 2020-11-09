@@ -22,6 +22,7 @@ import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Lazy     as BSL
 import           Data.Text                (Text)
 import qualified Data.Text                as T
+import qualified Data.Text.Encoding       as T
 import qualified Data.Text.IO             as TIO
 
 import           Network.HTTP.Client hiding (Proxy)
@@ -81,11 +82,11 @@ runDagPutAST ast = do
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
 
-runDagGet :: Text -> IO BS.ByteString
-runDagGet cid_txt = do
+runLocalDagGetCID :: CID -> IO BS.ByteString
+runLocalDagGetCID cid = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
-  S.withClientM (dagGet cid_txt) env go
+  S.withClientM (dagGet (cidToText cid)) env go
   where
     go :: Either ClientError (SourceIO BS.ByteString) -> IO BS.ByteString
     go e = case e of
@@ -96,12 +97,12 @@ runDagGet cid_txt = do
           Left err -> putStrLn ("Error: " ++ show err) >> fail ""
           Right bs -> return (BS.concat bs)
 
-runDagGetPackage :: Text -> IO Package
-runDagGetPackage cid_txt = do
-  bs <- runDagGet cid_txt
-  case eitherDecode' (BSL.fromStrict bs) of
-    Left err -> putStrLn ("JSON Parse Error: " ++ show err) >> fail ""
-    Right v  -> return $ (deserialise (serialise (v :: DagJSON)) :: Package)
+--runDagGetPackage :: Text -> IO Package
+--runDagGetPackage cid_txt = do
+--  bs <- runDagGet cid_txt
+--  case eitherDecode' (BSL.fromStrict bs) of
+--    Left err -> putStrLn ("JSON Parse Error: " ++ show err) >> fail ""
+--    Right v  -> return $ (deserialise (serialise (v :: DagJSON)) :: Package)
 
 runBlockGet :: Text -> IO ()
 runBlockGet cid_txt = do
@@ -119,8 +120,8 @@ runDagPutFile file = do
   let client = (dagPutBytes (Just True) . BSL.fromStrict) bs
   runClientM client env
 
-runDagPutCID :: CID -> IO (Either ClientError Value)
-runDagPutCID cid = do
+runLocalDagPutCID :: CID -> IO (Either ClientError Value)
+runLocalDagPutCID cid = do
   manager' <- newManager defaultManagerSettings
   cache    <- getYatimaCacheDir
   file     <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)
@@ -128,6 +129,42 @@ runDagPutCID cid = do
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
   let client = (dagPutBytes (Just True) . BSL.fromStrict) bytes
   runClientM client env
+
+runInfuraDagPutCID :: CID -> IO (Network.HTTP.Client.Response BSL.ByteString)
+runInfuraDagPutCID cid = do
+  manager' <- newTlsManager
+  cache    <- getYatimaCacheDir
+  file     <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)
+  bytes    <- BS.readFile (toFilePath file)
+  initReq <- parseRequest "https://ipfs.infura.io:5001/api/v0/dag/put"
+  let queryReq = setQueryString
+        [ ("format", Just "cbor")
+        , ("input-enc", Just "cbor")
+        , ("hash", Just "blake2b-256")
+        , ("pin", Just "true")
+        ] initReq
+  req <- formDataBody 
+    [ partFileRequestBody (cidToText cid) (toFilePath file) 
+        (RequestBodyLBS $ BSL.fromStrict bytes)
+    ] queryReq
+  httpLbs req manager'
+  --resp <- httpLbs req manager'
+  --putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
+  --print $ Network.HTTP.Client.responseBody resp
+  --return ()
+
+--runDagPutCIDs :: [CID] -> IO [(CID, Either ClientError [Value])]
+--runDagPutCIDs cids = do
+--  manager' <- newManager defaultManagerSettings
+--  cache    <- getYatimaCacheDir
+--  relfiles <- mapM parseRelFile ((T.unpack . cidToText) <$> cids)
+--  let absfiles = (\x -> cache </> x) <$> relfiles
+--  bytes    <- mapM (\x -> BS.readFile (toFilePath x)) absfiles
+--  let clientF (cid,bytes) 
+--  let client = mapM (dagPutBytes (Just True) . BSL.fromStrict) bytes
+--  let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
+--  resps    <- runClientM client env
+--  return $ zip cids resps
 
 runDagPutCache :: IO ()
 runDagPutCache = do
@@ -196,18 +233,39 @@ runEternumPinHash token cid = do
   print $ Network.HTTP.Client.responseBody resp
   return ()
 
-runInfuraDagPutCID :: CID -> IO ()
-runInfuraDagPutCID cid = do
-  manager' <- newTlsManager
-  cache    <- getYatimaCacheDir
-  file     <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)
-  bytes    <- BS.readFile (toFilePath file)
-  initReq <- parseRequest "https://ipfs.infura.io:5001/api/v0/dag/put?format=cbor&input-enc=cbor&hash=blake2b-256&pin=true"
-  req <- formDataBody [partFileRequestBody (cidToText cid) (toFilePath file) (RequestBodyLBS $ BSL.fromStrict bytes)] initReq
-  resp <- httpLbs req manager'
-  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
-  print $ Network.HTTP.Client.responseBody resp
-  return ()
+--runInfuraDagPutCID :: CID -> IO ()
+--runInfuraDagPutCID cid = do
+--  manager' <- newTlsManager
+--  cache    <- getYatimaCacheDir
+--  file     <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)
+--  bytes    <- BS.readFile (toFilePath file)
+--  initReq <- parseRequest "https://ipfs.infura.io:5001/api/v0/dag/put"
+--  let queryReq = setQueryString
+--        [ ("format", Just "cbor")
+--        , ("input-enc", Just "cbor")
+--        , ("hash", Just "blake2b-256")
+--        , ("pin", Just "true")
+--        ] initReq
+--  req <- formDataBody 
+--    [ partFileRequestBody (cidToText cid) (toFilePath file) 
+--        (RequestBodyLBS $ BSL.fromStrict bytes)
+--    ] queryReq
+--  resp <- httpLbs req manager'
+--  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
+--  print $ Network.HTTP.Client.responseBody resp
+--  return ()
+--
+--runInfuraDagGetCID :: CID -> IO ()
+--runInfuraDagGetCID cid = do
+--  manager' <- newTlsManager
+--  cache    <- getYatimaCacheDir
+--  initReq  <- parseRequest "https://ipfs.infura.io:5001/api/v0/dag/get"
+--  let req  =  setQueryString [("arg", Just $ T.encodeUtf8 $ cidToText cid)]
+--                initReq { method = "POST" }
+--  resp <- httpLbs req manager'
+--  putStrLn $ "The status code was: " ++ (show $ statusCode $ responseStatus resp)
+--  print $ Network.HTTP.Client.responseBody resp
+--  return ()
 
 
 ----runPinataPinFile :: FilePath -> FilePath -> IO ()
