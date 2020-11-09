@@ -129,7 +129,7 @@ localPutPackageDeps :: CID -> IO ()
 localPutPackageDeps cid = do
   pack <- cacheGet @Package cid
   putStrLn $ concat ["Pinning package ", T.unpack (_title pack), " ", show cid]
-  cids <- Set.toList <$> packageDepCIDs pack
+  cids <- Set.toList <$> packageDepCids pack
   traverse localPutCID cids
   localPutCID cid
   return ()
@@ -164,7 +164,7 @@ localGetPackageDeps cid = do
   localGetCID cid
   pack <- cacheGet @Package cid
   putStrLn $ concat ["Downloaded package ", T.unpack (_title pack)]
-  cids <- Set.toList <$> packageDepCIDs pack
+  cids <- Set.toList <$> packageDepCids pack
   traverse localGetCID cids
   putStrLn $ concat ["Downloaded dependencies for package ", T.unpack (_title pack)]
   return ()

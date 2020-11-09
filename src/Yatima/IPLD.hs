@@ -263,7 +263,8 @@ dagDefDepCids cid = do
     , dagMetaCids typeMeta
     ]
 
-packageDepCIDs :: Package -> IO (Set CID)
-packageDepCIDs (Package _ _ srcCid _ (Index ns)) = do
+packageDepCids :: Package -> IO (Set CID)
+packageDepCids (Package _ _ srcCid (Imports ms) (Index ns)) = do
+  let impCids = Set.fromList $ fst <$> ms
   defCids <- traverse dagDefDepCids (fst <$> M.elems ns)
-  return $ Set.unions $ (Set.singleton srcCid):defCids
+  return $ Set.unions $ impCids:(Set.singleton srcCid):defCids
