@@ -179,6 +179,13 @@ getYatimaCacheDir = do
 
 cacheGet :: forall a. Serialise a => CID -> IO a
 cacheGet cid = do
+  bs <- cacheGetBytes cid
+  case (deserialiseOrFail @a bs) of
+    Left  e -> fail $ "Cannot deserialise cache file: " ++ show e
+    Right a -> return a
+
+cacheGetBytes :: CID -> IO BSL.ByteString
+cacheGetBytes cid = do
   file <- parseRelFile $ T.unpack $ cidToText cid
   cacheDir <- getYatimaCacheDir
   let path = cacheDir </> file
@@ -186,9 +193,7 @@ cacheGet cid = do
   let cid' = makeCidFromBytes bs
   when (cid' /= cid) 
     (fail $ "Cache file contents do not match given CID: " ++ show cid)
-  case (deserialiseOrFail @a bs) of
-    Left  e -> fail $ "Cannot deserialise cache file: " ++ show e
-    Right a -> return a
+  return bs
 
 cachePut :: forall a. Serialise a => a -> IO CID
 cachePut x = cachePutBytes (serialise x)

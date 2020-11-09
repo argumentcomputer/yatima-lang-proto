@@ -70,6 +70,7 @@ library:
     - http-client-tls
     - http-types
     - aeson
+    - aeson-pretty
     - ipfs-api
     - numeric-extras
     - ieee754
@@ -106,6 +107,7 @@ executables:
       - mtl
       - megaparsec
       - haskeline
+      - serialise
       - process
       - path
       - path-io

@@ -1,25 +1,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TupleSections #-}
 
 module Main where
 
-import Prelude hiding (FilePath)
-import Options.Applicative
-import qualified System.Console.ANSI as ANSI
-
+import           Codec.Serialise
 import           Control.Monad.State.Strict
-
-import           Data.List                               (isPrefixOf)
-import           Data.Text            (Text)
-import qualified Data.Text            as T
-
 import           Data.IPLD.CID
 import           Data.IPLD.DagJSON
+import           Data.List                  (isPrefixOf)
+import           Data.Text                  (Text)
+import qualified Data.Text                  as T
 import           Path
 import           Path.IO
+import           Prelude                    hiding (FilePath)
 
-import           Repl hiding (Command(..))
+import           Options.Applicative
+
+import           Repl                       hiding (Command (..))
 
 import           Yatima
 import           Yatima.IPLD
@@ -29,6 +28,7 @@ import           Yatima.Parse.Package
 data Command
   = Check Text
   | Run Text Text
+  | Show Text
   | Init
   | Repl
   | Put Text IPFSNode
@@ -61,6 +61,7 @@ pCommand =
       , command "repl"  (info pRepl (progDesc "Start the REPL"))
       , command "put"   (info pPut (progDesc "Put a package into the IPLD graph"))
       , command "get"   (info pGet (progDesc "Get a package from the IPLD graph"))
+      , command "show"  (info pShow (progDesc "Show a Yatima IPLD object"))
       -- , command "remote" (info pRemote (progDesc "Pull a package from IPFS"))
       -- , command "clone" (info pClone (progDesc "Clone a package's source files"))
       ]
@@ -103,6 +104,9 @@ pPut = Put <$> argument str argPackage <*> nodeFlag
 pGet :: Parser Command
 pGet = Get <$> argument str argCID <*> nodeFlag
 
+pShow :: Parser Command
+pShow = Show <$> argument str argCID
+
 readArgPackageID :: Text -> IO (Either CID (Path Abs File))
 readArgPackageID txt = do
   dir <- getCurrentDir
@@ -121,16 +125,16 @@ readArgPackageID txt = do
 
 run :: Command -> IO ()
 run c = case c of
-  Check pack -> do
+  Check pack -> void $ do
     argPackageID <- readArgPackageID pack
     case argPackageID of
-      Left  cid  -> checkCID cid >> return ()
-      Right path -> checkFile (toFilePath path) >> return ()
+      Left  cid  -> checkCID cid 
+      Right path -> checkFile (toFilePath path)
   Run pack nam -> do
     argPackageID <- readArgPackageID pack
     case argPackageID of
-      Left  cid  -> normCID  nam cid >>= print >> return ()
-      Right path -> normFile nam (toFilePath path) >>= print >> return ()
+      Left  cid  -> normCID  nam cid >>= print
+      Right path -> normFile nam (toFilePath path) >>= print
   Init -> do
     dir <- getCurrentDir
     exists <- doesDirExist (dir </> [reldir|.yatima|])
@@ -138,15 +142,12 @@ run c = case c of
     else do
       initYatimaProject dir
       putStrLn $ concat ["Initialized Yatima project at ", toFilePath dir]
-      return ()
   Put txt _ -> do
     let loadFile' x = (\(_,c,_) -> c) <$> loadFile (toFilePath x)
     cid <- either pure loadFile' =<< readArgPackageID txt
     localPutPackageDeps cid
-    return ()
-  Get txt _ -> do
-    localGetPackageDeps (cidFromText' txt)
-    return ()
+  Get txt _ -> void $ localGetPackageDeps (cidFromText' txt)
+  Show txt -> void $ showCIDJSON (cidFromText' txt)
   Repl -> do
     dir <- getCurrentDir
     projectDir <- maybe (parent dir) id <$> (findYatimaProjectDir (parent dir))

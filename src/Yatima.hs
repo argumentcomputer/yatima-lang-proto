@@ -5,52 +5,52 @@
 {-# LANGUAGE TypeApplications #-}
 module Yatima where
 
+import           Codec.Serialise
+import           Control.Monad.Catch
+import           Control.Monad.Except
+import           Data.Aeson
+import           Data.Aeson.Text
+import           Data.ByteString          (ByteString)
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Lazy     as BSL
+import           Data.IORef
+import           Data.IPLD.CID
+import           Data.IPLD.DagJSON
+import           Data.Map                 (Map)
+import qualified Data.Map                 as M
+import           Data.Sequence            (Seq (..))
+import qualified Data.Sequence            as Seq
+import           Data.Set                 (Set)
+import qualified Data.Set                 as Set
+import           Data.Text                (Text)
+import qualified Data.Text                as T
+import qualified Data.Text.IO             as T
+import qualified Data.Text.Lazy           as TL
+import qualified Data.Text.Lazy.Builder   as TL
+import           Path
+import           Path.IO
+
+import           Debug.Trace
+
 import qualified Yatima.Compiler.Scheme as Scheme
 import qualified Yatima.Core            as Core
+import           Yatima.Core.CheckError
 import           Yatima.Core.Ctx        (Ctx, (<|))
 import qualified Yatima.Core.Ctx        as Ctx
 import           Yatima.Core.Hoas
-import           Yatima.Core.CheckError
 import qualified Yatima.Core.IR         as IR
+import           Yatima.IPFS.Client
+import           Yatima.IPLD
+import           Yatima.Package
 import           Yatima.Parse           (parseTerm, unsafeParseTerm)
 import qualified Yatima.Parse           as Parse
-import           Yatima.Print           (prettyTerm, prettyDef)
+import           Yatima.Parse.Package
+import qualified Yatima.Parse.Package   as Package
+import           Yatima.Print           (prettyDef, prettyTerm)
 import qualified Yatima.Print           as Print
 import           Yatima.Term            (Def (..), Defs, Name, Term (..),
                                          Uses (..))
 import qualified Yatima.Term            as Term
-
-import           Codec.Serialise
-import           Data.Aeson
-
-import           Data.IPLD.CID
-import           Data.IPLD.DagJSON
-import           Yatima.IPLD
-import           Yatima.Package
-import qualified Yatima.Parse.Package as Package
-import           Yatima.Parse.Package
-import           Yatima.IPFS.Client
-
-import           Control.Monad.Catch
-import           Control.Monad.Except
-
-import           Data.ByteString      (ByteString)
-import qualified Data.ByteString      as BS
-import qualified Data.ByteString.Lazy as BSL
-import           Data.IORef
-import           Data.Map             (Map)
-import qualified Data.Map             as M
-import           Data.Sequence        (Seq (..))
-import qualified Data.Sequence        as Seq
-import           Data.Set             (Set)
-import qualified Data.Set             as Set
-import           Data.Text            (Text)
-import qualified Data.Text            as T
-
-import           Debug.Trace
-
-import           Path
-import           Path.IO
 
 parseFilePath :: FilePath -> IO (Path Abs File)
 parseFilePath file =
@@ -139,6 +139,7 @@ localGetCID cid = do
   hasCid <- cacheHas cid
   if hasCid 
   then do
+    
     putStrLn $ concat ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already in cache"]
     return ()
   else do
@@ -167,6 +168,22 @@ localGetPackageDeps cid = do
   traverse localGetCID cids
   putStrLn $ concat ["Downloaded dependencies for package ", T.unpack (_title pack)]
   return ()
+
+showCIDJSON :: CID -> IO ()
+showCIDJSON cid = do
+  v <- cidDagJSON cid
+  let txt = TL.toLazyText $ encodeToTextBuilder $ toAeson v
+  T.putStrLn (TL.toStrict txt)
+
+cidDagJSON :: CID -> IO DagJSON
+cidDagJSON cid = do
+  bs <- cacheGetBytes cid
+  case (deserialiseOrFail @DagJSON bs) of
+    Left e  -> fail $ concat
+      ["\ESC[31m\STX⚠ ",show cid,"\ESC[m\STX "
+      , "Deserialise Error: ", show e
+      ]
+    Right v -> return v
 
 --infuraPutCID :: CID -> IO ()
 --infuraPutCIDInfura = do
