@@ -56,6 +56,7 @@ library
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TupleSections
   build-depends:
       aeson
+    , aeson-pretty
     , array
     , base >=4.7 && <5
     , base16
@@ -96,24 +97,27 @@ library
     , vector
   default-language: Haskell2010
 
-executable yide
+executable yatima
   main-is: Main.hs
   other-modules:
       HaskelineT
-      Yide
+      Repl
       Paths_yatima
   hs-source-dirs:
-      yide
+      app
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
   build-depends:
-      base >=4.7 && <5
+      ansi-terminal
+    , base >=4.7 && <5
     , containers
     , haskeline
     , megaparsec
     , mtl
+    , optparse-applicative
     , path
     , path-io
     , process
+    , serialise
     , text
     , yatima
   default-language: Haskell2010

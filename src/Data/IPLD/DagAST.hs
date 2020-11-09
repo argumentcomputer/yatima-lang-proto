@@ -18,6 +18,8 @@ import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString            as BS
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T hiding (find)
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
 
 import           Data.IPLD.CID
 
@@ -134,3 +136,23 @@ instance Serialise DagDef where
   encode = encodeDagDef
   decode = decodeDagDef
 
+dagMetaCids :: DagMeta -> Set CID
+dagMetaCids t = go Set.empty t
+  where
+    go :: Set CID -> DagMeta -> Set CID
+    go cids t = case t of
+      MCtor ds  -> Set.unions $ go cids <$> ds
+      MBind _ d -> go cids d
+      MLink _ c -> Set.insert c cids
+      MLeaf     -> cids
+
+dagASTCids :: DagAST -> Set CID
+dagASTCids t = go Set.empty t
+  where
+    go :: Set CID -> DagAST -> Set CID
+    go cids t = case t of
+      Ctor _ ds -> Set.unions $ go cids <$> ds
+      Bind d    -> go cids d
+      Link c    -> Set.insert c cids
+      Data _    -> cids
+      Vari _    -> cids

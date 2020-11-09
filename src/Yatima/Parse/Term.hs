@@ -117,9 +117,9 @@ pUses = pUsesAnnotation <|> return Many
 
 pUsesAnnotation :: (Ord e, Monad m) => Parser e m Uses
 pUsesAnnotation = choice
-  [ symbol "0"       >> return None
-  , symbol "&"       >> return Affi
-  , symbol "1"       >> return Once
+  [ symbol "0" >> return None
+  , symbol "&" >> return Affi
+  , symbol "1" >> return Once
   ]
 
 -- | Parse the type of types: @Type@
@@ -141,7 +141,7 @@ pBinder namOptional = choice
       names <- sepEndBy1 (pName True) space
       typ_  <- symbol ":" >> pExpr False
       string ")"
-      return $ (,uses,typ_) <$> names
+      return $ zipWith (\n i -> (n, uses, shift i 0 typ_)) names [0..]
 
 foldLam:: Term -> [Name] -> Term
 foldLam body bs = foldr (\n x -> Lam n x) body bs
