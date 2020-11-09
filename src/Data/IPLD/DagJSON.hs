@@ -33,6 +33,7 @@ import qualified Data.Aeson                          as Aeson
 import qualified Data.HashMap.Lazy                   as HM
 import           Data.Scientific                     as Scientific
 import qualified Data.Text                           as T
+import qualified Data.Text.Encoding                  as T
 import           Data.Text                           (Text)
 import qualified Data.Vector                         as V
 import           Data.IPLD.CID
@@ -81,9 +82,9 @@ instance Aeson.ToJSON DagJSON where
 encodeDagJSON :: DagJSON -> Encoding
 encodeDagJSON x = case x of
   DagLink c    -> encodeCid c
-  DagObject vs ->  encodeObject vs
+  DagObject vs -> encodeObject vs
   DagArray  vs -> encodeArray  vs
-  DagText s    ->  encodeString s
+  DagText s    -> encodeString s
   DagNumber n  -> case Scientific.floatingOrInteger n of
                     Left  d -> encodeDouble  d
                     Right i -> encodeInteger i
@@ -116,11 +117,11 @@ decodeDagJSON = do
       TypeBool    -> DagBool <$> decodeBool
       TypeNull    -> DagNull <$  decodeNull
       TypeString  -> DagText <$> decodeString
-
+      TypeBytes   -> DagText . T.decodeUtf8 <$> decodeBytes
+      TypeTag     -> DagLink <$> decodeCid
       TypeListLen      -> decodeListLen >>= decodeListN
       TypeListLenIndef -> decodeListLenIndef >> decodeListIndef []
       TypeMapLen       -> decodeMapLen >>= flip decodeMapN HM.empty
-
       _           -> fail $ "unexpected CBOR token type for a JSON value: "
                          ++ show tkty
 

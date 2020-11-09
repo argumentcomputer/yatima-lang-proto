@@ -87,7 +87,8 @@ test_index =
   let trm = Lam "A" (Lam "x" (Var "x" 0))
       typ = All "A" Many Typ (All "x" Many (Var "A" 0) (Var "A" 1))
       def = Def "" trm typ
-      (cid,cid') = defCid "id" def
+      cid = makeCid $ defToDagDef def
+      cid' = makeCid $ termToAST trm
    in Index (M.singleton "id" (cid,cid'))
 
 name_gen :: Gen Text

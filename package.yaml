@@ -70,6 +70,7 @@ library:
     - http-client-tls
     - http-types
     - aeson
+    - aeson-pretty
     - ipfs-api
     - numeric-extras
     - ieee754
@@ -91,14 +92,14 @@ library:
     - TupleSections
 
 executables:
-  #yatima:
-  #  main: Main.hs
-  #  source-dirs: yide
-
-  yide:
+  yatima:
     main: Main.hs
-    source-dirs: yide
+    source-dirs: app
     dependencies:
+      - base >= 4.7 && < 5
+      - containers
+      - text
+      - yatima
       - base >= 4.7 && < 5
       - containers
       - text
@@ -106,23 +107,12 @@ executables:
       - mtl
       - megaparsec
       - haskeline
+      - serialise
       - process
       - path
       - path-io
-      # - serialise
-      # - bytestring
-      # - base16-bytestring
-      # - multibase
-      # - cryptonite
-      # - multihash-cryptonite
-      # - ipld-cid
-      # - unsafeperformst
-      # - aeson
-      # - servant
-      # - servant-client
-      # - http-client
-      # - cborg
-      # - ipfs-api
+      - optparse-applicative
+      - ansi-terminal
     default-extensions:
       - OverloadedStrings
       - GADTSyntax
