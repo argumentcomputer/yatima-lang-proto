@@ -45,7 +45,7 @@ import           Path.IO
 import           HaskelineT
 
 import           Data.IPLD.CID
-import           Yatima.Package
+import           Data.IPLD.DagPackage
 import           Yatima.IPLD
 import qualified Yatima.Core.Ctx as Ctx
 import           Yatima.Term
@@ -181,7 +181,7 @@ process line = dontCrash' $ do
         (cid,p) <- liftIO $ checkFile (toFilePath file)
         case mergeIndex index (_index p) of
           Left (n1,c1,c2) -> do
-            let err = ConflictingImportNames (_title p) cid (n1,c1) (n1,c2)
+            let err = ConflictingImportNames (_packageTitle p) cid (n1,c1) (n1,c2)
             liftIO $ putStrLn (show err)
             return ()
           Right index -> do

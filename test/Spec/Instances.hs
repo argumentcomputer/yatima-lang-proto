@@ -22,8 +22,8 @@ import           Data.Maybe
 
 import           Data.IPLD.CID
 import           Data.IPLD.DagAST
+import           Data.IPLD.DagPackage
 import           Yatima.IPLD
-import           Yatima.Package
 import           Yatima.Parse.Package
 import           Yatima.Term
 
@@ -68,9 +68,8 @@ instance Arbitrary DagMeta where
     ]
 
 instance Arbitrary DagDef where
-  arbitrary = DagDef <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
-
-deriving instance Eq DagDef
+  arbitrary = DagDef "test" <$>
+    arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 instance Arbitrary Imports where
   arbitrary = Imports <$> arbitrary
@@ -78,15 +77,15 @@ instance Arbitrary Imports where
 instance Arbitrary Index where
   arbitrary = Index <$> arbitrary
 
-instance Arbitrary Package where
+instance Arbitrary DagPackage where
   arbitrary =
-    Package <$> name_gen <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+    DagPackage <$> name_gen <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 test_index :: Index
 test_index =
   let trm = Lam "A" (Lam "x" (Var "x" 0))
       typ = All "A" Many Typ (All "x" Many (Var "A" 0) (Var "A" 1))
-      def = Def "" trm typ
+      def = Def "id" "" trm typ
       cid = makeCid $ defToDagDef def
       cid' = makeCid $ termToAST trm
    in Index (M.singleton "id" (cid,cid'))
@@ -170,5 +169,16 @@ term_gen ctx = frequency
 instance Arbitrary Term where
   arbitrary = term_gen []
 
+instance Arbitrary DagSource where
+  arbitrary = DagSource "Test" <$> arbitrary
+
 instance Arbitrary Def where
-  arbitrary = Def <$> arbitrary <*> term_gen ["test"] <*> term_gen []
+  arbitrary = Def "test" <$> arbitrary <*> term_gen ["test"] <*> term_gen []
+
+instance Arbitrary DagYatima where
+  arbitrary = oneof
+    [ YatimaPackage <$> arbitrary
+    , YatimaDef     <$> arbitrary
+    , YatimaAST     <$> arbitrary
+    , YatimaSource  <$> arbitrary
+    ]

@@ -109,5 +109,5 @@ instance Show Hoas where
  show t = T.unpack $ printHoas t
 
 defToHoas :: Name -> Def -> (Hoas,Hoas)
-defToHoas name (Def _ term typ_) =
+defToHoas name (Def _ _ term typ_) =
   (FixH name (\s -> termToHoas [s] term), termToHoas [] typ_)

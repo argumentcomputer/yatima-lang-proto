@@ -147,7 +147,7 @@ prettyPrimOp :: PrimOp -> Text
 prettyPrimOp p = "#" <> primOpName p
 
 prettyDef :: Name -> Def -> Text
-prettyDef name (Def doc term typ_) = T.concat
+prettyDef name (Def _ doc term typ_) = T.concat
   [ if doc == "" then "" else T.concat [doc,"\n"]
   , name,": ", prettyTerm $ typ_, "\n"
   , "  = ", prettyTerm $ term

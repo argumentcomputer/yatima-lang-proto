@@ -9,6 +9,7 @@ import           Codec.Serialise
 import           Control.Monad.State.Strict
 import           Data.IPLD.CID
 import           Data.IPLD.DagJSON
+import           Data.IPLD.DagPackage
 import           Data.List                  (isPrefixOf)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -22,7 +23,6 @@ import           Repl                       hiding (Command (..))
 
 import           Yatima
 import           Yatima.IPLD
-import           Yatima.Package
 import           Yatima.Parse.Package
 
 data Command

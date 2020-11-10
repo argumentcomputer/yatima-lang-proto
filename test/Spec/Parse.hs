@@ -12,11 +12,11 @@ import qualified Data.Set                   as Set
 import           Data.List.NonEmpty         (NonEmpty)
 import           Data.List.NonEmpty         as NE
 
+import           Data.IPLD.DagPackage
 import           Yatima.Term
 import qualified Yatima.Parse.Parser as Parse
 import           Yatima.Parse.Parser hiding (Parser)
 import           Yatima.Parse.Term
-import           Yatima.Package
 
 import qualified Spec.Instances                           as Instances
 

@@ -76,7 +76,12 @@ deriving instance Eq Term
 deriving instance Data Term
 
 -- | A type annotated definition
-data Def = Def { _doc :: Text, _term :: Term, _type :: Term } deriving (Show,Eq)
+data Def = Def
+  { _defTitle :: Text
+  , _doc      :: Text
+  , _term     :: Term
+  , _type     :: Term
+  } deriving (Show,Eq)
 
 type Defs = Map CID Def
 

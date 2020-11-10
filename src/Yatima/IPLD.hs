@@ -13,6 +13,8 @@ Stability   : experimental
 module Yatima.IPLD where
 
 import           Codec.Serialise
+import           Codec.Serialise.Decoding
+import           Codec.Serialise.Encoding
 import           Control.Monad.Except
 import           Control.Monad.Identity
 
@@ -20,6 +22,7 @@ import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Lazy   as BSL
 import           Data.IPLD.CID
 import           Data.IPLD.DagAST
+import           Data.IPLD.DagPackage
 import           Data.Text              (Text)
 import qualified Data.Text              as T hiding (find)
 import           Data.Map                   (Map)
@@ -76,17 +79,17 @@ termToMeta t = go t
     leaf = MLeaf
 
 defToDag :: Def -> (DagAST,DagMeta,DagAST,DagMeta)
-defToDag (Def _ term typ_) = runIdentity $ do
+defToDag (Def _ _ term typ_) = runIdentity $ do
   let (termAST,termMeta)  = (termToAST term,termToMeta term)
   let (typeAST,typeMeta)  = (termToAST typ_,termToMeta typ_)
   return (termAST,termMeta,typeAST,typeMeta)
 
 defToDagDef :: Def -> DagDef
-defToDagDef def@(Def doc term typ_) = runIdentity $ do
+defToDagDef def@(Def title doc term typ_) = runIdentity $ do
   let (termAST,termMeta,typeAST,typeMeta) = defToDag def
   let termASTCid = makeCid termAST :: CID
   let typeASTCid = makeCid typeAST :: CID
-  return $ DagDef termASTCid typeASTCid doc termMeta typeMeta
+  return $ DagDef title termASTCid typeASTCid doc termMeta typeMeta
 
 data DagError
   = FreeVariable [Name] DagAST DagMeta Int
@@ -159,15 +162,14 @@ dagToTerm ns ast meta = case (ast,meta) of
       let err = (NoDeserial ns ast meta)
       withExceptT err (liftEither $ deserialiseOrFail (BSL.fromStrict bs))
 
-dagToDef :: Text -> Name -> (DagAST,DagMeta) -> (DagAST,DagMeta)
+dagToDef :: Text -> Text -> Name -> (DagAST,DagMeta) -> (DagAST,DagMeta)
          -> Except DagError Def
-dagToDef doc n (termAST, termMeta) (typeAST,typeMeta) = do
+dagToDef title doc n (termAST, termMeta) (typeAST,typeMeta) = do
   trm <- dagToTerm [n] termAST termMeta
   typ <- dagToTerm [] typeAST typeMeta
-  return $ Def doc trm typ
+  return $ Def title doc trm typ
 
 -- * Cache
-
 cacheDir :: Path Abs Dir -> Path Abs Dir
 cacheDir root = root </> [reldir|.yatima_cache|]
 
@@ -216,12 +218,12 @@ cacheHas cid = do
   doesFileExist path
 
 cachePutDef :: Def -> IO (CID,CID)
-cachePutDef d@(Def doc trm typ) = do
+cachePutDef d@(Def title doc trm typ) = do
   termASTCid <- cachePut (termToAST trm)
   typeASTCid <- cachePut (termToAST typ)
   let termMeta = termToMeta trm
   let typeMeta = termToMeta typ
-  let dagDef = DagDef termASTCid typeASTCid doc termMeta typeMeta
+  let dagDef = DagDef title termASTCid typeASTCid doc termMeta typeMeta
   dagDefCid <- cachePut dagDef
   return (dagDefCid,termASTCid)
 
@@ -233,12 +235,12 @@ indexToDefs i@(Index ns) = do
     go :: (Name,(CID,CID)) -> IO (CID,Def)
     go (name,(defCid,trmCid)) = do
       dagDef  <- cacheGet @DagDef defCid
-      let (DagDef termASTCid typeASTCid doc termMeta typeMeta) = dagDef
+      let (DagDef title termASTCid typeASTCid doc termMeta typeMeta) = dagDef
       when (trmCid /= termASTCid) 
         (fail $ "indexToDefs failure: termAST CIDS don't match")
       termAST <- cacheGet @DagAST termASTCid
       typeAST <- cacheGet @DagAST typeASTCid
-      case runExcept (dagToDef doc name (termAST,termMeta) (typeAST,typeMeta)) of
+      case runExcept (dagToDef title doc name (termAST,termMeta) (typeAST,typeMeta)) of
         Left  e -> putStrLn (show e) >> fail ""
         Right x -> return (defCid,x)
 
@@ -248,23 +250,73 @@ catchErr x = do
     Right x -> return x
     Left  e -> putStrLn (show e) >> fail ""
 
-dagDefDepCids :: CID -> IO (Set CID)
-dagDefDepCids cid = do
-  (DagDef termASTCid typeASTCid _ termMeta typeMeta) <- cacheGet @DagDef cid
-  termAST <- cacheGet @DagAST termASTCid
-  typeAST <- cacheGet @DagAST typeASTCid
-  return $ Set.unions
-    [ Set.singleton cid
-    , Set.singleton termASTCid
-    , Set.singleton termASTCid
-    , dagASTCids termAST
-    , dagASTCids typeAST
-    , dagMetaCids termMeta
-    , dagMetaCids typeMeta
-    ]
+--dagDefDepCids :: CID -> IO (Set CID)
+--dagDefDepCids cid = do
+--  (DagDef _ termASTCid typeASTCid _ termMeta typeMeta) <- cacheGet @DagDef cid
+--  termAST <- cacheGet @DagAST termASTCid
+--  typeAST <- cacheGet @DagAST typeASTCid
+--  return $ Set.unions
+--    [ Set.singleton cid
+--    , Set.singleton termASTCid
+--    , Set.singleton termASTCid
+--    , dagASTCids termAST
+--    , dagASTCids typeAST
+--    , dagMetaCids termMeta
+--    , dagMetaCids typeMeta
+--    ]
+--
+--packageDepCids :: DagPackage -> IO (Set CID)
+--packageDepCids (DagPackage _ _ srcCid (Imports ms) (Index ns)) = do
+--  let impCids = Set.fromList $ fst <$> ms
+--  defCids <- traverse dagDefDepCids (fst <$> M.elems ns)
+--  return $ Set.unions $ impCids:(Set.singleton srcCid):defCids
 
-packageDepCids :: Package -> IO (Set CID)
-packageDepCids (Package _ _ srcCid (Imports ms) (Index ns)) = do
-  let impCids = Set.fromList $ fst <$> ms
-  defCids <- traverse dagDefDepCids (fst <$> M.elems ns)
-  return $ Set.unions $ impCids:(Set.singleton srcCid):defCids
+data DagYatima
+  = YatimaPackage DagPackage
+  | YatimaDef     DagDef
+  | YatimaAST     DagAST
+  | YatimaSource  DagSource
+  deriving (Eq,Show)
+
+encodeDagYatima :: DagYatima -> Encoding
+encodeDagYatima term = case term of
+  YatimaPackage pack -> encodeDagPackage pack
+  YatimaDef     def  -> encodeDagDef def
+  YatimaAST     ast  -> encodeDagAST ast
+  YatimaSource  src  -> encodeDagSource src
+
+decodeDagYatima :: Decoder s DagYatima
+decodeDagYatima = do
+  len <- decodeListLen
+  tag <- decodeString
+  case (len,tag) of
+    (3,"DagSource")  -> YatimaSource  <$>
+      (DagSource <$> decodeString <*> decodeString)
+    (6,"DagPackage") -> YatimaPackage <$>
+      (DagPackage <$> decodeString <*> decodeString <*> decodeCid
+                 <*> decodeImports <*> decodeIndex)
+    (7,"DagDef")     -> YatimaDef <$>
+      (DagDef <$> decodeString <*> decodeCid <*> decodeCid
+             <*> decodeString <*> decodeDagMeta <*> decodeDagMeta)
+    (3,"Ctor") -> YatimaAST <$> do
+      ctor  <- decodeString
+      arity <- decodeListLen
+      args  <- replicateM arity decodeDagAST
+      return $ Ctor ctor args
+    (2,"Bind") -> YatimaAST <$> (Bind <$> decodeDagAST)
+    (2,"Vari") -> YatimaAST <$> (Vari <$> decodeInt)
+    (2,"Link") -> YatimaAST <$> (Link <$> decodeCid)
+    (2,"Data") -> YatimaAST <$> (Data <$> decodeData)
+    (x,y)      -> fail $
+      concat ["invalid DagYatima with size ", show x , " and tag ", show y]
+
+instance Serialise DagYatima where
+  encode = encodeDagYatima
+  decode = decodeDagYatima
+
+dagYatimaDescription :: DagYatima -> Text
+dagYatimaDescription d = case d of
+  YatimaPackage p -> T.concat ["package:    ", _packageTitle p]
+  YatimaDef     d -> T.concat ["definition: ", _title d]
+  YatimaAST     _ -> T.concat ["DagAST"]
+  YatimaSource  s -> T.concat ["source:     ", _srcTitle s]

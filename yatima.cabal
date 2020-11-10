@@ -23,6 +23,7 @@ library
       Data.IPLD.CID
       Data.IPLD.DagAST
       Data.IPLD.DagJSON
+      Data.IPLD.DagPackage
       Yatima.Core
       Yatima.Core.Wasm
       Yatima.Core.Ctx
@@ -32,7 +33,6 @@ library
       Yatima.Compiler.Scheme
       Yatima.IPFS.Client
       Yatima.IPLD
-      Yatima.Package
       Yatima.Parse.Integer
       Yatima.Parse.Package
       Yatima.Parse.Term
@@ -50,6 +50,7 @@ library
       Data.Multihash
       Yatima.Core.Prim
       Yatima.Core.UnionFind
+      Yatima.Package
       Paths_yatima
   hs-source-dirs:
       src
@@ -60,6 +61,7 @@ library
     , array
     , base >=4.7 && <5
     , base16
+    , base64
     , binary
     , binary-varint
     , bytestring
@@ -136,6 +138,7 @@ test-suite spec
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
   build-depends:
       QuickCheck
+    , aeson
     , base
     , base16-bytestring
     , bytestring

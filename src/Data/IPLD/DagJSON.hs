@@ -28,12 +28,13 @@ import           Prelude hiding (decodeFloat)
 import           Codec.Serialise
 import           Codec.CBOR.Encoding
 import           Codec.CBOR.Decoding
+import qualified Data.ByteString.Lazy       as BSL
+import           Data.List                  (sortBy)
 import           Data.Aeson                          ((.=) )
 import qualified Data.Aeson                          as Aeson
 import qualified Data.HashMap.Lazy                   as HM
 import           Data.Scientific                     as Scientific
 import qualified Data.Text                           as T
-import qualified Data.Text.Encoding                  as T
 import           Data.Text                           (Text)
 import qualified Data.Vector                         as V
 import           Data.IPLD.CID
@@ -93,8 +94,17 @@ encodeDagJSON x = case x of
 
 encodeObject :: HM.HashMap Text DagJSON -> Encoding
 encodeObject vs =
-    encodeMapLen (fromIntegral (HM.size vs))
- <> HM.foldrWithKey (\k v r -> encodeString k <> encodeDagJSON v <> r) mempty vs
+  encodeMapLen (fromIntegral (HM.size vs))
+  <> foldr f mempty (sortBy cmp (HM.toList vs))
+  where
+    f = (\(k,v) r -> encodeString k <> encodeDagJSON v <> r)
+    cmp (k1,_) (k2,_) = cborCanonicalOrder (serialise k1) (serialise k2)
+
+cborCanonicalOrder :: BSL.ByteString -> BSL.ByteString -> Ordering
+cborCanonicalOrder x y
+  | BSL.length x < BSL.length y = LT
+  | BSL.length y > BSL.length x = GT
+  | otherwise = compare x y
 
 encodeArray :: V.Vector DagJSON -> Encoding
 encodeArray vs =
@@ -112,12 +122,11 @@ decodeDagJSON = do
       TypeNInt64  -> decodeNumberIntegral
       TypeInteger -> decodeNumberIntegral
       TypeFloat16 -> decodeNumberFloat16
-      TypeFloat32 -> decodeNumberFloating
-      TypeFloat64 -> decodeNumberFloating
+      TypeFloat32 -> decodeNumberFloat32
+      TypeFloat64 -> decodeNumberFloat64
       TypeBool    -> DagBool <$> decodeBool
       TypeNull    -> DagNull <$  decodeNull
       TypeString  -> DagText <$> decodeString
-      TypeBytes   -> DagText . T.decodeUtf8 <$> decodeBytes
       TypeTag     -> DagLink <$> decodeCid
       TypeListLen      -> decodeListLen >>= decodeListN
       TypeListLenIndef -> decodeListLenIndef >> decodeListIndef []
@@ -128,8 +137,11 @@ decodeDagJSON = do
 decodeNumberIntegral :: Decoder s DagJSON
 decodeNumberIntegral = DagNumber . fromInteger <$> decodeInteger
 
-decodeNumberFloating :: Decoder s DagJSON
-decodeNumberFloating = DagNumber . Scientific.fromFloatDigits <$> decodeDouble
+decodeNumberFloat64  :: Decoder s DagJSON
+decodeNumberFloat64 = DagNumber . Scientific.fromFloatDigits <$> decodeDouble
+
+decodeNumberFloat32 :: Decoder s DagJSON
+decodeNumberFloat32 = DagNumber . Scientific.fromFloatDigits <$> decodeFloat
 
 decodeNumberFloat16 :: Decoder s DagJSON
 decodeNumberFloat16 = do

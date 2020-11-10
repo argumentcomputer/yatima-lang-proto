@@ -37,8 +37,8 @@ import           Debug.Trace
 
 import           Data.IPLD.CID
 import           Data.IPLD.DagAST
+import           Data.IPLD.DagPackage
 import           Yatima.IPLD
-import           Yatima.Package
 import           Yatima.Term
 import           Yatima.Parse.Parser     hiding (parseDefault)
 import           Yatima.Parse.Term
@@ -164,7 +164,7 @@ makePath n = liftIO go >>= \e -> either customIOFailure pure e
         pure (Left $ InvalidLocalImport n)
 
 -- | with <package-name> [as <alias] [(<import1>,<import2>)] [from <cid>]
-pImport :: IORef PackageEnv -> ParserIO (Name,Text,ImportDefs,CID,Package)
+pImport :: IORef PackageEnv -> ParserIO (Name,Text,ImportDefs,CID,DagPackage)
 pImport env = label "an import" $ do
   name <- symbol "with" >> pPackageName <* space
   alia <- maybe "" id   <$> (optional $ symbol "as" >> (pName False) <* space)
@@ -186,10 +186,10 @@ pImport env = label "an import" $ do
           liftIO $ pFile env path
         Just cid -> do
           root <- _root <$> (liftIO $ readIORef env)
-          p <- pCacheGet @Package cid
+          p <- pCacheGet @DagPackage cid
           return (cid,p)
-      unless (name == (_title p))
-        (customIOFailure $ MisnamedPackageImport name (_title p) cid)
+      unless (name == (_packageTitle p))
+        (customIOFailure $ MisnamedPackageImport name (_packageTitle p) cid)
       return (name,alia,defs,cid,p)
 
     --IPFS nam ali cid -> do
@@ -213,35 +213,36 @@ pImports env imp@(Imports is) ind@(Index ns) = next <|> (return (imp,ind))
         Right index -> do
           pImports env (Imports $ is ++ [(cid,ali)] ) index
 
-pPackage :: IORef PackageEnv -> CID -> FilePath -> ParserIO (CID,Package)
-pPackage env cid file = do
+pPackage :: IORef PackageEnv -> Text -> FilePath -> ParserIO (CID,DagSource,DagPackage)
+pPackage env src file = do
   space
   doc     <- maybe "" id <$> (optional $ pDoc)
   title   <- maybe "" id <$> (optional $ symbol "package" >> pPackageName)
+  let source = DagSource title src
   space
   (imports, index@(Index ns)) <- pImports env emptyImports emptyIndex
   when (title /= "") (void $ symbol "where")
   defs  <- local (\e -> e { _refs = ns }) pDefs
   root  <- _root <$> (liftIO $ readIORef env)
   let (Right index) = mergeIndex (Index ns) (Index $ M.fromList defs)
-  let pack = Package title doc cid imports index
+  let pack = DagPackage title doc (makeCid source) imports index
   packCid <- liftIO $ cachePut pack
-  return $ (packCid, pack)
+  return $ (packCid, source, pack)
 
 -- | Parse a file
-pFile :: IORef PackageEnv -> Path Rel File -> IO (CID,Package)
+pFile :: IORef PackageEnv -> Path Rel File -> IO (CID,DagPackage)
 pFile env relPath = do
   root       <- _root <$> (liftIO $ readIORef env)
   let absPath = root </> relPath
   let file    = toFilePath absPath
   modifyIORef' env (\e -> e { _openFiles = Set.insert relPath (_openFiles e)})
   txt        <- TIO.readFile file
-  sourceCid  <- cachePut (Source txt)
-  (cid,pack) <- parseIO (pPackage env sourceCid file) defaultParseEnv file txt
+  (cid,src,pack) <- parseIO (pPackage env txt file) defaultParseEnv file txt
+  cachePut src
   modifyIORef' env (\e -> e { _openFiles = Set.delete relPath (_openFiles e)})
   modifyIORef' env (\e -> e { _doneFiles = M.insert relPath cid (_doneFiles e)})
   putStrLn $ concat
-    [ "parsed: ", (T.unpack $ _title pack), " "
+    [ "parsed: ", (T.unpack $ _packageTitle pack), " "
     , show cid
     ]
   return (cid,pack)
@@ -257,7 +258,7 @@ pDef = label "a definition" $ do
   doc <- pDoc
   symbol "def"
   (nam,exp,typ) <- pDecl False
-  return $ (nam, Def doc exp typ)
+  return $ (nam, Def nam doc exp typ)
 
 -- | Parse a sequence of definitions, e.g. in a file
 pDefs :: ParserIO [(Name,(CID,CID))]
