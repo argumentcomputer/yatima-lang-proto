@@ -14,11 +14,6 @@ which is released under MIT terms included with this package in the
 {-# LANGUAGE QuasiQuotes #-}
 module Yatima.Core.Prim where
 
-import           Data.ByteString         (ByteString)
-import qualified Data.ByteString         as BS
-import qualified Data.ByteString.Char8   as C
-import qualified Data.ByteString.Builder as BB
-import           Data.ByteString.Lazy    (toStrict)
 import           Data.Text               (Text)
 import qualified Data.Text               as T
 import           Data.Bits
@@ -149,24 +144,24 @@ reduceOpr op args = apply rest $
     [LitH (VI64 a)]                                ->
       case op of
         I64_eqz             -> LitH (bool (a == 0))
-        I64_clz             -> LitH (VI64 $ cst64 $ countLeadingZeros a)
-        I64_ctz             -> LitH (VI64 $ cst64 $ countTrailingZeros a)
-        I64_popcnt          -> LitH (VI64 $ cst64 $ popCount a)
+        I64_clz             -> LitH (VI64 $ fromIntegral $ countLeadingZeros a)
+        I64_ctz             -> LitH (VI64 $ fromIntegral $ countTrailingZeros a)
+        I64_popcnt          -> LitH (VI64 $ fromIntegral $ popCount a)
         I32_wrap_I64        -> LitH (VI32 $ (fromIntegral $ a .&. 0xFFFFFFFF))
         F32_convert_I64_s   -> LitH (VF32 (realToFrac $ i64 a))
         F32_convert_I64_u   -> LitH (VF32 (realToFrac a))
         F64_reinterpret_I64 -> LitH (VF64 (wordToDouble a))
         F64_convert_I64_s   -> LitH (VF64 (realToFrac $ i64 a))
         F64_convert_I64_u   -> LitH (VF64 (realToFrac a))
-        I64_to_U64          -> LitH (VBitVector 64 (build $ BB.word64LE a))
+        I64_to_U64          -> LitH (VBitVector 64 (convert a))
         Char_chr            -> LitH (VChar $ chr $ fromIntegral a)
         _                   -> noredex
     [LitH (VI32 a)]                                ->
       case op of
         I32_eqz             -> LitH (bool (a == 0))
-        I32_clz             -> LitH (VI32 $ cst32 $ countLeadingZeros a)
-        I32_ctz             -> LitH (VI32 $ cst32 $ countTrailingZeros a)
-        I32_popcnt          -> LitH (VI32 $ cst32 $ popCount a)
+        I32_clz             -> LitH (VI32 $ fromIntegral $ countLeadingZeros a)
+        I32_ctz             -> LitH (VI32 $ fromIntegral $ countTrailingZeros a)
+        I32_popcnt          -> LitH (VI32 $ fromIntegral $ popCount a)
         I64_extend_I32_s    -> LitH (VI64 (u64 $ fromIntegral $ i32 a))
         I64_extend_I32_u    -> LitH (VI64 (fromIntegral a))
         F32_reinterpret_I32 -> LitH (VF32 (wordToFloat a))
@@ -174,7 +169,7 @@ reduceOpr op args = apply rest $
         F32_convert_I32_u   -> LitH (VF32 (realToFrac a))
         F64_convert_I32_s   -> LitH (VF64 (realToFrac $ i32 a))
         F64_convert_I32_u   -> LitH (VF64 (realToFrac a))
-        I32_to_U32          -> LitH (VBitVector 32 (build $ BB.word32LE a))
+        I32_to_U32          -> LitH (VBitVector 32 (convert a))
         _                   -> noredex
     [LitH (VF64 a)]                                ->
       case op of
@@ -203,7 +198,7 @@ reduceOpr op args = apply rest $
            if (isNaN a || isInfinite a || a >= 2^64 || a <= -1)
            then LitH $ VException "F64 number out of range of I64"
            else LitH (VI64 (truncate a))
-        F64_to_U64          -> LitH (VBitVector 64 (build $ BB.word64LE $ doubleToWord a))
+        F64_to_U64          -> LitH (VBitVector 64 (convert $ doubleToWord a))
         _                   -> noredex
     [LitH (VF32 a)]                                ->
       case op of
@@ -232,36 +227,32 @@ reduceOpr op args = apply rest $
            if (isNaN a || isInfinite a || a >= 2^32 || a <= -1)
            then LitH $ VException "F32 number out of range of I64"
            else LitH (VI64 (truncate a))
-        F32_to_U32          -> LitH (VBitVector 32 (build $ BB.word32LE $ floatToWord a))
+        F32_to_U32          -> LitH (VBitVector 32 (convert $ floatToWord a))
         _                   -> noredex
     [LitH (VBitVector n bs)]                        ->
       case op of
-        BitVector_b0     -> LitH $ VBitVector (n+1) $
-          if n `mod` 8 == 0 then BS.cons 0 bs else bs
-        BitVector_b1     -> LitH $ VBitVector (n+1) $
-          case BS.uncons bs of
-            Nothing       -> BS.singleton 1
-            Just (c,cs)   -> if n `mod` 8 == 0
-              then BS.cons 1 bs
-              else BS.cons (setBit c (fromEnum (n `mod` 8))) cs
+        BitVector_b0     -> LitH $ VBitVector (n+1) (shiftL bs 1)
+        BitVector_b1     -> LitH $ VBitVector (n+1) (shiftL bs 1 `xor` 1)
         BitVector_length -> LitH (VNatural n)
-        Char_from_U8     -> if n == 8 then LitH (VChar $ head $ C.unpack bs) else noredex
+        Char_from_U8     -> if n == 8
+          then LitH $ VChar $ convert bs
+          else noredex
         I32_from_U32     -> if n == 32
-          then LitH $ VI32 $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          then LitH $ VI32 $ convert bs
           else noredex
         F32_from_U32     -> if n == 32
-          then LitH $ VF32 $ wordToFloat $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          then LitH $ VF32 $ wordToFloat $ convert bs
           else noredex
         I64_from_U64     -> if n == 64
-          then LitH $ VI64 $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          then LitH $ VI64 $ convert bs
           else noredex
         F64_from_U64     -> if n == 64
-          then LitH $ VF64 $ wordToDouble $ toEnum $ toWord $ map fromEnum $ BS.unpack bs
+          then LitH $ VF64 $ wordToDouble $ convert bs
           else noredex
         _                -> noredex
     [LitH (VChar c)]                               ->
       case op of
-        Char_to_U8 -> LitH (VBitVector 8 (C.singleton c))
+        Char_to_U8 -> LitH (VBitVector 8 $ convert c)
         Char_ord   -> LitH (VI64 $ fromIntegral $ ord c)
         _          -> noredex
     [LitH (VNatural a), LitH (VNatural b)]         ->
@@ -392,7 +383,7 @@ reduceOpr op args = apply rest $
         _            -> noredex
     [LitH (VBitVector n a), LitH (VBitVector m b)] ->
       case op of
-        BitVector_concat -> LitH (VBitVector (n+m) $ a <> b)
+        BitVector_concat -> LitH (VBitVector (n+m) $ a `xor` shiftL b (fromEnum m))
         _                -> noredex
     [LitH (VChar c), LitH (VString txt)]           ->
       case op of
@@ -410,37 +401,28 @@ reduceOpr op args = apply rest $
     noredex  = apply operands (OprH op)
     ite c t f = if c then t else f
     bool c = ite c (VI32 1) (VI32 0)
-    cst32 :: Integral a => a -> Word32
-    cst32 = fromIntegral
-    cst64 :: Integral a => a -> Word64
-    cst64 = fromIntegral
     i32 = asInt32
     i64 = asInt64
     u32 = asWord32
     u64 = asWord64
-    build = toStrict . BB.toLazyByteString
-    toWord bs = foldr (\b bs i -> shift b i + bs (i+8)) (\_ -> 0) bs 0
+    convert :: (Enum a, Enum b) => a -> b
+    convert = toEnum . fromEnum
 
 expandLit :: Literal -> Maybe Hoas
 expandLit t = termToHoas [] <$> case t of
-  VNatural 0 -> Just $ [yatima| λ P z s => z|]
-  VNatural n -> Just $ App [yatima| λ x P z s => s x|] (Lit $ VNatural (n-1))
-  VString cs -> Just $ case T.uncons cs of
-    Nothing     -> [yatima| λ P n c => n|]
-    Just (x,xs) -> let f = [yatima| λ x xs P n c => c x xs|]
-                    in App (App f (Lit $ VChar x)) (Lit $ VString xs)
-  VBitVector l bs -> Just $ case BS.uncons bs of
-    Nothing -> [yatima| λ P be b0 b1 => be |]
-    Just (x,xs)   ->
-      let idx = fromEnum $ mod (l-1) 8
-          f   = if testBit x idx
-                then [yatima| λ n xs P be b0 b1 => b1 n xs|]
-                else [yatima| λ n xs P be b0 b1 => b0 n xs|]
-          ys  = if idx == 0
-                then xs
-                else BS.cons (clearBit x idx) xs
-      in App (App f (Lit $ VNatural (l-1))) (Lit $ VBitVector (l-1) ys)
-  _        -> Nothing
+  VNatural 0      -> Just ([yatima| λ P z s => z|])
+  VNatural n      -> Just $ App ([yatima| λ x P z s => s x|]) (Lit $ VNatural (n-1))
+  VString cs      -> Just $ case T.uncons cs of
+    Nothing       -> ([yatima| λ P n c => n|])
+    Just (x,xs)   -> let f = ([yatima| λ x xs P n c => c x xs|])
+                     in App (App f (Lit $ VChar x)) (Lit $ VString xs)
+  VBitVector 0 bs -> Just ([yatima| λ P be b0 b1 => be |])
+  VBitVector l bs -> let 
+    f   = if bs .&. 1 == 1
+          then ([yatima| λ n xs P be b0 b1 => b1 n xs|])
+          else ([yatima| λ n xs P be b0 b1 => b0 n xs|])
+    in Just $ App (App f (Lit $ VNatural (l-1))) (Lit $ VBitVector (l-1) (bs `shiftR ` 1))
+  _               -> Nothing
 
 litInduction :: LitType -> Hoas -> Hoas
 litInduction t val = (\y -> AppH y val) $ termToHoas [] $ case t of

@@ -10,6 +10,7 @@ import           Data.Map                   (Map)
 import qualified Data.Map                   as M
 import           Data.IPLD.CID
 
+import           Numeric.Natural
 
 import           Text.Megaparsec            hiding (State, ParseError)
 import           Text.Megaparsec.Char       hiding (space)
@@ -84,6 +85,7 @@ data ParseError e
   | TopLevelRedefinition Name
   | ReservedKeyword Name
   | ReservedLeadingChar Char Name
+  | BitVectorOverflow Natural Natural
   | I64Overflow Integer
   | I32Overflow Integer
   | I64Underflow Integer
@@ -95,6 +97,7 @@ data ParseError e
   | InvalidCID Text Text
   | LeadingDigit Name
   | ParseEnvironmentError e
+  | BaseNeedsLength
   deriving (Eq, Ord,Show)
 
 instance ShowErrorComponent e => ShowErrorComponent (ParseError e) where
@@ -106,6 +109,7 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseError e) where
       "Illegal leading digit in name: " <> T.unpack nam
     ReservedLeadingChar c nam ->
       "Illegal leading character " <> show c <> " in name: " <> T.unpack nam
+    BitVectorOverflow i l     -> "Overflow: "  <> show i <> " exceeded length of " <> show l
     I64Overflow  i            -> "Overflow: "  <> show i <> "i64"
     I64Underflow i            -> "Underflow: " <> show i <> "i64"
     I32Overflow  i            -> "Overflow: "  <> show i <> "i32"
@@ -116,6 +120,7 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseError e) where
     U32Underflow i            -> "Underflow: " <> show i <> "u32"
     InvalidCID err txt        -> "Invalid CID: " <> show txt <> ", " <> show err
     ParseEnvironmentError e   -> showErrorComponent e
+    BaseNeedsLength           -> "Cannot infer bit vector length. Please set an explicit length between '#' and the base code."
 
 instance ShowErrorComponent () where
   showErrorComponent () = "()"

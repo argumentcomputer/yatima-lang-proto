@@ -103,7 +103,7 @@ literal_gen = oneof
   , VNatural <$> arbitrarySizedNatural
   , do
       len <- choose (1,64) :: Gen Int
-      val <- BS.pack <$> vectorOf len arbitrary
+      val <- arbitrarySizedNatural
       return $ VBitVector (fromIntegral len*8) val
   , VString <$> arbitrary
   , VChar <$> arbitrary

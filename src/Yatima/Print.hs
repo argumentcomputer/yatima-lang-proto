@@ -22,11 +22,6 @@ import qualified Data.Text.Encoding      as T
 import qualified Data.Text.Lazy          as LT
 import qualified Data.Text.Lazy.Builder  as TB
 
-import           Data.ByteString         (ByteString)
-import qualified Data.ByteString         as B
-
-import qualified Data.ByteString.Base16  as B16
-
 import           Control.Monad.Except
 
 import           Numeric
@@ -111,8 +106,8 @@ prettyLiteral t = case t of
   VI32 x         -> (T.pack $ show x) <> "u32"
   VBitVector l x ->
     if l `mod` 4 == 0 
-    then "#x" <> (B16.encodeBase16 x)
-    else "#b" <> (bits l . roll . B.unpack) x
+    then "#x" <> (T.pack $ showIntAtBase 2 intToDigit x "")
+    else "#b" <> (T.pack $ showHex x "")
 
   VString  x     -> (T.pack $ show x)
   VChar    x     -> T.pack $ show x

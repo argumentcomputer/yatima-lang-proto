@@ -110,13 +110,19 @@ checkCID cid = do
 checkRef :: Defs -> (Name,(CID,CID)) -> IO ()
 checkRef defs (name,(cid,_)) = do
   let (trm,typ) = defToHoas name (defs M.! cid)
-  case runExcept $ Core.check defs Ctx.empty Once trm typ of
-    Left  e -> putStrLn $ T.unpack $ T.concat 
+  case runExcept $ Core.check defs Ctx.empty Once typ TypH of
+    Left  e -> putStrLn $ T.unpack $ T.concat
         ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
         , cidToText cid, "\n"
         , T.pack $ show e]
-    Right (_,t,_) -> putStrLn $ T.unpack $ T.concat
-        ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHoas t]
+    Right (_,t,_) ->
+      case runExcept $ Core.check defs Ctx.empty Once trm typ of
+        Left  e -> putStrLn $ T.unpack $ T.concat
+            ["\ESC[31m\STX✗\ESC[m\STX ", name, "\n"
+            , cidToText cid, "\n"
+            , T.pack $ show e]
+        Right (_,t,_) -> putStrLn $ T.unpack $ T.concat
+            ["\ESC[32m\STX✓\ESC[m\STX ",name, ": ", printHoas t]
 
 localPutCID :: CID -> IO ()
 localPutCID cid = do
@@ -137,9 +143,9 @@ localPutPackageDeps cid = do
 localGetCID :: CID -> IO ()
 localGetCID cid = do
   hasCid <- cacheHas cid
-  if hasCid 
+  if hasCid
   then do
-    
+
     putStrLn $ concat ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already in cache"]
     return ()
   else do
@@ -152,7 +158,7 @@ localGetCID cid = do
       Right v -> do
         let bs   = serialise (v :: DagJSON)
         let cid' = makeCidFromBytes bs
-        when (cid == cid') 
+        when (cid == cid')
           (putStrLn $ concat ["\ESC[31m\STX⚠ CID",show cid," \ESC[m\STX "
           , "CID Mismatch with downloaded bytes: ", show cid'
           ])
@@ -191,7 +197,7 @@ cidDagJSON cid = do
 --  case resp of
 --    Left e  -> putStrLn $ concat ["\ESC[31m\STX⚠ ",show cid," \ESC[m\STX ", show e]
 --    Right _ -> putStrLn $ concat ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX "]
-  
+
 
 --compileFile :: FilePath -> IO ()
 --compileFile file = do
@@ -220,7 +226,7 @@ normFile name file = do
   let index@(Index ns) = _index p
   defs    <- indexToDefs index
   case ns M.!? name of
-    Nothing -> fail $ concat 
+    Nothing -> fail $ concat
       ["undefined reference ", show name, " in package ", T.unpack (_title p)]
     Just (c,_)  -> return $ Core.norm defs (fst $ defToHoas name (defs M.! c))
 
@@ -230,7 +236,7 @@ normCID name cid = do
   let index@(Index ns) = _index p
   defs    <- indexToDefs index
   case ns M.!? name of
-    Nothing -> fail $ concat 
+    Nothing -> fail $ concat
       ["undefined reference ", show name, " in package ", T.unpack (_title p)]
     Just (c,_)  -> return $ Core.norm defs (fst $ defToHoas name (defs M.! c))
 
@@ -242,7 +248,7 @@ whnfDef name file = do
   let index@(Index ns) = _index p
   defs    <- indexToDefs index
   case ns M.!? name of
-    Nothing -> fail $ concat 
+    Nothing -> fail $ concat
       ["undefined reference ", show name, " in package ", T.unpack (_title p)]
     Just (c,_)  -> return $ Core.whnf defs (fst $ defToHoas name (defs M.! c))
 

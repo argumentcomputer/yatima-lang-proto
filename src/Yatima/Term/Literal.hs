@@ -7,8 +7,6 @@ import           Codec.Serialise.Encoding
 
 import           Control.Monad
 
-import           Data.ByteString          (ByteString)
-import qualified Data.ByteString          as BS
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
@@ -24,7 +22,7 @@ data Literal
   | VF32       Float
   | VI64       Word64
   | VI32       Word32
-  | VBitVector Natural ByteString
+  | VBitVector Natural Natural
   | VString    Text
   | VChar      Char
   | VException Text

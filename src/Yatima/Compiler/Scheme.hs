@@ -12,7 +12,6 @@ import           Data.Text              (Text)
 import qualified Data.Text              as T
 import qualified Data.Text.Lazy         as LT
 import qualified Data.Text.Lazy.Builder as TB
-import qualified Data.ByteString        as BS
 import           Data.Map               (Map)
 import qualified Data.Map               as Map
 
@@ -135,10 +134,7 @@ litToCode lit = case lit of
   VI32       x    -> show' x
   VF64       x    -> show' x
   VF32       x    -> show' x
-  VBitVector n bs ->
-    case BS.uncons bs of
-      Nothing       -> "#vu8()"
-      Just (c,cs)   -> "#vu8(" <> BS.foldl' (\cs c -> cs <> " " <> show' c) (show' c) cs <> ")"
+  VBitVector n bs -> error "TODO"
   VString    t    -> show' t
   VChar      c    -> "#\\" <> TB.singleton c
   VException s    -> "(throw-error " <> TB.fromText s <> ")"
