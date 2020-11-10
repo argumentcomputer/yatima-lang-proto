@@ -25,7 +25,7 @@ import Data.Aeson ((.=))
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.HashMap.Lazy as HM
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.List (sortBy)
 import Data.Monoid
 import Data.Scientific as Scientific
@@ -34,7 +34,7 @@ import qualified Data.Vector as V
 import Prelude hiding (decodeFloat)
 
 data DagJSON
-  = DagLink CID
+  = DagLink Cid
   | DagObject (HM.HashMap Text DagJSON)
   | DagArray (V.Vector DagJSON)
   | DagText Text

@@ -7,7 +7,7 @@ import Codec.Serialise
 import Control.Monad.Except
 import Data.Aeson hiding (decode, encode)
 import qualified Data.Aeson as Aeson
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.IPLD.DagAST
 import Data.IPLD.DagJSON
 import Data.IPLD.DagPackage
@@ -69,7 +69,7 @@ spec :: SpecWith ()
 spec = do
   describe "Checking serialisation correctness: `x == deserialise (serialise x)`" $ do
     it "Uses" $ property $ prop_serial @Uses
-    it "Cid" $ property $ prop_serial @CID
+    it "Cid" $ property $ prop_serial @Cid
     it "DagMeta" $ property $ prop_serial @DagMeta
     it "DagAST" $ property $ prop_serial @DagAST
     it "Literal" $ property $ prop_serial @Literal
@@ -82,7 +82,7 @@ spec = do
     it "DagYatima" $ property $ prop_serial @DagYatima
   describe "Checking JSON serialisation correctness" $ do
     it "Uses" $ property $ prop_json_encode @Uses
-    it "Cid" $ property $ prop_json_encode @CID
+    it "Cid" $ property $ prop_json_encode @Cid
     it "DagMeta" $ property $ prop_json_encode @DagMeta
     it "DagAST" $ property $ prop_json_encode @DagAST
     it "Literal" $ property $ prop_json_encode @Literal

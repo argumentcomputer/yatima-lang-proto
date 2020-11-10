@@ -45,7 +45,7 @@ module Yatima.Core.UnionFind where
 import Control.Applicative
 import Control.Monad
 import Control.Monad.ST
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.STRef
@@ -55,18 +55,18 @@ newtype NRef s = NRef {_ref :: STRef s (Node s)} deriving (Eq)
 
 -- A Node is either root or a link
 data Node s
-  = Root {_value :: CID, _weight :: Int}
-  | Node {_value :: CID, _parent :: NRef s}
+  = Root {_value :: Cid, _weight :: Int}
+  | Node {_value :: Cid, _parent :: NRef s}
 
 -- An equivalence relation is a reference to a map of elements to node references
-data Equiv s = Equiv {_elems :: STRef s (Map CID (NRef s))}
+data Equiv s = Equiv {_elems :: STRef s (Map Cid (NRef s))}
 
 -- A new equivalence relation
 newEquiv :: ST s (Equiv s)
 newEquiv = Equiv <$> (newSTRef M.empty)
 
 -- create a new class in a relation with a value as root
-singleton :: Equiv s -> CID -> ST s (NRef s)
+singleton :: Equiv s -> Cid -> ST s (NRef s)
 singleton eq val = do
   root <- NRef <$> newSTRef (Root {_value = val, _weight = 1})
   modifySTRef (_elems eq) (M.insert val root)
@@ -102,12 +102,12 @@ union refX refY = do
         writeSTRef (_ref refToRootY) (Root vy (wx + wy))
 
 -- Are these two references pointing to the same root?
-getRef :: Equiv s -> CID -> ST s (Maybe (NRef s))
+getRef :: Equiv s -> Cid -> ST s (Maybe (NRef s))
 getRef eq x = do
   m <- readSTRef (_elems eq)
   return $ M.lookup x m
 
-equivalent :: Equiv s -> CID -> CID -> ST s Bool
+equivalent :: Equiv s -> Cid -> Cid -> ST s Bool
 equivalent eq x y = do
   rx <- getRef eq x
   ry <- getRef eq y
@@ -115,7 +115,7 @@ equivalent eq x y = do
     (Just x, Just y) -> liftA2 (==) (findRoot x) (findRoot y)
     _ -> return $ x == y
 
-equate :: Equiv s -> CID -> CID -> ST s ()
+equate :: Equiv s -> Cid -> Cid -> ST s ()
 equate eq x y = do
   rx <- (maybe (singleton eq x) return) =<< (getRef eq x)
   ry <- (maybe (singleton eq y) return) =<< (getRef eq y)

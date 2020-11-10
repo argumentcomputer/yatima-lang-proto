@@ -5,7 +5,7 @@ module Spec.Instances where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.IPLD.DagAST
 import Data.IPLD.DagPackage
 import qualified Data.Map as M
@@ -19,7 +19,7 @@ import Test.QuickCheck.Instances.Text ()
 import Yatima.IPLD
 import Yatima.Term
 
-instance Arbitrary CID where
+instance Arbitrary Cid where
   arbitrary = makeCid <$> (arbitrary :: Gen ByteString)
 
 deriving instance Bounded Uses

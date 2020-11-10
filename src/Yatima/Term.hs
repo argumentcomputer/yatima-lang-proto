@@ -24,7 +24,7 @@ module Yatima.Term
 where
 
 import Data.Data
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text (Text)
@@ -55,7 +55,7 @@ data Term where
   -- | Self elimination
   Use :: Term -> Term
   -- | An immutable global reference to a named definition and anonymous term
-  Ref :: Name -> CID -> CID -> Term
+  Ref :: Name -> Cid -> Cid -> Term
   -- | An inline local definition,
   Let :: Bool -> Name -> Uses -> Term -> Term -> Term -> Term
   -- | The type of types.
@@ -84,7 +84,7 @@ data Def = Def
   }
   deriving (Show, Eq)
 
-type Defs = Map CID Def
+type Defs = Map Cid Def
 
 -- | Find a name in a binding context and return its index
 findByName :: Name -> [Name] -> Maybe Int

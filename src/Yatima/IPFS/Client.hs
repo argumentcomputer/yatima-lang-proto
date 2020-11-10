@@ -17,7 +17,7 @@ import Control.Monad.Except
 import Data.Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.IPLD.DagAST
 import Data.Proxy
 import Data.Text (Text)
@@ -73,8 +73,8 @@ runDagPutAST ast = do
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
 
-runLocalDagGetCID :: CID -> IO BS.ByteString
-runLocalDagGetCID cid = do
+runLocalDagGetCid :: Cid -> IO BS.ByteString
+runLocalDagGetCid cid = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
   S.withClientM (dagGet (cidToText cid)) env go
@@ -111,8 +111,8 @@ runDagPutFile file = do
   let client = (dagPutBytes (Just True) . BSL.fromStrict) bs
   runClientM client env
 
-runLocalDagPutCID :: CID -> IO (Either ClientError Value)
-runLocalDagPutCID cid = do
+runLocalDagPutCid :: Cid -> IO (Either ClientError Value)
+runLocalDagPutCid cid = do
   manager' <- newManager defaultManagerSettings
   cache <- getYatimaCacheDir
   file <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)
@@ -121,8 +121,8 @@ runLocalDagPutCID cid = do
   let client = (dagPutBytes (Just True) . BSL.fromStrict) bytes
   runClientM client env
 
-runInfuraDagPutCID :: CID -> IO (Network.HTTP.Client.Response BSL.ByteString)
-runInfuraDagPutCID cid = do
+runInfuraDagPutCid :: Cid -> IO (Network.HTTP.Client.Response BSL.ByteString)
+runInfuraDagPutCid cid = do
   manager' <- newTlsManager
   cache <- getYatimaCacheDir
   file <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)
@@ -151,8 +151,8 @@ runInfuraDagPutCID cid = do
 --print $ Network.HTTP.Client.responseBody resp
 --return ()
 
---runDagPutCIDs :: [CID] -> IO [(CID, Either ClientError [Value])]
---runDagPutCIDs cids = do
+--runDagPutCids :: [Cid] -> IO [(Cid, Either ClientError [Value])]
+--runDagPutCids cids = do
 --  manager' <- newManager defaultManagerSettings
 --  cache    <- getYatimaCacheDir
 --  relfiles <- mapM parseRelFile ((T.unpack . cidToText) <$> cids)
@@ -192,7 +192,7 @@ runSwarmConnect text = do
 runConnectEternum :: IO ()
 runConnectEternum = runSwarmConnect "/dns4/door.eternum.io/tcp/4001/ipfs/QmVBxJ5GekATHi89H8jbXjaU6CosCnteomjNR5xar2aH3q"
 
-runEternumPinHash :: Path Abs File -> CID -> IO ()
+runEternumPinHash :: Path Abs File -> Cid -> IO ()
 runEternumPinHash token cid = do
   manager' <- newTlsManager
   token <- BS.readFile (toFilePath $ token)
@@ -212,8 +212,8 @@ runEternumPinHash token cid = do
   print $ Network.HTTP.Client.responseBody resp
   return ()
 
---runInfuraDagPutCID :: CID -> IO ()
---runInfuraDagPutCID cid = do
+--runInfuraDagPutCid :: Cid -> IO ()
+--runInfuraDagPutCid cid = do
 --  manager' <- newTlsManager
 --  cache    <- getYatimaCacheDir
 --  file     <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)
@@ -234,8 +234,8 @@ runEternumPinHash token cid = do
 --  print $ Network.HTTP.Client.responseBody resp
 --  return ()
 --
---runInfuraDagGetCID :: CID -> IO ()
---runInfuraDagGetCID cid = do
+--runInfuraDagGetCid :: Cid -> IO ()
+--runInfuraDagGetCid cid = do
 --  manager' <- newTlsManager
 --  cache    <- getYatimaCacheDir
 --  initReq  <- parseRequest "https://ipfs.infura.io:5001/api/v0/dag/get"

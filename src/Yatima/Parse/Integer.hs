@@ -19,8 +19,6 @@ import qualified Data.Char as Char
 import Data.List (foldl')
 import Data.Proxy
 import Text.Megaparsec hiding (State)
-import Text.Megaparsec.Char hiding (space)
-import qualified Text.Megaparsec.Char.Lexer as L
 
 binary ::
   forall e s m a.

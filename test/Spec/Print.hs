@@ -3,7 +3,7 @@
 
 module Spec.Print where
 
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import qualified Spec.Parse as ParseSpec
 import Test.Hspec
 import Test.QuickCheck

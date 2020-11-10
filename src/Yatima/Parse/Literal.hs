@@ -5,7 +5,7 @@ import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Char (chr, digitToInt, isHexDigit, ord)
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.Int
 import Data.List (foldl')
 import Data.Text (Text)
@@ -221,9 +221,9 @@ pEscape = do
       chr <$> L.decimal
     ]
 
-pCID :: (Ord e, Monad m) => Parser e m CID
-pCID = do
+pCid :: (Ord e, Monad m) => Parser e m Cid
+pCid = do
   txt <- T.pack <$> (many alphaNumChar)
   case cidFromText txt of
-    Left err -> customFailure $ InvalidCID (T.pack err) txt
+    Left err -> customFailure $ InvalidCid (T.pack err) txt
     Right cid -> return $ cid

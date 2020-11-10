@@ -19,7 +19,7 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.IPLD.DagAST
 import Data.IPLD.DagPackage
 import qualified Data.Map as M
@@ -82,9 +82,8 @@ defToDag (Def _ _ term typ_) = runIdentity $ do
 defToDagDef :: Def -> DagDef
 defToDagDef def@(Def title doc _ _) = runIdentity $ do
   let (termAST, termMeta, typeAST, typeMeta) = defToDag def
-  let termASTCid = makeCid termAST :: CID
-  let typeASTCid = makeCid typeAST :: CID
-  return $ DagDef title termASTCid typeASTCid doc termMeta typeMeta
+  let termASTCid = makeCid termAST :: Cid
+  return $ DagDef title termASTCid typeAST doc termMeta typeMeta
 
 data DagError
   = FreeVariable [Name] DagAST DagMeta Int
@@ -205,7 +204,7 @@ dagToDef title doc n (termAST, termMeta) (typeAST, typeMeta) = do
 -- * Cache
 
 cacheDir :: Path Abs Dir -> Path Abs Dir
-cacheDir root = root </> [reldir|.yatima_cache|]
+cacheDir root = root </> [reldir|.yatima_global/cache|]
 
 getYatimaCacheDir :: IO (Path Abs Dir)
 getYatimaCacheDir = do
@@ -213,14 +212,14 @@ getYatimaCacheDir = do
   ensureDir (cacheDir homeDir)
   return (cacheDir homeDir)
 
-cacheGet :: forall a. Serialise a => CID -> IO a
+cacheGet :: forall a. Serialise a => Cid -> IO a
 cacheGet cid = do
   bs <- cacheGetBytes cid
   case (deserialiseOrFail @a bs) of
     Left e -> fail $ "Cannot deserialise cache file: " ++ show e
     Right a -> return a
 
-cacheGetBytes :: CID -> IO BSL.ByteString
+cacheGetBytes :: Cid -> IO BSL.ByteString
 cacheGetBytes cid = do
   file <- parseRelFile $ T.unpack $ cidToText cid
   cacheDir <- getYatimaCacheDir
@@ -229,13 +228,13 @@ cacheGetBytes cid = do
   let cid' = makeCidFromBytes bs
   when
     (cid' /= cid)
-    (fail $ "Cache file contents do not match given CID: " ++ show cid)
+    (fail $ "Cache file contents do not match given Cid: " ++ show cid)
   return bs
 
-cachePut :: forall a. Serialise a => a -> IO CID
+cachePut :: forall a. Serialise a => a -> IO Cid
 cachePut x = cachePutBytes (serialise x)
 
-cachePutBytes :: BSL.ByteString -> IO CID
+cachePutBytes :: BSL.ByteString -> IO Cid
 cachePutBytes bs = do
   let cid = makeCidFromBytes bs
   cacheDir <- getYatimaCacheDir
@@ -245,20 +244,19 @@ cachePutBytes bs = do
   unless exists (BSL.writeFile (toFilePath path) bs)
   return cid
 
-cacheHas :: CID -> IO Bool
+cacheHas :: Cid -> IO Bool
 cacheHas cid = do
   cacheDir <- getYatimaCacheDir
   file <- parseRelFile $ T.unpack $ cidToText cid
   let path = cacheDir </> file
   doesFileExist path
 
-cachePutDef :: Def -> IO (CID, CID)
+cachePutDef :: Def -> IO (Cid, Cid)
 cachePutDef (Def title doc trm typ) = do
   termASTCid <- cachePut (termToAST trm)
-  typeASTCid <- cachePut (termToAST typ)
   let termMeta = termToMeta trm
   let typeMeta = termToMeta typ
-  let dagDef = DagDef title termASTCid typeASTCid doc termMeta typeMeta
+  let dagDef = DagDef title termASTCid (termToAST typ) doc termMeta typeMeta
   dagDefCid <- cachePut dagDef
   return (dagDefCid, termASTCid)
 
@@ -267,15 +265,14 @@ indexToDefs (Index ns) = do
   ds <- traverse go (M.toList ns)
   return $ M.fromList ds
   where
-    go :: (Name, (CID, CID)) -> IO (CID, Def)
+    go :: (Name, (Cid, Cid)) -> IO (Cid, Def)
     go (name, (defCid, trmCid)) = do
       dagDef <- cacheGet @DagDef defCid
-      let (DagDef title termASTCid typeASTCid doc termMeta typeMeta) = dagDef
+      let (DagDef title termASTCid typeAST doc termMeta typeMeta) = dagDef
       when
         (trmCid /= termASTCid)
-        (fail $ "indexToDefs failure: termAST CIDS don't match")
+        (fail $ "indexToDefs failure: termAST CidS don't match")
       termAST <- cacheGet @DagAST termASTCid
-      typeAST <- cacheGet @DagAST typeASTCid
       case runExcept (dagToDef title doc name (termAST, termMeta) (typeAST, typeMeta)) of
         Left e -> putStrLn (show e) >> fail ""
         Right x -> return (defCid, x)
@@ -286,7 +283,7 @@ catchErr x = do
     Right x -> return x
     Left e -> putStrLn (show e) >> fail ""
 
---dagDefDepCids :: CID -> IO (Set CID)
+--dagDefDepCids :: Cid -> IO (Set Cid)
 --dagDefDepCids cid = do
 --  (DagDef _ termASTCid typeASTCid _ termMeta typeMeta) <- cacheGet @DagDef cid
 --  termAST <- cacheGet @DagAST termASTCid
@@ -301,7 +298,7 @@ catchErr x = do
 --    , dagMetaCids typeMeta
 --    ]
 --
---packageDepCids :: DagPackage -> IO (Set CID)
+--packageDepCids :: DagPackage -> IO (Set Cid)
 --packageDepCids (DagPackage _ _ srcCid (Imports ms) (Index ns)) = do
 --  let impCids = Set.fromList $ fst <$> ms
 --  defCids <- traverse dagDefDepCids (fst <$> M.elems ns)
@@ -327,34 +324,22 @@ decodeDagYatima = do
   tag <- decodeString
   case (len, tag) of
     (3, "DagSource") ->
-      YatimaSource
-        <$> (DagSource <$> decodeString <*> decodeString)
+      YatimaSource <$> (DagSource <$> decode <*> decode)
     (6, "DagPackage") ->
-      YatimaPackage
-        <$> ( DagPackage <$> decodeString <*> decodeString <*> decodeCid
-                <*> decodeImports
-                <*> decodeIndex
-            )
+      YatimaPackage <$> (DagPackage <$> decode <*> decode <*> decode <*> decode <*> decode)
     (7, "DagDef") ->
-      YatimaDef
-        <$> ( DagDef <$> decodeString <*> decodeCid <*> decodeCid
-                <*> decodeString
-                <*> decodeDagMeta
-                <*> decodeDagMeta
-            )
+      YatimaDef <$> (DagDef <$> decode <*> decode <*> decode <*> decode <*> decode <*> decode)
     (3, "Ctor") ->
       YatimaAST <$> do
         ctor <- decodeString
         arity <- decodeListLen
         args <- replicateM arity decodeDagAST
         return $ Ctor ctor args
-    (2, "Bind") -> YatimaAST <$> (Bind <$> decodeDagAST)
-    (2, "Vari") -> YatimaAST <$> (Vari <$> decodeInt)
-    (2, "Link") -> YatimaAST <$> (Link <$> decodeCid)
+    (2, "Bind") -> YatimaAST <$> (Bind <$> decode)
+    (2, "Vari") -> YatimaAST <$> (Vari <$> decode)
+    (2, "Link") -> YatimaAST <$> (Link <$> decode)
     (2, "Data") -> YatimaAST <$> (Data <$> decodeData)
-    (x, y) ->
-      fail $
-        concat ["invalid DagYatima with size ", show x, " and tag ", show y]
+    (x, y) -> fail $ concat ["invalid DagYatima with size ", show x, " and tag ", show y]
 
 instance Serialise DagYatima where
   encode = encodeDagYatima

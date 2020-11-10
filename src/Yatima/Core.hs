@@ -13,7 +13,7 @@ module Yatima.Core where
 import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.ST
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.List (foldl')
 import qualified Data.Map as M
 import Data.Sequence (Seq (..), (><))
@@ -56,7 +56,7 @@ whnf defs trm = go trm []
 norm :: Defs -> Hoas -> Hoas
 norm defs term = go term 0 Set.empty
   where
-    go :: Hoas -> Int -> Set CID -> Hoas
+    go :: Hoas -> Int -> Set Cid -> Hoas
     go term lvl seen =
       let step = whnf defs term
           hash = makeCid $ termToAST $ hoasToTerm lvl term
@@ -66,7 +66,7 @@ norm defs term = go term 0 Set.empty
               | hash' `Set.member` seen -> step
               | otherwise -> next step lvl (Set.insert hash' (Set.insert hash seen))
 
-    next :: Hoas -> Int -> Set CID -> Hoas
+    next :: Hoas -> Int -> Set Cid -> Hoas
     next step lvl seen = case step of
       AllH nam use typ bod ->
         AllH nam use (go typ lvl seen) (\x -> go (bod x) (lvl + 1) seen)

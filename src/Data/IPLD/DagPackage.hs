@@ -13,7 +13,7 @@ import Codec.Serialise.Decoding
 import Codec.Serialise.Encoding
 import Control.Monad
 import qualified Data.ByteString.Lazy as BSL
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.List (sortBy)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -25,7 +25,7 @@ import Data.Text (Text)
 data DagPackage = DagPackage
   { _packageTitle :: Text,
     _description :: Text,
-    _sourceFile :: CID,
+    _sourceFile :: Cid,
     _imports :: Imports,
     _index :: Index
   }
@@ -34,9 +34,9 @@ data DagPackage = DagPackage
 emptyDagPackage :: Text -> DagPackage
 emptyDagPackage n = DagPackage n "" (makeCid BSL.empty) emptyImports emptyIndex
 
-newtype Imports = Imports [(CID, Text)] deriving (Show, Eq)
+newtype Imports = Imports [(Cid, Text)] deriving (Show, Eq)
 
-newtype Index = Index (Map Text (CID, CID)) deriving (Show, Eq)
+newtype Index = Index (Map Text (Cid, Cid)) deriving (Show, Eq)
 
 data DagSource = DagSource
   { _srcTitle :: Text,
@@ -50,10 +50,10 @@ emptyImports = Imports []
 emptyIndex :: Index
 emptyIndex = Index M.empty
 
-indexEntries :: Index -> Map Text (CID, CID)
+indexEntries :: Index -> Map Text (Cid, Cid)
 indexEntries (Index ns) = ns
 
-mergeIndex :: Index -> Index -> Either (Text, CID, CID) Index
+mergeIndex :: Index -> Index -> Either (Text, Cid, Cid) Index
 mergeIndex (Index a) (Index b) = do
   Index <$> merge a b
   where
@@ -157,10 +157,10 @@ instance Serialise DagPackage where
   encode = encodeDagPackage
   decode = decodeDagPackage
 
-packageImportCids :: DagPackage -> Set CID
+packageImportCids :: DagPackage -> Set Cid
 packageImportCids (DagPackage _ _ _ (Imports ms) _) = Set.fromList $ fst <$> ms
 
-packageIndexCids :: DagPackage -> Set CID
+packageIndexCids :: DagPackage -> Set Cid
 packageIndexCids (DagPackage _ _ _ _ (Index ns)) =
   let elems = M.elems ns
    in Set.union (Set.fromList $ fst <$> elems) (Set.fromList $ snd <$> elems)

@@ -1,7 +1,7 @@
 module Yatima.Parse.Parser where
 
 import Control.Monad.RWS.Lazy hiding (All, Typ)
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
@@ -70,7 +70,7 @@ data ParseEnv = ParseEnv
   { -- | The binding context for local variables
     _context :: [Name],
     -- | The global context for references
-    _refs :: Map Name (CID, CID)
+    _refs :: Map Name (Cid, Cid)
   }
 
 -- | A stub for a future parser state
@@ -96,7 +96,7 @@ data ParseError e
   | U32Overflow Integer
   | U64Underflow Integer
   | U32Underflow Integer
-  | InvalidCID Text Text
+  | InvalidCid Text Text
   | LeadingDigit Name
   | ParseEnvironmentError e
   deriving (Eq, Ord, Show)
@@ -118,7 +118,7 @@ instance ShowErrorComponent e => ShowErrorComponent (ParseError e) where
     U64Underflow i -> "Underflow: " <> show i <> "u64"
     U32Overflow i -> "Overflow: " <> show i <> "u32"
     U32Underflow i -> "Underflow: " <> show i <> "u32"
-    InvalidCID err txt -> "Invalid CID: " <> show txt <> ", " <> show err
+    InvalidCid err txt -> "Invalid Cid: " <> show txt <> ", " <> show err
     ParseEnvironmentError e -> showErrorComponent e
 
 instance ShowErrorComponent () where

@@ -13,8 +13,7 @@ import Codec.Serialise.Encoding
 import Control.Monad
 import qualified Data.ByteString as BS
 import Data.ByteString.Base64
-import qualified Data.ByteString.Lazy as BSL
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -24,8 +23,8 @@ import qualified Data.Text.Encoding as T
 -- | A typed definition embedded in the IPLD DAG
 data DagDef = DagDef
   { _title :: Text,
-    _termAST :: CID,
-    _typeAST :: CID,
+    _termAST :: Cid,
+    _typeAST :: DagAST,
     _document :: Text,
     _termMeta :: DagMeta,
     _typeMeta :: DagMeta
@@ -37,7 +36,7 @@ data DagAST
   = Ctor Text [DagAST]
   | Bind DagAST
   | Vari Int
-  | Link CID
+  | Link Cid
   | Data BS.ByteString
   deriving (Eq, Show, Ord)
 
@@ -47,7 +46,7 @@ data DagAST
 data DagMeta
   = MCtor [DagMeta]
   | MBind Text DagMeta
-  | MLink Text CID
+  | MLink Text Cid
   | MLeaf
   deriving (Eq, Show, Ord)
 
@@ -141,7 +140,7 @@ encodeDagDef (DagDef title anonTerm anonType doc termMeta typeMeta) =
     <> (encodeString "DagDef")
     <> (encodeString title)
     <> (encodeCid anonTerm)
-    <> (encodeCid anonType)
+    <> (encodeDagAST anonType)
     <> (encodeString doc)
     <> (encodeDagMeta termMeta)
     <> (encodeDagMeta typeMeta)
@@ -152,7 +151,7 @@ decodeDagDef = do
   tag <- decodeString
   when (tag /= "DagDef") (fail $ "invalid DagDef tag: " ++ show tag)
   when (size /= 7) (fail $ "invalid DagDef list size: " ++ show size)
-  DagDef <$> decodeString <*> decodeCid <*> decodeCid <*> decodeString
+  DagDef <$> decodeString <*> decodeCid <*> decodeDagAST <*> decodeString
     <*> decodeDagMeta
     <*> decodeDagMeta
 
@@ -160,20 +159,20 @@ instance Serialise DagDef where
   encode = encodeDagDef
   decode = decodeDagDef
 
-dagMetaCids :: DagMeta -> Set CID
+dagMetaCids :: DagMeta -> Set Cid
 dagMetaCids t = go Set.empty t
   where
-    go :: Set CID -> DagMeta -> Set CID
+    go :: Set Cid -> DagMeta -> Set Cid
     go cids t = case t of
       MCtor ds -> Set.unions $ go cids <$> ds
       MBind _ d -> go cids d
       MLink _ c -> Set.insert c cids
       MLeaf -> cids
 
-dagASTCids :: DagAST -> Set CID
+dagASTCids :: DagAST -> Set Cid
 dagASTCids t = go Set.empty t
   where
-    go :: Set CID -> DagAST -> Set CID
+    go :: Set Cid -> DagAST -> Set Cid
     go cids t = case t of
       Ctor _ ds -> Set.unions $ go cids <$> ds
       Bind d -> go cids d

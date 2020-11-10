@@ -17,7 +17,7 @@ import Control.Monad.Except
 import Control.Monad.RWS.Lazy hiding (All)
 import qualified Data.ByteString.Lazy as BSL
 import Data.IORef
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.IPLD.DagPackage
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -39,11 +39,11 @@ import Yatima.Term
 data PackageError
   = UnknownPackage Name
   | InvalidLocalImport Name
-  | MisnamedPackageImport Name Name CID
+  | MisnamedPackageImport Name Name Cid
   | LocalImportCycle (Path Rel File)
-  | ConflictingImportNames Name CID (Name, CID) (Name, CID)
-  | MisnamedCacheFile (Path Abs File) CID CID
-  | CacheFileNoDeserial (Path Abs File) CID DeserialiseFailure
+  | ConflictingImportNames Name Cid (Name, Cid) (Name, Cid)
+  | MisnamedCacheFile (Path Abs File) Cid Cid
+  | CacheFileNoDeserial (Path Abs File) Cid DeserialiseFailure
   deriving (Eq, Ord, Show)
 
 instance ShowErrorComponent PackageError where
@@ -78,7 +78,7 @@ instance ShowErrorComponent PackageError where
         show a,
         " but the package titles itself ",
         show b,
-        " at CID ",
+        " at Cid ",
         show c
       ]
   showErrorComponent (LocalImportCycle imp) =
@@ -128,7 +128,7 @@ initYatimaProject dir = do
   ensureDir (dir </> [reldir|.yatima|])
   makeAbsolute dir
 
-pCacheGet :: forall a. Serialise a => CID -> ParserIO a
+pCacheGet :: forall a. Serialise a => Cid -> ParserIO a
 pCacheGet cid = do
   file <- liftIO $ parseRelFile $ T.unpack $ cidToText cid
   cacheDir <- liftIO $ getYatimaCacheDir
@@ -143,12 +143,12 @@ pCacheGet cid = do
 data PackageEnv = PackageEnv
   { _root :: Path Abs Dir,
     _openFiles :: Set (Path Rel File),
-    _doneFiles :: Map (Path Rel File) CID
+    _doneFiles :: Map (Path Rel File) Cid
   }
 
 data From
   = Local Name (Path Rel File)
-  | IPFS CID
+  | IPFS Cid
   deriving (Eq, Show)
 
 pImportDefs :: ParserIO ImportDefs
@@ -172,7 +172,7 @@ makePath n = liftIO go >>= \e -> either customIOFailure pure e
         pure (Left $ InvalidLocalImport n)
 
 -- | with <package-name> [as <alias] [(<import1>,<import2>)] [from <cid>]
-pImport :: IORef PackageEnv -> ParserIO (Name, Text, ImportDefs, CID, DagPackage)
+pImport :: IORef PackageEnv -> ParserIO (Name, Text, ImportDefs, Cid, DagPackage)
 pImport env = label "an import" $ do
   name <- symbol "with" >> pPackageName <* space
   alia <- maybe "" id <$> (optional $ symbol "as" >> (pName False) <* space)
@@ -222,7 +222,7 @@ pImports env imp@(Imports is) ind = next <|> (return (imp, ind))
         Right index -> do
           pImports env (Imports $ is ++ [(cid, ali)]) index
 
-pPackage :: IORef PackageEnv -> Text -> ParserIO (CID, DagSource, DagPackage)
+pPackage :: IORef PackageEnv -> Text -> ParserIO (Cid, DagSource, DagPackage)
 pPackage env src = do
   space
   doc <- maybe "" id <$> (optional $ pDoc)
@@ -238,7 +238,7 @@ pPackage env src = do
   return $ (packCid, source, pack)
 
 -- | Parse a file
-pFile :: IORef PackageEnv -> Path Rel File -> IO (CID, DagPackage)
+pFile :: IORef PackageEnv -> Path Rel File -> IO (Cid, DagPackage)
 pFile env relPath = do
   root <- _root <$> (liftIO $ readIORef env)
   let absPath = root </> relPath
@@ -272,7 +272,7 @@ pDef = label "a definition" $ do
   return $ (nam, Def nam doc exp typ)
 
 -- | Parse a sequence of definitions, e.g. in a file
-pDefs :: ParserIO [(Name, (CID, CID))]
+pDefs :: ParserIO [(Name, (Cid, Cid))]
 pDefs = (space >> next) <|> (space >> eof >> (return []))
   where
     next = do

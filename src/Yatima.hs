@@ -15,7 +15,7 @@ import Data.Aeson.Text
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.HashMap.Lazy as HM
 import Data.IORef
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.IPLD.DagJSON
 import Data.IPLD.DagPackage
 import qualified Data.Map as M
@@ -46,7 +46,7 @@ parseFilePath file =
     catch @IO @PathException (parseRelFile file >>= makeAbsolute) $ \_ ->
       fail ("Invalid File name: " ++ file)
 
-loadFile :: FilePath -> IO (Path Abs Dir, CID, DagPackage)
+loadFile :: FilePath -> IO (Path Abs Dir, Cid, DagPackage)
 loadFile file = do
   path <- parseFilePath file
   projectDir <- maybe (parent path) id <$> (findYatimaProjectDir (parent path))
@@ -56,7 +56,7 @@ loadFile file = do
   (c, p) <- withCurrentDir projectDir (pFile env relPath)
   return (projectDir, c, p)
 
-loadCid :: CID -> IO DagPackage
+loadCid :: Cid -> IO DagPackage
 loadCid cid = do
   putStrLn $ concat ["Loading ", show cid, " from cache"]
   cacheGet @DagPackage cid
@@ -70,14 +70,14 @@ prettyFile file = do
   traverse (prettyIndexF defs) (M.toList ns)
   return ()
 
-prettyIndexF :: Defs -> (Name, (CID, CID)) -> IO ()
+prettyIndexF :: Defs -> (Name, (Cid, Cid)) -> IO ()
 prettyIndexF defs (nam, (cid, _)) = do
   putStrLn ""
   putStrLn $ T.unpack $ cidToText $ cid
   putStrLn $ T.unpack $ prettyDef nam (defs M.! cid)
   return ()
 
-checkFile :: FilePath -> IO (CID, DagPackage)
+checkFile :: FilePath -> IO (Cid, DagPackage)
 checkFile file = do
   (_, c, p) <- loadFile file
   let index@(Index ns) = _index p
@@ -85,15 +85,15 @@ checkFile file = do
   traverse (checkRef defs) (M.toList ns)
   return (c, p)
 
-checkCID :: CID -> IO (CID, DagPackage)
-checkCID cid = do
+checkCid :: Cid -> IO (Cid, DagPackage)
+checkCid cid = do
   p <- loadCid cid
   let index@(Index ns) = _index p
   defs <- indexToDefs index
   traverse (checkRef defs) (M.toList ns)
   return (cid, p)
 
-checkRef :: Defs -> (Name, (CID, CID)) -> IO ()
+checkRef :: Defs -> (Name, (Cid, Cid)) -> IO ()
 checkRef defs (name, (cid, _)) = do
   let (trm, typ) = defToHoas name (defs M.! cid)
   case runExcept $ Core.check defs Ctx.empty Once trm typ of
@@ -114,10 +114,10 @@ checkRef defs (name, (cid, _)) = do
           T.concat
             ["\ESC[32m\STX✓\ESC[m\STX ", name, ": ", printHoas t]
 
-localPutCID :: CID -> IO ()
-localPutCID cid = do
+localPutCid :: Cid -> IO ()
+localPutCid cid = do
   msg <- T.unpack . dagYatimaDescription <$> cacheGet @DagYatima cid
-  resp <- runLocalDagPutCID cid
+  resp <- runLocalDagPutCid cid
   case resp of
     Left e ->
       putStrLn $
@@ -128,18 +128,18 @@ localPutCID cid = do
         concat
           ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX pinned ", msg]
 
-localPutPackageDeps :: CID -> IO ()
+localPutPackageDeps :: Cid -> IO ()
 localPutPackageDeps cid = do
   pack <- cacheGet @DagPackage cid
-  localPutCID cid
-  localPutCID (_sourceFile pack)
-  traverse localPutCID (Set.toList $ packageIndexCids pack)
+  localPutCid cid
+  localPutCid (_sourceFile pack)
+  traverse localPutCid (Set.toList $ packageIndexCids pack)
   traverse localPutPackageDeps (Set.toList $ packageImportCids pack)
   putStrLn $ concat ["Pinned package ", T.unpack (_packageTitle pack), " ", show cid, "to localhost"]
   return ()
 
-localGetCID :: CID -> IO ()
-localGetCID cid = do
+localGetCid :: Cid -> IO ()
+localGetCid cid = do
   hasCid <- cacheHas cid
   if hasCid
     then do
@@ -149,7 +149,7 @@ localGetCID cid = do
           ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already cached ", msg]
       return ()
     else do
-      bytes <- runLocalDagGetCID cid
+      bytes <- runLocalDagGetCid cid
       case eitherDecode' @DagJSON (BSL.fromStrict bytes) of
         Left e ->
           putStrLn $
@@ -167,10 +167,10 @@ localGetCID cid = do
             (cid /= cid')
             ( putStrLn $
                 concat
-                  [ "\ESC[31m\STX⚠ CID",
+                  [ "\ESC[31m\STX⚠ Cid",
                     show cid,
                     " \ESC[m\STX ",
-                    "CID Mismatch with downloaded bytes: ",
+                    "Cid Mismatch with downloaded bytes: ",
                     show cid'
                   ]
             )
@@ -184,25 +184,25 @@ localGetCID cid = do
                 msg
               ]
 
-localGetPackageDeps :: CID -> IO ()
+localGetPackageDeps :: Cid -> IO ()
 localGetPackageDeps cid = do
-  localGetCID cid
+  localGetCid cid
   pack <- cacheGet @DagPackage cid
-  localGetCID (_sourceFile pack)
-  traverse localGetCID (Set.toList $ packageIndexCids pack)
+  localGetCid (_sourceFile pack)
+  traverse localGetCid (Set.toList $ packageIndexCids pack)
   traverse localGetPackageDeps (Set.toList $ packageImportCids pack)
   putStrLn $
     concat
       ["Downloaded package ", T.unpack (_packageTitle pack), " from localhost"]
   return ()
 
-showCIDJSON :: CID -> IO ()
-showCIDJSON cid = do
+showCidJSON :: Cid -> IO ()
+showCidJSON cid = do
   v <- cidDagJSON cid
   let txt = TL.toLazyText $ encodeToTextBuilder $ toAeson v
   T.putStrLn (TL.toStrict txt)
 
-cidDagJSON :: CID -> IO DagJSON
+cidDagJSON :: Cid -> IO DagJSON
 cidDagJSON cid = do
   bs <- cacheGetBytes cid
   case (deserialiseOrFail @DagJSON bs) of
@@ -217,11 +217,11 @@ cidDagJSON cid = do
           ]
     Right v -> return v
 
-infuraPutCID :: CID -> IO ()
-infuraPutCID cid = do
+infuraPutCid :: Cid -> IO ()
+infuraPutCid cid = do
   msg <- T.unpack . dagYatimaDescription <$> cacheGet @DagYatima cid
   let err x = putStrLn $ concat (["\ESC[31m\STX⚠ ", show cid, " \ESC[m\STX ", msg, ". "] ++ x)
-  resp <- runInfuraDagPutCID cid
+  resp <- runInfuraDagPutCid cid
   unless (statusCode (responseStatus resp) == 200) (err [show resp])
   case Aeson.eitherDecode @DagJSON (responseBody resp) of
     Left e -> err [" received ", show resp, " but decoding errored with ", show e]
@@ -230,23 +230,23 @@ infuraPutCID cid = do
         Just (DagLink cid') -> do
           unless
             (cid == cid')
-            (err ["CID Mismatch: received ", show cid', " instead of ", show cid])
+            (err ["Cid Mismatch: received ", show cid', " instead of ", show cid])
           putStrLn $ concat ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX pinned ", msg]
-        v -> err [" received\n", show resp, ". Expected a CID object, got ", show v]
-    Right v -> err [" received\n", show resp, ". Expected a CID object, got ", show v]
+        v -> err [" received\n", show resp, ". Expected a Cid object, got ", show v]
+    Right v -> err [" received\n", show resp, ". Expected a Cid object, got ", show v]
 
-infuraPutPackageDeps :: CID -> IO ()
+infuraPutPackageDeps :: Cid -> IO ()
 infuraPutPackageDeps cid = do
   pack <- cacheGet @DagPackage cid
-  infuraPutCID cid
-  infuraPutCID (_sourceFile pack)
-  traverse infuraPutCID (Set.toList $ packageIndexCids pack)
+  infuraPutCid cid
+  infuraPutCid (_sourceFile pack)
+  traverse infuraPutCid (Set.toList $ packageIndexCids pack)
   traverse infuraPutPackageDeps (Set.toList $ packageImportCids pack)
   putStrLn $ concat ["Pinned package ", T.unpack (_packageTitle pack), " ", show cid, "to infura.io"]
   return ()
 
---infuraGetCID :: CID -> IO ()
---infuraGetCID cid = do
+--infuraGetCid :: Cid -> IO ()
+--infuraGetCid cid = do
 --  hasCid <- cacheHas cid
 --  if hasCid
 --  then do
@@ -255,7 +255,7 @@ infuraPutPackageDeps cid = do
 --      ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already cached ", msg]
 --    return ()
 --  else do
---    resp <- runInfuraDagGetCID cid
+--    resp <- runInfuraDagGetCid cid
 --    let err x = putStrLn $ concat (["\ESC[31m\STX⚠ ",show cid," \ESC[m\STX "] ++ x)
 --    unless (statusCode (responseStatus resp) == 200) (err [show resp])
 --    case Aeson.eitherDecode @DagJSON (responseBody resp) of
@@ -266,24 +266,24 @@ infuraPutPackageDeps cid = do
 --            let value = deserialise @DagYatima (serialise v)
 --            let cid'    = makeCid value
 --            when (cid /= cid')
---              (putStrLn $ concat ["\ESC[31m\STX⚠ CID",show cid," \ESC[m\STX "
---              , "CID Mismatch with downloaded bytes: ", show cid'
+--              (putStrLn $ concat ["\ESC[31m\STX⚠ Cid",show cid," \ESC[m\STX "
+--              , "Cid Mismatch with downloaded bytes: ", show cid'
 --              ])
 --            putStrLn $ concat
 --              ["\ESC[32m\STX📥 ", show cid, "\ESC[m\STX downloaded "
 --              , msg
 --              ]
---          v -> err [" received\n", show resp, ". Expected a CID object, got ", show v]
---      Right v -> err [" received\n", show resp , ". Expected a CID object, got ", show v]
+--          v -> err [" received\n", show resp, ". Expected a Cid object, got ", show v]
+--      Right v -> err [" received\n", show resp , ". Expected a Cid object, got ", show v]
 --
---infuraGetPackageDeps :: CID -> IO ()
+--infuraGetPackageDeps :: Cid -> IO ()
 --infuraGetPackageDeps cid = do
---  infuraGetCID cid
+--  infuraGetCid cid
 --  pack <- cacheGet @DagPackage cid
---  infuraGetCID (_sourceFile pack)
+--  infuraGetCid (_sourceFile pack)
 --  putStrLn $ concat
 --    ["Downloaded package ", T.unpack (_packageTitle pack), " from infurahost"]
---  traverse infuraGetCID (Set.toList $ packageIndexCids pack)
+--  traverse infuraGetCid (Set.toList $ packageIndexCids pack)
 --  --traverse infuraGetPackageDeps (Set.toList $ packageImportCids pack)
 --  putStrLn $ concat
 --    ["Downloaded dependencies for package ", T.unpack (_packageTitle pack), " from infurahost"]
@@ -297,9 +297,9 @@ infuraPutPackageDeps cid = do
 --  codes <- forM (M.toList ns) (compileRef index cache)
 --  putStrLn $ T.unpack $ T.concat codes
 --
---compileRef ::  Index -> Cache -> (Name, (CID,CID)) -> IO Text
+--compileRef ::  Index -> Cache -> (Name, (Cid,Cid)) -> IO Text
 --compileRef index cache (name,(cid,_)) = do
---  def  <- liftIO $ catchErr $ derefDagDefCID name cid index cache
+--  def  <- liftIO $ catchErr $ derefDagDefCid name cid index cache
 --  defs <- liftIO $ catchErr $ indexToDefs index cache
 --  let (trm,typ) = defToHoas name def
 --  case runExcept $ Core.check defs Ctx.empty Once trm typ of
@@ -323,8 +323,8 @@ normFile name file = do
           ["undefined reference ", show name, " in package ", T.unpack (_packageTitle p)]
     Just (c, _) -> return $ Core.norm defs (fst $ defToHoas name (defs M.! c))
 
-normCID :: Name -> CID -> IO Hoas
-normCID name cid = do
+normCid :: Name -> Cid -> IO Hoas
+normCid name cid = do
   p <- cacheGet @DagPackage cid
   let index@(Index ns) = _index p
   defs <- indexToDefs index

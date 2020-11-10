@@ -5,27 +5,27 @@
 {-# LANGUAGE RecordWildCards #-}
 
 -- |
--- Module      : Data.IPLD.CID
--- Description : This module implements the Content-IDentifiers (CIDs) used in
+-- Module      : Data.IPLD.Cid
+-- Description : This module implements the Content-IDentifiers (Cids) used in
 -- IPFS, IPLD and Filecoin.
 -- Copyright   : 2020 Yatima Inc.
 -- License     : GPL-3
 -- Maintainer  : john@yatima.io
 -- Stability   : experimental
 --
--- \"CID is a format for referencing content in distributed information systems,
+-- \"Cid is a format for referencing content in distributed information systems,
 -- like IPFS. It leverages content addressing, cryptographic hashing, and
 -- self-describing formats. It is the core identifier used by IPFS and IPLD.\"
 -- <https://github.com/ipld/cid Content IDentifiers>
 -- k
 -- This module modifies work by [Monadic
--- GmbH](https://github.com/monadic-xyz/ipfs/blob/master/ipld-cid/src/Data/IPLD/CID.hs)
+-- GmbH](https://github.com/monadic-xyz/ipfs/blob/master/ipld-cid/src/Data/IPLD/Cid.hs)
 -- which is licensed under BSD3 terms included with this package in the
 -- @licenses/2018_Monadic_GmbH@ file.
-module Data.IPLD.CID
+module Data.IPLD.Cid
   ( Version (..),
     Codec (..),
-    CID (..),
+    Cid (..),
     newCidV0,
     newCidV1,
     buildCid,
@@ -98,60 +98,60 @@ instance NFData Codec
 
 -- | A Content IDentifier.
 --
--- * 'V0' 'CID's are merely SHA256 hashes, base58-encoded using the bitcoin
+-- * 'V0' 'Cid's are merely SHA256 hashes, base58-encoded using the bitcoin
 -- alphabet. The 'Codec' is implicitly 'DagProtobuf'.
--- * 'V1' 'CID's may use any 'Multihash', and any of the supported 'Codec's.
-data CID = CID
+-- * 'V1' 'Cid's may use any 'Multihash', and any of the supported 'Codec's.
+data Cid = Cid
   { cidVersion :: Version,
     cidCodec :: Codec,
     cidHash :: Multihash
   }
   deriving (Eq, Ord, Generic, Data)
 
-instance Hashable CID
+instance Hashable Cid
 
-instance NFData CID
+instance NFData Cid
 
-instance Show CID where
+instance Show Cid where
   show = Text.unpack . cidToText
 
-instance Read CID where
+instance Read Cid where
   readsPrec _ =
     either (const []) (\cid -> [(cid, "")]) . cidFromText . Text.pack
 
--- | Create a 'V0' 'CID'.
-newCidV0 :: Digest SHA256 -> CID
+-- | Create a 'V0' 'Cid'.
+newCidV0 :: Digest SHA256 -> Cid
 newCidV0 dig =
-  CID
+  Cid
     { cidVersion = V0,
       cidCodec = DagProtobuf,
       cidHash = Multihash.fromDigest dig
     }
 
--- | Create a 'V1' 'CID'.
-newCidV1 :: Multihashable a => Codec -> Digest a -> CID
+-- | Create a 'V1' 'Cid'.
+newCidV1 :: Multihashable a => Codec -> Digest a -> Cid
 newCidV1 codec dig =
-  CID
+  Cid
     { cidVersion = V1,
       cidCodec = codec,
       cidHash = Multihash.fromDigest dig
     }
 
--- | Serialise a 'CID'.
-buildCid :: CID -> Builder
-buildCid CID {..} = case cidVersion of
+-- | Serialise a 'Cid'.
+buildCid :: Cid -> Builder
+buildCid Cid {..} = case cidVersion of
   V0 -> Builder.byteString (Multihash.encodedBytes cidHash)
   V1 ->
     buildVarInt (fromEnum cidVersion)
       <> buildVarInt (codecToCode cidCodec)
       <> Builder.byteString (Multihash.encodedBytes cidHash)
 
--- | Decode a 'CID' from a strict 'ByteString'.
+-- | Decode a 'Cid' from a strict 'ByteString'.
 --
 -- @
 --    cidFromMultihashBytes . buildCid ≡ Right
 -- @
-cidFromMultihashBytes :: ByteString -> Either String CID
+cidFromMultihashBytes :: ByteString -> Either String Cid
 cidFromMultihashBytes bs
   | isV0 = newCidV0 <$> Multihash.decodeDigest bs
   | otherwise = bimap _3 _3 . Binary.runGetOrFail getCid $ LBS.fromStrict bs
@@ -161,45 +161,45 @@ cidFromMultihashBytes bs
 
     _3 (_, _, x) = x
 
--- | Deserialise a 'CID' in the 'Binary.Get' monad.
+-- | Deserialise a 'Cid' in the 'Binary.Get' monad.
 --
--- Note that this does __/not/__ support 'V0' 'CID's.
-getCid :: Binary.Get CID
+-- Note that this does __/not/__ support 'V0' 'Cid's.
+getCid :: Binary.Get Cid
 getCid = do
   cidVersion <- do
     v <- Binary.getWord8 >>= getVarInt
     if v < minVersion || v > maxVersion
-      then fail $ "CID: Invalid version: " <> show v
+      then fail $ "Cid: Invalid version: " <> show v
       else pure $ toEnum v
 
   case cidVersion of
     V1 -> do
       cidCodec <- do
         c <- Binary.getWord8 >>= getVarInt
-        maybe (fail ("CID: Unknown Codec: " <> show c)) pure $
+        maybe (fail ("Cid: Unknown Codec: " <> show c)) pure $
           codecFromCode c
       cidHash <- Multihash.getMultihash
-      pure CID {..}
-    v -> fail $ "CID: Unsupported version: " <> show v
+      pure Cid {..}
+    v -> fail $ "Cid: Unsupported version: " <> show v
   where
     maxVersion = fromEnum (maxBound :: Version)
     minVersion = fromEnum (minBound :: Version)
 
-cidFromMultibaseBytes :: ByteString -> Either String CID
+cidFromMultibaseBytes :: ByteString -> Either String Cid
 cidFromMultibaseBytes bs = do
   mb <- Multibase.decode bs
   cid <- cidFromMultihashBytes mb
   return cid
 
--- | Decode a 'CID' from a textual representation.
+-- | Decode a 'Cid' from a textual representation.
 --
 -- The 'Text' value is expected to be base58 (bitcoin) encoded (for 'V0'
--- 'CID's), or a valid 'Multibase'.
+-- 'Cid's), or a valid 'Multibase'.
 --
 -- @
 --    cidFromText . cidToText ≡ id
 -- @
-cidFromText :: Text -> Either String CID
+cidFromText :: Text -> Either String Cid
 cidFromText t = decodeBase >=> cidFromMultihashBytes $ encodeUtf8 t
   where
     isV0 = Text.length t == 46 && "Qm" `Text.isPrefixOf` t
@@ -208,24 +208,24 @@ cidFromText t = decodeBase >=> cidFromMultihashBytes $ encodeUtf8 t
       | isV0 = BaseN.decodeBase58btc
       | otherwise = Multibase.decode >=> guardReserved
 
-    -- "If the first decoded byte is 0x12, return an error. CIDv0 CIDs may not
-    -- be multibase encoded and there will be no CIDv18 (0x12 = 18) to prevent
-    -- ambiguity with decoded CIDv0s."
+    -- "If the first decoded byte is 0x12, return an error. Cidv0 Cids may not
+    -- be multibase encoded and there will be no Cidv18 (0x12 = 18) to prevent
+    -- ambiguity with decoded Cidv0s."
     guardReserved bs = case BS.uncons bs of
-      Just (x, _) | x == 18 -> Left "CID > V0 starts with reserved byte 0x12"
+      Just (x, _) | x == 18 -> Left "Cid > V0 starts with reserved byte 0x12"
       _ -> Right bs
 
-cidFromText' :: Text -> CID
+cidFromText' :: Text -> Cid
 cidFromText' t = case cidFromText t of
   Left e -> error e
   Right x -> x
 
--- | Encode a 'CID' to a textual representation.
+-- | Encode a 'Cid' to a textual representation.
 --
 -- The result is either a base58 (bitcoin) encoded string of just the 'cidHash'
--- value for 'V0' 'CID's, or otherwise a 'Multibase' value at base 'Base32'
--- of the binary representation of the 'CID' (as produced by 'buildCid').
-cidToText :: CID -> Text
+-- value for 'V0' 'Cid's, or otherwise a 'Multibase' value at base 'Base32'
+-- of the binary representation of the 'Cid' (as produced by 'buildCid').
+cidToText :: Cid -> Text
 cidToText cid =
   decodeUtf8 $
     case cidVersion cid of
@@ -259,24 +259,24 @@ codecFromCode 0x71 = pure DagCbor
 codecFromCode 0x78 = pure GitRaw
 codecFromCode _ = Nothing
 
-encodeCid :: CID -> Encoding
+encodeCid :: Cid -> Encoding
 encodeCid cid =
   let cid_bytestring = LBS.toStrict $ Builder.toLazyByteString $ buildCid cid
       cid_atBaseID = BaseN.encodeAtBase BaseN.BaseIdentity cid_bytestring
       cid_multibase = Multibase.fromMultibase $ Multibase.encode cid_atBaseID
    in encodeTag 42 <> encodeBytes cid_multibase
 
-cidToMultibaseBytes :: (Multibase.ToCode b) => BaseN.Base b -> CID -> ByteString
+cidToMultibaseBytes :: (Multibase.ToCode b) => BaseN.Base b -> Cid -> ByteString
 cidToMultibaseBytes base cid =
   let cid_bytestring = LBS.toStrict $ Builder.toLazyByteString $ buildCid cid
       cid_atBase = BaseN.encodeAtBase base cid_bytestring
       cid_multibase = Multibase.fromMultibase $ Multibase.encode cid_atBase
    in cid_multibase
 
-buildCidStrict :: CID -> ByteString
+buildCidStrict :: Cid -> ByteString
 buildCidStrict cid = LBS.toStrict $ Builder.toLazyByteString $ buildCid cid
 
-decodeCid :: Decoder s CID
+decodeCid :: Decoder s Cid
 decodeCid = do
   tag <- decodeTag
   if tag /= 42
@@ -284,21 +284,21 @@ decodeCid = do
     else do
       base <- decodeBytes
       case cidFromMultibaseBytes base of
-        Left str -> fail $ "CID decoding error: " ++ str
+        Left str -> fail $ "Cid decoding error: " ++ str
         Right cid -> return cid
 
-instance Serialise CID where
+instance Serialise Cid where
   encode = encodeCid
   decode = decodeCid
 
 hashLazyWith :: C.HashAlgorithm alg => alg -> LBS.ByteString -> C.Digest alg
 hashLazyWith _ bs = C.hashlazy bs
 
-mkCborCidV1 :: (Multihashable alg, Serialise a) => alg -> a -> CID
+mkCborCidV1 :: (Multihashable alg, Serialise a) => alg -> a -> Cid
 mkCborCidV1 alg a = newCidV1 DagCbor (hashLazyWith alg (serialise a))
 
-makeCid :: Serialise a => a -> CID
+makeCid :: Serialise a => a -> Cid
 makeCid a = mkCborCidV1 C.Blake2b_256 a
 
-makeCidFromBytes :: LBS.ByteString -> CID
+makeCidFromBytes :: LBS.ByteString -> Cid
 makeCidFromBytes bs = newCidV1 DagCbor (hashLazyWith C.Blake2b_256 bs)

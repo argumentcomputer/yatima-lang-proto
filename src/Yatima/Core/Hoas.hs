@@ -8,10 +8,10 @@
 -- Stability   : experimental
 module Yatima.Core.Hoas where
 
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.Text (Text)
 import qualified Data.Text as T
-import Yatima.Core.Ctx (Ctx (..), (<|))
+import Yatima.Core.Ctx (Ctx (..))
 import qualified Yatima.Core.Ctx as Ctx
 import Yatima.Print
 import Yatima.Term
@@ -19,7 +19,7 @@ import Yatima.Term
 -- | Higher-Order Abstract Syntax
 data Hoas where
   VarH :: Name -> Int -> Hoas
-  RefH :: Name -> CID -> CID -> Hoas
+  RefH :: Name -> Cid -> Cid -> Hoas
   LamH :: Name -> (Hoas -> Hoas) -> Hoas
   AppH :: Hoas -> Hoas -> Hoas
   NewH :: Hoas -> Hoas

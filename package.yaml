@@ -15,7 +15,7 @@ description:
 library:
   source-dirs: src
   exposed-modules:
-    - Data.IPLD.CID
+    - Data.IPLD.Cid
     - Data.IPLD.DagAST
     - Data.IPLD.DagJSON
     - Data.IPLD.DagPackage

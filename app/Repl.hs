@@ -17,7 +17,7 @@ import Control.Monad.Except
 import Control.Monad.RWS.Lazy hiding (All)
 import Control.Monad.State.Strict
 import Data.Char
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.IPLD.DagPackage
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
@@ -90,7 +90,7 @@ data Command
   | Defn Name Def
   | Type Term
   | Load (Path Abs File)
-  | Import CID
+  | Import Cid
   | Quit
   | Help
   | Browse
@@ -110,7 +110,7 @@ parseLine = do
           nam <- takeWhile1P Nothing (not . isSpace)
           path <- liftIO $ parseFilePath (T.unpack nam)
           return $ Load path,
-        --, (symbol ":with" <|> symbol ":w") >> Import <$> pCID
+        --, (symbol ":with" <|> symbol ":w") >> Import <$> pCid
         try pDef >>= (\(n, d) -> return $ Defn n d),
         Eval <$> pExpr False
       ]

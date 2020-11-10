@@ -6,7 +6,7 @@
 module Main where
 
 import Control.Monad.State.Strict
-import Data.IPLD.CID
+import Data.IPLD.Cid
 import Data.Text (Text)
 import qualified Data.Text as T
 import Options.Applicative
@@ -78,8 +78,8 @@ pCheck = Check <$> argument str argPackage
 argPackage :: Mod ArgumentFields Text
 argPackage = (metavar "PACKAGE" <> completer cacheCompleter <> action "file")
 
-argCID :: Mod ArgumentFields Text
-argCID = (metavar "CID" <> completer cacheCompleter)
+argCid :: Mod ArgumentFields Text
+argCid = (metavar "Cid" <> completer cacheCompleter)
 
 pRun :: Parser Command
 pRun =
@@ -103,12 +103,12 @@ pPut :: Parser Command
 pPut = Put <$> argument str argPackage <*> nodeFlag
 
 pGet :: Parser Command
-pGet = Get <$> argument str argCID <*> nodeFlag
+pGet = Get <$> argument str argCid <*> nodeFlag
 
 pShow :: Parser Command
-pShow = Show <$> argument str argCID
+pShow = Show <$> argument str argCid
 
-readArgPackageID :: Text -> IO (Either CID (Path Abs File))
+readArgPackageID :: Text -> IO (Either Cid (Path Abs File))
 readArgPackageID txt = do
   dir <- getCurrentDir
   nam <- parseRelFile (T.unpack txt)
@@ -126,7 +126,7 @@ readArgPackageID txt = do
               "\n Failed to read as filepath: ",
               (toFilePath path),
               "does not exist",
-              "\n Failed to read as CID: ",
+              "\n Failed to read as Cid: ",
               e
             ]
 
@@ -135,12 +135,12 @@ run c = case c of
   Check pack -> void $ do
     argPackageID <- readArgPackageID pack
     case argPackageID of
-      Left cid -> checkCID cid
+      Left cid -> checkCid cid
       Right path -> checkFile (toFilePath path)
   Run pack nam -> do
     argPackageID <- readArgPackageID pack
     case argPackageID of
-      Left cid -> normCID nam cid >>= print
+      Left cid -> normCid nam cid >>= print
       Right path -> normFile nam (toFilePath path) >>= print
   Init -> do
     dir <- getCurrentDir
@@ -155,7 +155,7 @@ run c = case c of
     cid <- either pure loadFile' =<< readArgPackageID txt
     localPutPackageDeps cid
   Get txt _ -> void $ localGetPackageDeps (cidFromText' txt)
-  Show txt -> void $ showCIDJSON (cidFromText' txt)
+  Show txt -> void $ showCidJSON (cidFromText' txt)
   Repl -> do
     dir <- getCurrentDir
     projectDir <- maybe (parent dir) id <$> (findYatimaProjectDir (parent dir))

@@ -10,8 +10,6 @@ module Yatima.Core.Ctx where
 
 import Data.Sequence (Seq (..))
 import qualified Data.Sequence as Seq
-import Data.Text (Text)
-import qualified Data.Text as T
 import Yatima.Term
 
 -- | A generalized context
@@ -44,11 +42,11 @@ find :: Name -> Ctx a -> Maybe a
 find nam (Ctx ((n, a) :<| cs))
   | n == nam = Just a
   | otherwise = find nam (Ctx cs)
-find nam (Ctx Empty) = Nothing
+find _ (Ctx Empty) = Nothing
 
 -- | Modifies the context at a single place and returns the old value
 adjust :: Int -> Ctx a -> (a -> a) -> Maybe (a, Ctx a)
-adjust lvl (Ctx Empty) f = Nothing
+adjust _ (Ctx Empty) _ = Nothing
 adjust lvl (Ctx (ctx :|> (name, a))) f
   | lvl == 0 = return $ (a, Ctx (ctx :|> (name, f a)))
   | otherwise = do
