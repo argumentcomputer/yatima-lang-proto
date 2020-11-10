@@ -1,43 +1,42 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+
 module Yatima.Term.Uses where
 
-import           Data.Data
-import           Codec.Serialise
-import           Codec.Serialise.Decoding
-import           Codec.Serialise.Encoding
+import Codec.Serialise
+import Codec.Serialise.Decoding
+import Codec.Serialise.Encoding
+import Data.Data
 
 data Uses = None | Affi | Once | Many deriving (Eq, Show, Enum, Data)
 
 (+#) :: Uses -> Uses -> Uses
-None +# x    = x
-x    +# None = x
-x    +# y    = Many
+None +# x = x
+x +# None = x
+_ +# _ = Many
 
 (*#) :: Uses -> Uses -> Uses
-None *# x    = None
+None *# __ = None
 Affi *# None = None
 Affi *# Affi = Affi
 Affi *# Once = Affi
 Affi *# Many = Many
-Once *# x    = x
+Once *# x = x
 Many *# None = None
-Many *# x    = Many
+Many *# _ = Many
 
 (≤#) :: Uses -> Uses -> Bool
 None ≤# Once = False
-None ≤# x    = True
+None ≤# _ = True
 Affi ≤# None = False
 Affi ≤# Once = False
-Affi ≤# x    = True
+Affi ≤# _ = True
 Once ≤# None = False
-Once ≤# x    = True
+Once ≤# _ = True
 Many ≤# Many = True
-Many ≤# x    = False
-
+Many ≤# _ = False
 
 (>#) :: Uses -> Uses -> Bool
 (>#) x y = not (x ≤# y)
-
 
 encodeUses :: Uses -> Encoding
 encodeUses u = case u of
@@ -48,7 +47,7 @@ encodeUses u = case u of
 
 decodeUses :: Decoder s Uses
 decodeUses = do
-  tag  <- decodeInt
+  tag <- decodeInt
   case tag of
     0 -> return None
     1 -> return Affi

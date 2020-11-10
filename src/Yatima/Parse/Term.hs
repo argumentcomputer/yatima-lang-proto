@@ -50,8 +50,7 @@ pExpr annotatable = label "an expression" $ do
   args <- args
   let tele = foldl (\t a -> App t a) fun args
   choice
-    [ if annotatable then (Ann tele <$> (symbol "::" >> pExpr False)) else empty
-    , return tele
+    [ if annotatable then (Ann tele <$> (symbol "::" >> pExpr False)) else empty , return tele
     ]
   where
     args = next <|> (return [])

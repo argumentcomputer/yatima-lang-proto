@@ -1,39 +1,37 @@
-{-|
-Module      : Yatima.Term
-Description : Defines expressions in the Yatima language
-Copyright   : 2020 Yatima Inc.
-License     : GPL-3
-Maintainer  : john@yatima.io
-Stability   : experimental
-
-This module defines `Term`, the type of expressions in the Yatima language.
-
--}
-
 {-# LANGUAGE DeriveDataTypeable #-}
+
+-- |
+-- Module      : Yatima.Term
+-- Description : Defines expressions in the Yatima language
+-- Copyright   : 2020 Yatima Inc.
+-- License     : GPL-3
+-- Maintainer  : john@yatima.io
+-- Stability   : experimental
+--
+-- This module defines `Term`, the type of expressions in the Yatima language.
 module Yatima.Term
-  ( module Yatima.Term.Uses
-  , module Yatima.Term.Literal
-  , module Yatima.Term.PrimOp
-  , Name
-  , Term (..)
-  , Def  (..)
-  , Defs
-  , findByName
-  , findByInt
-  , shift
-  ) where
+  ( module Yatima.Term.Uses,
+    module Yatima.Term.Literal,
+    module Yatima.Term.PrimOp,
+    Name,
+    Term (..),
+    Def (..),
+    Defs,
+    findByName,
+    findByInt,
+    shift,
+  )
+where
 
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T
-import           Data.Map                   (Map)
-import qualified Data.Map                   as M
-import           Data.Data
-import           Data.IPLD.CID
-
-import           Yatima.Term.Uses
-import           Yatima.Term.PrimOp
-import           Yatima.Term.Literal
+import Data.Data
+import Data.IPLD.CID
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Text (Text)
+import qualified Data.Text as T
+import Yatima.Term.Literal
+import Yatima.Term.PrimOp
+import Yatima.Term.Uses
 
 -- * Yatima expressions
 
@@ -72,16 +70,19 @@ data Term where
   Opr :: PrimOp -> Term
 
 deriving instance Show Term
+
 deriving instance Eq Term
+
 deriving instance Data Term
 
 -- | A type annotated definition
 data Def = Def
-  { _defTitle :: Text
-  , _doc      :: Text
-  , _term     :: Term
-  , _type     :: Term
-  } deriving (Show,Eq)
+  { _defTitle :: Text,
+    _doc :: Text,
+    _term :: Term,
+    _type :: Term
+  }
+  deriving (Show, Eq)
 
 type Defs = Map CID Def
 
@@ -89,33 +90,30 @@ type Defs = Map CID Def
 findByName :: Name -> [Name] -> Maybe Int
 findByName n cs = go n cs 0
   where
-    go n (c:cs) i
-      | n == c    = Just i
-      | otherwise = go n cs (i+1)
-    go _ [] _     = Nothing
+    go n (c : cs) i
+      | n == c = Just i
+      | otherwise = go n cs (i + 1)
+    go _ [] _ = Nothing
 
 findByInt :: Int -> [Name] -> Maybe Name
-findByInt i []     = Nothing
-findByInt i (x:xs)
-  | i < 0     = Nothing
-  | i == 0    = Just x
+findByInt i [] = Nothing
+findByInt i (x : xs)
+  | i < 0 = Nothing
+  | i == 0 = Just x
   | otherwise = findByInt (i - 1) xs
 
 shift :: Int -> Int -> Term -> Term
 shift inc dep term = case term of
-  Var n i         -> Var n (if i < dep then i else (i + inc))
-  All n u t b     -> All n u (go t) (bind b)
-  Lam n b         -> Lam n (bind b)
-  App f a         -> App (go f) (go a)
-  Slf n b         -> Slf n (bind b)
-  New x           -> New (go x)
-  Use x           -> Use (go x)
-  Ann t x         -> Ann (go t) (go x)
+  Var n i -> Var n (if i < dep then i else (i + inc))
+  All n u t b -> All n u (go t) (bind b)
+  Lam n b -> Lam n (bind b)
+  App f a -> App (go f) (go a)
+  Slf n b -> Slf n (bind b)
+  New x -> New (go x)
+  Use x -> Use (go x)
+  Ann t x -> Ann (go t) (go x)
   Let r n u t x b -> Let r n u (go t) (bind x) (bind b)
-  x               -> x
+  x -> x
   where
-    go x   = shift inc dep x
-    bind x = shift inc (dep+1) x
-
-
-
+    go x = shift inc dep x
+    bind x = shift inc (dep + 1) x

@@ -50,7 +50,6 @@ library
       Data.Multihash
       Yatima.Core.Prim
       Yatima.Core.UnionFind
-      Yatima.Package
       Paths_yatima
   hs-source-dirs:
       src
