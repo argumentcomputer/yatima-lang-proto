@@ -44,7 +44,7 @@ termToAST t = go t
       New e -> Ctor "New" [go e]
       Use e -> Ctor "Use" [go e]
       Ann v t -> Ctor "Ann" [go v, go t]
-      Let r _ u t x b -> Ctor "Let" [rec r, use u, go t, bind x, bind b]
+      Let r _ u t x b -> Ctor "Let" [rec r, use u, go t, if r then bind x else go x, bind b]
       Typ -> Ctor "Typ" []
       All _ u t b -> Ctor "All" [use u, go t, bind b]
       Slf _ b -> Ctor "Slf" [bind b]
@@ -65,7 +65,7 @@ termToMeta t = go t
       New e -> MCtor [go e]
       Use e -> MCtor [go e]
       Ann v t -> MCtor [go v, go t]
-      Let _ n _ t x b -> MCtor [leaf, leaf, go t, bind n x, bind n b]
+      Let r n _ t x b -> MCtor [leaf, leaf, go t, if r then bind n x else go x, bind n b]
       All n _ t b -> MCtor [leaf, go t, bind n b]
       Slf n b -> MCtor [bind n b]
       Typ -> MCtor []
@@ -89,7 +89,7 @@ defToDagDef def@(Def title doc _ _) = runIdentity $ do
 data DagError
   = FreeVariable [Name] DagAST DagMeta Int
   | NoDeserial [Name] DagAST DagMeta DeserialiseFailure
-  | LetNameMismatch [Name] DagAST DagMeta Name
+  | MalformedLet [Name] DagAST DagMeta
   | UnexpectedASTMeta [Name] DagAST DagMeta DagAST DagMeta
   deriving (Eq)
 
@@ -121,10 +121,9 @@ instance Show DagError where
           "\nDagMeta: ",
           show meta
         ]
-    LetNameMismatch ctx ast meta n ->
+    MalformedLet ctx ast meta ->
       concat
-        [ "DagError: Name mismatch in Let constructor ",
-          show n,
+        [ "DagError: Malformed Let constructor ",
           "\ncontext: ",
           show ctx,
           "\nDagAST: ",
@@ -162,14 +161,23 @@ dagToTerm ns ast meta = case (ast, meta) of
   (Ctor "Slf" [Bind b], MCtor [MBind n m]) -> Slf n <$> go (n : ns) b m
   (Ctor "All" [Data u, t, Bind b], MCtor [MLeaf, tm, MBind n bm]) -> do
     All n <$> deserial @Uses u <*> go ns t tm <*> go (n : ns) b bm
-  ( Ctor "Let" [Data r, Data u, t, Bind x, Bind b],
-    MCtor [MLeaf, MLeaf, tm, MBind n xm, MBind n' bm]
+  ( Ctor "Let" [Data r, Data u, t, exp, Bind b],
+    MCtor [MLeaf, MLeaf, tm, mexp, MBind n' bm]
     ) -> do
-      when (n /= n') (throwError $ LetNameMismatch ns ast meta n)
-      Let <$> deserial @Bool r <*> pure n <*> deserial @Uses u
-        <*> go ns t tm
-        <*> go (n : ns) x xm
-        <*> go (n : ns) b bm
+      rec <- deserial @Bool r
+      case (rec, exp, mexp) of
+        (True, Bind x, MBind n xm) -> do
+          when (n /= n') (throwError $ MalformedLet ns ast meta)
+          Let True n' <$> deserial @Uses u
+            <*> go ns t tm
+            <*> go (n' : ns) x xm
+            <*> go (n' : ns) b bm
+        (False, x, xm) ->
+          Let False n' <$> deserial @Uses u
+            <*> go ns t tm
+            <*> go ns x xm
+            <*> go (n' : ns) b bm
+        _ -> throwError $ MalformedLet ns ast meta
   (Ctor "Var" [Vari i], MCtor [MLeaf]) ->
     case findByInt i ns of
       Just n -> return $ Var n i

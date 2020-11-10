@@ -15,12 +15,9 @@ import Codec.Serialise
 import Control.Monad.Catch
 import Control.Monad.Except
 import Control.Monad.RWS.Lazy hiding (All)
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
-import Data.Char
 import Data.IORef
 import Data.IPLD.CID
-import Data.IPLD.DagAST
 import Data.IPLD.DagPackage
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -29,17 +26,14 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Debug.Trace
 import Path
 import Path.IO
 import System.Exit
 import Text.Megaparsec hiding (State)
 import Text.Megaparsec.Char hiding (space)
-import qualified Text.Megaparsec.Char.Lexer as L
 import Yatima.IPLD
 import Yatima.Parse.Parser hiding (parseDefault)
 import Yatima.Parse.Term
-import Yatima.Print
 import Yatima.Term
 
 data PackageError
@@ -174,7 +168,7 @@ makePath n = liftIO go >>= \e -> either customIOFailure pure e
     go :: IO (Either PackageError (Path Rel File))
     go = do
       let filepath = (T.unpack $ (T.intercalate "/" $ T.splitOn "." n) <> ".ya")
-      catch @IO @PathException (Right <$> parseRelFile filepath) $ \e ->
+      catch @IO @PathException (Right <$> parseRelFile filepath) $ \_ ->
         pure (Left $ InvalidLocalImport n)
 
 -- | with <package-name> [as <alias] [(<import1>,<import2>)] [from <cid>]
@@ -200,7 +194,6 @@ pImport env = label "an import" $ do
           unless exists (customIOFailure $ InvalidLocalImport name)
           liftIO $ pFile env path
         Just cid -> do
-          root <- _root <$> (liftIO $ readIORef env)
           p <- pCacheGet @DagPackage cid
           return (cid, p)
       unless
@@ -216,7 +209,7 @@ pImport env = label "an import" $ do
 --  return (nam,cid, M.mapKeys (T.append pre) (_index p))
 
 pImports :: IORef PackageEnv -> Imports -> Index -> ParserIO (Imports, Index)
-pImports env imp@(Imports is) ind@(Index ns) = next <|> (return (imp, ind))
+pImports env imp@(Imports is) ind = next <|> (return (imp, ind))
   where
     next = do
       (nam, ali, ds, cid, p) <- pImport env <* space
@@ -229,17 +222,16 @@ pImports env imp@(Imports is) ind@(Index ns) = next <|> (return (imp, ind))
         Right index -> do
           pImports env (Imports $ is ++ [(cid, ali)]) index
 
-pPackage :: IORef PackageEnv -> Text -> FilePath -> ParserIO (CID, DagSource, DagPackage)
-pPackage env src file = do
+pPackage :: IORef PackageEnv -> Text -> ParserIO (CID, DagSource, DagPackage)
+pPackage env src = do
   space
   doc <- maybe "" id <$> (optional $ pDoc)
   title <- maybe "" id <$> (optional $ symbol "package" >> pPackageName)
   let source = DagSource title src
   space
-  (imports, index@(Index ns)) <- pImports env emptyImports emptyIndex
+  (imports, Index ns) <- pImports env emptyImports emptyIndex
   when (title /= "") (void $ symbol "where")
   defs <- local (\e -> e {_refs = ns}) pDefs
-  root <- _root <$> (liftIO $ readIORef env)
   let (Right index) = mergeIndex (Index ns) (Index $ M.fromList defs)
   let pack = DagPackage title doc (makeCid source) imports index
   packCid <- liftIO $ cachePut pack
@@ -253,7 +245,7 @@ pFile env relPath = do
   let file = toFilePath absPath
   modifyIORef' env (\e -> e {_openFiles = Set.insert relPath (_openFiles e)})
   txt <- TIO.readFile file
-  (cid, src, pack) <- parseIO (pPackage env txt file) defaultParseEnv file txt
+  (cid, src, pack) <- parseIO (pPackage env txt) defaultParseEnv file txt
   cachePut src
   modifyIORef' env (\e -> e {_openFiles = Set.delete relPath (_openFiles e)})
   modifyIORef' env (\e -> e {_doneFiles = M.insert relPath cid (_doneFiles e)})
@@ -276,7 +268,7 @@ pDef :: (Ord e, Monad m) => Parser e m (Name, Def)
 pDef = label "a definition" $ do
   doc <- pDoc
   symbol "def"
-  (nam, exp, typ) <- pDecl False
+  (nam, exp, typ) <- pDecl True False
   return $ (nam, Def nam doc exp typ)
 
 -- | Parse a sequence of definitions, e.g. in a file
@@ -284,7 +276,6 @@ pDefs :: ParserIO [(Name, (CID, CID))]
 pDefs = (space >> next) <|> (space >> eof >> (return []))
   where
     next = do
-      rs <- asks _refs
       (n, d) <- pDef
       cids <- liftIO $ cachePutDef d
       ds <- local (\e -> e {_refs = M.insert n cids (_refs e)}) pDefs

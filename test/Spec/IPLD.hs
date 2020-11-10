@@ -11,6 +11,7 @@ import Data.IPLD.CID
 import Data.IPLD.DagAST
 import Data.IPLD.DagJSON
 import Data.IPLD.DagPackage
+import Debug.Trace
 import Spec.Instances ()
 import Test.Hspec
 import Test.QuickCheck
@@ -43,6 +44,7 @@ prop_separate_term_go :: Term -> Except DagError [Bool]
 prop_separate_term_go term = do
   let (termAST, termMeta) = (termToAST term, termToMeta term)
   term' <- dagToTerm [] termAST termMeta
+  traceM (show term')
   let (termAST', termMeta') = (termToAST term', termToMeta term')
   return [term == term', termAST == termAST', termMeta == termMeta']
 
@@ -54,6 +56,7 @@ prop_separate_def_go def = do
   let (termAST, termMeta, typeAST, typeMeta) = defToDag def
   def' <- dagToDef "test" (_doc def) "test" (termAST, termMeta) (typeAST, typeMeta)
   let (termAST', termMeta', typeAST', typeMeta') = defToDag def'
+  traceM (show def')
   return
     [ def == def',
       termAST == termAST',

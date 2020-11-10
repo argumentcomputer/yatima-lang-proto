@@ -134,7 +134,7 @@ spec = do
     ]
 
   parseDescribe
-    (pDecl False)
+    (pDecl True False)
     "Declarations"
     [ ("foo: Type = Type", Good ("foo", Typ, Typ)),
       ( "foo (A:Type) (B:Type) (x:A) (y:B) : A = x",

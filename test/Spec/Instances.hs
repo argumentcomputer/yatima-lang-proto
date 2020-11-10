@@ -157,10 +157,12 @@ term_gen ctx =
         )
       ),
       ( 25,
-        ( name_gen >>= \n ->
-            Let <$> arbitrary <*> pure n <*> arbitrary <*> term_gen ctx
-              <*> term_gen (n : ctx)
-              <*> term_gen (n : ctx)
+        ( do
+            nam <- name_gen
+            rec <- arbitrary
+            Let rec nam <$> arbitrary <*> term_gen ctx
+              <*> term_gen (if rec then (nam : ctx) else ctx)
+              <*> term_gen (nam : ctx)
         )
       )
     ]
