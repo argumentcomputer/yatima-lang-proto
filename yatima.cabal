@@ -77,7 +77,6 @@ library
     , http-types
     , ieee754
     , ipfs-api
-    , ipld-cid
     , megaparsec
     , memory
     , mtl

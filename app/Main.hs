@@ -25,10 +25,10 @@ data Command
   | Init
   | Repl
   | Put Text IPFSNode
-  | Get Text IPFSNode
+  | Get Text
   deriving (Show)
 
-data IPFSNode = LocalDaemon | Infura deriving (Show)
+data IPFSNode = LocalDaemon | Infura | Eternum deriving (Show)
 
 main :: IO ()
 main = do
@@ -94,16 +94,16 @@ pRepl = pure Repl
 
 nodeFlag :: Parser IPFSNode
 nodeFlag =
-  flag
-    LocalDaemon
-    Infura
-    (long "infura" <> help "sets the IPFS node as the infura.io server")
+  flag' Infura (long "infura" <> help "pin to the infura.io IPFS server")
+    <|> flag' Eternum (long "eternum" <> help "pin to the eternum.io IPFS server")
+    <|> flag' LocalDaemon (long "local" <> help "pin to the local IPFS daemon")
+    <|> pure LocalDaemon
 
 pPut :: Parser Command
 pPut = Put <$> argument str argPackage <*> nodeFlag
 
 pGet :: Parser Command
-pGet = Get <$> argument str argCid <*> nodeFlag
+pGet = Get <$> argument str argCid
 
 pShow :: Parser Command
 pShow = Show <$> argument str argCid
@@ -150,11 +150,14 @@ run c = case c of
       else do
         initYatimaProject dir
         putStrLn $ concat ["Initialized Yatima project at ", toFilePath dir]
-  Put txt _ -> do
+  Put txt node -> do
     let loadFile' x = (\(_, c, _) -> c) <$> loadFile (toFilePath x)
     cid <- either pure loadFile' =<< readArgPackageID txt
-    localPutPackageDeps cid
-  Get txt _ -> void $ localGetPackageDeps (cidFromText' txt)
+    case node of
+      LocalDaemon -> localPutPackage cid
+      Infura -> infuraPutPackage cid
+      Eternum -> eternumPutPackage cid
+  Get txt -> void $ localGetPackage (cidFromText' txt)
   Show txt -> void $ showCidJSON (cidFromText' txt)
   Repl -> do
     dir <- getCurrentDir

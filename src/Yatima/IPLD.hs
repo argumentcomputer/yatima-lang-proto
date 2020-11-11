@@ -203,8 +203,17 @@ dagToDef title doc n (termAST, termMeta) (typeAST, typeMeta) = do
 
 -- * Cache
 
+globalDir :: Path Abs Dir -> Path Abs Dir
+globalDir root = root </> [reldir|.yatima_global|]
+
 cacheDir :: Path Abs Dir -> Path Abs Dir
-cacheDir root = root </> [reldir|.yatima_global/cache|]
+cacheDir root = globalDir root </> [reldir|cache|]
+
+getYatimaGlobalDir :: IO (Path Abs Dir)
+getYatimaGlobalDir = do
+  homeDir <- getHomeDir
+  ensureDir (globalDir homeDir)
+  return (globalDir homeDir)
 
 getYatimaCacheDir :: IO (Path Abs Dir)
 getYatimaCacheDir = do

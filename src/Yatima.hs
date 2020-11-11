@@ -20,6 +20,7 @@ import Data.IPLD.DagJSON
 import Data.IPLD.DagPackage
 import qualified Data.Map as M
 import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.Text.Lazy as TL
@@ -126,74 +127,46 @@ localPutCid cid = do
     Right _ ->
       putStrLn $
         concat
-          ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX pinned ", msg]
+          ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX ", msg, " pinned to local daemon"]
 
-localPutPackageDeps :: Cid -> IO ()
-localPutPackageDeps cid = do
+localPutPackage :: Cid -> IO ()
+localPutPackage cid = do
   pack <- cacheGet @DagPackage cid
   localPutCid cid
   localPutCid (_sourceFile pack)
   traverse localPutCid (Set.toList $ packageIndexCids pack)
-  traverse localPutPackageDeps (Set.toList $ packageImportCids pack)
+  traverse localPutPackage (Set.toList $ packageImportCids pack)
   putStrLn $ concat ["Pinned package ", T.unpack (_packageTitle pack), " ", show cid, "to localhost"]
   return ()
 
 localGetCid :: Cid -> IO ()
 localGetCid cid = do
   hasCid <- cacheHas cid
+  let err x = putStrLn $ concat (["\ESC[31m\STX⚠ ", show cid, " \ESC[m\STX ", ". "] ++ x)
   if hasCid
     then do
       msg <- T.unpack . dagYatimaDescription <$> cacheGet @DagYatima cid
-      putStrLn $
-        concat
-          ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already cached ", msg]
+      putStrLn $ concat ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already cached ", msg]
       return ()
     else do
       bytes <- runLocalDagGetCid cid
       case eitherDecode' @DagJSON (BSL.fromStrict bytes) of
-        Left e ->
-          putStrLn $
-            concat
-              [ "\ESC[31m\STX⚠ ",
-                show cid,
-                "\ESC[m\STX ",
-                "JSON Parse Error: ",
-                show e
-              ]
+        Left e -> err ["JSON Parse Error: ", show e]
         Right v -> do
           let value = deserialise @DagYatima (serialise v)
           let cid' = makeCid value
-          when
-            (cid /= cid')
-            ( putStrLn $
-                concat
-                  [ "\ESC[31m\STX⚠ Cid",
-                    show cid,
-                    " \ESC[m\STX ",
-                    "Cid Mismatch with downloaded bytes: ",
-                    show cid'
-                  ]
-            )
-          cachePut @DagYatima value
+          when (cid /= cid') (err ["Cid Mismatch on download: ", show cid'])
           let msg = T.unpack $ dagYatimaDescription value
-          putStrLn $
-            concat
-              [ "\ESC[32m\STX📥 ",
-                show cid,
-                "\ESC[m\STX downloaded ",
-                msg
-              ]
+          putStrLn $ concat ["\ESC[32m\STX📥 ", show cid, "\ESC[m\STX ", msg, " downloaded from local daemon"]
 
-localGetPackageDeps :: Cid -> IO ()
-localGetPackageDeps cid = do
+localGetPackage :: Cid -> IO ()
+localGetPackage cid = do
   localGetCid cid
   pack <- cacheGet @DagPackage cid
   localGetCid (_sourceFile pack)
   traverse localGetCid (Set.toList $ packageIndexCids pack)
-  traverse localGetPackageDeps (Set.toList $ packageImportCids pack)
-  putStrLn $
-    concat
-      ["Downloaded package ", T.unpack (_packageTitle pack), " from localhost"]
+  traverse localGetPackage (Set.toList $ packageImportCids pack)
+  putStrLn $ concat ["Downloaded package ", T.unpack (_packageTitle pack), " from local daemon"]
   return ()
 
 showCidJSON :: Cid -> IO ()
@@ -206,15 +179,7 @@ cidDagJSON :: Cid -> IO DagJSON
 cidDagJSON cid = do
   bs <- cacheGetBytes cid
   case (deserialiseOrFail @DagJSON bs) of
-    Left e ->
-      fail $
-        concat
-          [ "\ESC[31m\STX⚠ ",
-            show cid,
-            "\ESC[m\STX ",
-            "Deserialise Error: ",
-            show e
-          ]
+    Left e -> fail $ concat ["\ESC[31m\STX⚠ ", show cid, "\ESC[m\STX ", "Deserialise Error: ", show e]
     Right v -> return v
 
 infuraPutCid :: Cid -> IO ()
@@ -228,66 +193,44 @@ infuraPutCid cid = do
     Right (DagObject xs) -> do
       case HM.lookup "Cid" xs of
         Just (DagLink cid') -> do
-          unless
-            (cid == cid')
-            (err ["Cid Mismatch: received ", show cid', " instead of ", show cid])
+          unless (cid == cid') (err ["Cid Mismatch: received ", show cid', " instead of ", show cid])
           putStrLn $ concat ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX pinned ", msg]
         v -> err [" received\n", show resp, ". Expected a Cid object, got ", show v]
     Right v -> err [" received\n", show resp, ". Expected a Cid object, got ", show v]
 
-infuraPutPackageDeps :: Cid -> IO ()
-infuraPutPackageDeps cid = do
+infuraPutPackage :: Cid -> IO ()
+infuraPutPackage cid = do
   pack <- cacheGet @DagPackage cid
   infuraPutCid cid
   infuraPutCid (_sourceFile pack)
   traverse infuraPutCid (Set.toList $ packageIndexCids pack)
-  traverse infuraPutPackageDeps (Set.toList $ packageImportCids pack)
+  traverse infuraPutPackage (Set.toList $ packageImportCids pack)
   putStrLn $ concat ["Pinned package ", T.unpack (_packageTitle pack), " ", show cid, "to infura.io"]
   return ()
 
---infuraGetCid :: Cid -> IO ()
---infuraGetCid cid = do
---  hasCid <- cacheHas cid
---  if hasCid
---  then do
---    msg  <- T.unpack . dagYatimaDescription <$> cacheGet @DagYatima cid
---    putStrLn $ concat
---      ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already cached ", msg]
---    return ()
---  else do
---    resp <- runInfuraDagGetCid cid
---    let err x = putStrLn $ concat (["\ESC[31m\STX⚠ ",show cid," \ESC[m\STX "] ++ x)
---    unless (statusCode (responseStatus resp) == 200) (err [show resp])
---    case Aeson.eitherDecode @DagJSON (responseBody resp) of
---      Left e -> err [" received ", show resp , " but decoding errored with ", show e]
---      Right v@(DagObject xs) -> do
---        case HM.lookup "data" xs of
---          Just (DagText txt) -> do
---            let value = deserialise @DagYatima (serialise v)
---            let cid'    = makeCid value
---            when (cid /= cid')
---              (putStrLn $ concat ["\ESC[31m\STX⚠ Cid",show cid," \ESC[m\STX "
---              , "Cid Mismatch with downloaded bytes: ", show cid'
---              ])
---            putStrLn $ concat
---              ["\ESC[32m\STX📥 ", show cid, "\ESC[m\STX downloaded "
---              , msg
---              ]
---          v -> err [" received\n", show resp, ". Expected a Cid object, got ", show v]
---      Right v -> err [" received\n", show resp , ". Expected a Cid object, got ", show v]
---
---infuraGetPackageDeps :: Cid -> IO ()
---infuraGetPackageDeps cid = do
---  infuraGetCid cid
---  pack <- cacheGet @DagPackage cid
---  infuraGetCid (_sourceFile pack)
---  putStrLn $ concat
---    ["Downloaded package ", T.unpack (_packageTitle pack), " from infurahost"]
---  traverse infuraGetCid (Set.toList $ packageIndexCids pack)
---  --traverse infuraGetPackageDeps (Set.toList $ packageImportCids pack)
---  putStrLn $ concat
---    ["Downloaded dependencies for package ", T.unpack (_packageTitle pack), " from infurahost"]
---  return ()
+eternumPutCid :: Cid -> IO ()
+eternumPutCid cid = do
+  msg <- T.unpack . dagYatimaDescription <$> cacheGet @DagYatima cid
+  let err x = putStrLn $ concat (["\ESC[31m\STX⚠ ", show cid, " \ESC[m\STX ", msg, " "] ++ x)
+  localPutCid cid
+  dir <- getYatimaGlobalDir
+  resp <- runEternumPinHash (dir </> [relfile|eternum|]) cid
+  case (statusCode (responseStatus resp)) of
+    400 -> err [show $ responseBody resp]
+    201 -> do
+      putStrLn $ concat ["\ESC[32m\STX📤 ", show cid, "\ESC[m\STX ", msg, " pinned to eternum.io"]
+      return ()
+    _ -> err [show resp]
+
+eternumPutPackage :: Cid -> IO ()
+eternumPutPackage cid = do
+  pack <- cacheGet @DagPackage cid
+  eternumPutCid cid
+  eternumPutCid (_sourceFile pack)
+  traverse eternumPutCid (Set.toList $ packageIndexCids pack)
+  traverse eternumPutPackage (Set.toList $ packageImportCids pack)
+  putStrLn $ concat ["Pinned package ", T.unpack (_packageTitle pack), " ", show cid, "to eternum.io"]
+  return ()
 
 --compileFile :: FilePath -> IO ()
 --compileFile file = do

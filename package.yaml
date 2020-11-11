@@ -59,7 +59,6 @@ library:
     - multibase
     - cryptonite
     - multihash-cryptonite
-    - ipld-cid
     - cborg
     - vector
     - scientific
