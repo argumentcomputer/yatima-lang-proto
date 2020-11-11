@@ -156,6 +156,7 @@ localGetCid cid = do
           let value = deserialise @DagYatima (serialise v)
           let cid' = makeCid value
           when (cid /= cid') (err ["Cid Mismatch on download: ", show cid'])
+          cachePut @DagYatima value
           let msg = T.unpack $ dagYatimaDescription value
           putStrLn $ concat ["\ESC[32m\STX📥 ", show cid, "\ESC[m\STX ", msg, " downloaded from local daemon"]
 
