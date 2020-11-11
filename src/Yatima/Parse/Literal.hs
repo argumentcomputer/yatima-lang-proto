@@ -25,7 +25,7 @@ import           Yatima.Parse.Integer
 pLiteral :: (Ord e, Monad m) => Parser e m Literal
 pLiteral = label "a literal" $ choice
   [ string "#world"     >> return VWorld
-  , string "#exception " >> pString >>= (\s -> return $ VException s)
+  , string "#exception" >> return VException
   , pBits
   , try $ VNatural <$> pNatural
   , try $ pFloat

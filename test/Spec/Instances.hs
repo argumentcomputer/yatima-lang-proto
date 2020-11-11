@@ -111,7 +111,7 @@ literal_gen = oneof
   , VI32 <$> arbitrary
   , VF64 <$> arbitrary
   , VF32 <$> arbitrary
-  , VException <$> arbitrary
+  , return VException
   ]
 
 literalType_gen :: Gen LitType

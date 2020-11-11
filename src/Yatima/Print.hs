@@ -111,7 +111,7 @@ prettyLiteral t = case t of
 
   VString  x     -> (T.pack $ show x)
   VChar    x     -> T.pack $ show x
-  VException s   -> "#exception " <> s
+  VException     -> "#exception"
 
 roll :: [Word8] -> Integer
 roll bs = foldr (\ b a -> a `shiftL` 8 .|. fromIntegral b) 0 bs
