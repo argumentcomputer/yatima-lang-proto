@@ -171,6 +171,17 @@ data PrimOp
   | -- Char
     Char_chr
   | Char_ord
+  | -- Conversion primitives
+    Char_to_U8
+  | Char_from_U8
+  | I32_to_U32
+  | I32_from_U32
+  | F32_to_U32
+  | F32_from_U32
+  | I64_to_U64
+  | I64_from_U64
+  | F64_to_U64
+  | F64_from_U64
   deriving (Eq, Ord, Show, Enum, Bounded, Data)
 
 encodePrimOp :: PrimOp -> Encoding
@@ -338,3 +349,13 @@ primOpName p = case p of
   String_concat -> "String_concat"
   Char_chr -> "Char_chr"
   Char_ord -> "Char_ord"
+  Char_to_U8 -> "Char_to_U8"
+  Char_from_U8 -> "Char_from_U8"
+  I32_to_U32 -> "I32_to_U32"
+  I32_from_U32 -> "I32_from_U32"
+  F32_to_U32 -> "F32_to_U32"
+  F32_from_U32 -> "F32_from_U32"
+  I64_to_U64 -> "I64_to_U64"
+  I64_from_U64 -> "I64_from_U64"
+  F64_to_U64 -> "F64_to_U64"
+  F64_from_U64 -> "F64_from_U64"

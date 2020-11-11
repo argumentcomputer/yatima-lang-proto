@@ -92,15 +92,15 @@ literal_gen =
       VNatural <$> arbitrarySizedNatural,
       do
         len <- choose (1, 64) :: Gen Int
-        val <- BS.pack <$> vectorOf len arbitrary
-        return $ VBitVector (fromIntegral len * 8) val,
+        val <- choose (0, 2 ^ len) :: Gen Int
+        return $ VBitVector (fromIntegral len) (fromIntegral val),
       VString <$> arbitrary,
       VChar <$> arbitrary,
       VI64 <$> arbitrary,
       VI32 <$> arbitrary,
       VF64 <$> arbitrary,
       VF32 <$> arbitrary,
-      return VException
+      VException <$> arbitrary
     ]
 
 literalType_gen :: Gen LitType

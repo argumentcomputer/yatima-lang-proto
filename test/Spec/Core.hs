@@ -73,7 +73,7 @@ eval_spec = do
     it "" $ whnf [yatima| #I32_add 1i32 -1i32|] `shouldBe` [yatima| 0i32 |]
     it "" $ whnf [yatima| #I32_sub 1u32 1u32|] `shouldBe` [yatima| 0i32 |]
     it "" $ whnf [yatima| #I32_sub 1i32 -1i32|] `shouldBe` [yatima| 2i32 |]
-    it "" $ whnf [yatima| #I32_div_s 1i32 0i32|] `shouldBe` [yatima| #exception |]
+    it "" $ whnf [yatima| #I32_div_s 1i32 0i32|] `shouldBe` [yatima| #exception "Cannot divide by zero" |]
     it "" $ whnf [yatima| #I32_and 0b1111u32 0b1111u32|] `shouldBe` [yatima| 0b1111u32 |]
     it "" $ whnf [yatima| #I32_xor 0b1111u32 0b1111u32|] `shouldBe` [yatima| 0b0000u32 |]
     it "" $ whnf [yatima| #I32_shl 0b1u32 3u32 |] `shouldBe` [yatima| 0b1000u32 |]

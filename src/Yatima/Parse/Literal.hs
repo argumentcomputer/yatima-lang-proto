@@ -4,7 +4,7 @@ import Control.Monad
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Char (chr, digitToInt, isHexDigit, ord)
+import Data.Char (chr, digitToInt, isDigit, isHexDigit, isOctDigit, ord)
 import Data.IPLD.Cid
 import Data.Int
 import Data.List (foldl')
@@ -24,7 +24,7 @@ pLiteral =
   label "a literal" $
     choice
       [ string "#world" >> return VWorld,
-        string "#exception" >> return VException,
+        string "#exception " >> pString >>= (\s -> return $ VException s),
         pBits,
         try $ VNatural <$> pNatural,
         try $ pFloat,
@@ -112,24 +112,46 @@ pFloat =
       try $ VF32 <$> (L.signed (pure ()) L.float <* string "f32")
     ]
 
+data Base = Bin | Oct | Dec | Hex deriving (Eq, Enum, Show)
+
 pBits :: (Ord e, Monad m) => Parser e m Literal
 pBits = do
   string "#"
-  (bitsPer, ds) <-
+  len <- (Just <$> decimal) <|> return Nothing
+  base <-
     choice
-      [ (4,) <$> (string "x" >> many (satisfy (\x -> isHexDigit x || x == '_'))),
-        (1,) <$> (string "b" >> many (satisfy (\x -> isBinDigit x || x == '_')))
+      [ string "x" >> return Hex,
+        string "o" >> return Oct,
+        string "b" >> return Bin,
+        string "d" >> return Dec
       ]
-  let bits = fromIntegral $ length ds * bitsPer
-  let words = mkWords bitsPer (digitToInt <$> (filter (/= '_') ds))
-  return $ VBitVector bits (BS.pack words)
+  ds <- removeSep <$> many (satisfy (\x -> isBaseDigit base x || x == '_'))
+  let len' = fromIntegral <$> (length ds *) <$> baseBitSize base
+  case len <|> len' of
+    Just len -> do
+      let bs = mkNum base ds
+      when (bs >= 2 ^ len) (customFailure $ BitVectorOverflow bs len)
+      return $ VBitVector len bs
+    Nothing -> customFailure BaseNeedsLength
   where
-    mkWords _ [] = []
-    mkWords b cs =
-      let (xs, rs) = splitAt (8 `div` b) cs
-       in (fromIntegral $ foldl' (step b) 0 xs) : mkWords b rs
-    step b a c = a * 2 ^ b + c
-    isBinDigit x = x == '0' || x == '1'
+    removeSep :: [Char] -> [Natural]
+    removeSep ds = toEnum <$> digitToInt <$> (filter (/= '_') ds)
+    isBaseDigit base = case base of
+      Hex -> isHexDigit
+      Dec -> isDigit
+      Oct -> isOctDigit
+      Bin -> \x -> x == '0' || x == '1'
+    baseBitSize base = case base of
+      Hex -> Just 4
+      Dec -> Nothing
+      Oct -> Just 3
+      Bin -> Just 1
+    baseExponent base = case base of
+      Hex -> 16
+      Dec -> 10
+      Oct -> 8
+      Bin -> 2
+    mkNum base ds = foldl' (\acc d -> acc * (baseExponent base) + d) 0 ds
 
 pOpr :: (Ord e, Monad m) => Parser e m PrimOp
 pOpr = label "a primitive operation" $ choice $ mkParse <$> [minBound .. maxBound]

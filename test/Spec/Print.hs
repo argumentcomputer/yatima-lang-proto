@@ -32,7 +32,7 @@ fromRight (Right x) = x
 fromRight (Left _) = error "fromRight"
 
 term :: Term
-term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit VException)
+term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit $ VException "")
 
 refId =
   let d = cidFromText "bafy2bzaceb7tzcelrtfuo4zl375mtm7dqwmvv7a4amlpziwbm7k3hr4bp3lfc"

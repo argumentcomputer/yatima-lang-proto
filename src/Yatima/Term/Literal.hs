@@ -8,7 +8,6 @@ import Codec.Serialise
 import Codec.Serialise.Decoding
 import Codec.Serialise.Encoding
 import Control.Monad
-import Data.ByteString (ByteString)
 import Data.ByteString.Base64
 import qualified Data.ByteString.Lazy as BSL
 import Data.Data
@@ -24,10 +23,10 @@ data Literal
   | VF32 Float
   | VI64 Word64
   | VI32 Word32
-  | VBitVector Natural ByteString
+  | VBitVector Natural Natural
   | VString Text
   | VChar Char
-  | VException
+  | VException Text
   deriving (Eq, Show, Data)
 
 data LitType
@@ -56,11 +55,10 @@ encodeLiteral t = case t of
   VI64 x -> encodeListLen 3 <> ctor <> tag 4 <> encode x
   VI32 x -> encodeListLen 3 <> ctor <> tag 5 <> encode x
   VBitVector n x ->
-    encodeListLen 4 <> ctor <> tag 6 <> encode n
-      <> encodeString (serialiseBase64 x)
+    encodeListLen 4 <> ctor <> tag 6 <> encode n <> encode x
   VString x -> encodeListLen 3 <> ctor <> tag 7 <> encode x
   VChar x -> encodeListLen 3 <> ctor <> tag 8 <> encode x
-  VException -> encodeListLen 2 <> ctor <> tag 9
+  VException s -> encodeListLen 3 <> ctor <> tag 9 <> encode s
   where
     serialiseBase64 :: forall a. Serialise a => a -> Text
     serialiseBase64 = encodeBase64 . BSL.toStrict . serialise @a
@@ -80,10 +78,10 @@ decodeLiteral = do
     (3, 3) -> (VF32 . deserialiseBase64) <$> decodeString
     (3, 4) -> VI64 <$> decode
     (3, 5) -> VI32 <$> decode
-    (4, 6) -> VBitVector <$> decode <*> (deserialiseBase64 <$> decodeString)
+    (4, 6) -> VBitVector <$> decode <*> decode
     (3, 7) -> VString <$> decode
     (3, 8) -> VChar <$> decode
-    (2, 9) -> pure VException
+    (3, 9) -> VException <$> decode
     _ ->
       fail $
         concat

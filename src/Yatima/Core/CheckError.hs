@@ -22,6 +22,7 @@ data CheckError
   | NewNonSelfType PreContext Hoas Hoas Hoas
   | NonFunctionApplication Context Hoas Hoas Hoas
   | NonSelfUse Context Hoas Hoas Hoas
+  | UseOnNonInductiveType Context Hoas LitType
   | CustomErr PreContext Text
 
 ---- * Pretty Printing Errors
@@ -140,7 +141,7 @@ prettyError e = case e of
       ]
   NonSelfUse ctx trm typ typ' ->
     T.concat
-      [ "Tried to case on something that wasn't data: \n",
+      [ "Tried to case on something that isn't data: \n",
         "  Checked term: ",
         printHoas trm,
         "\n",
@@ -160,6 +161,18 @@ prettyError e = case e of
         "Name: ",
         T.pack $ show name,
         "\n"
+      ]
+  UseOnNonInductiveType ctx trm typ ->
+    T.concat
+      [ "Cannot case on non-inductive primitive type: \n",
+        "  Checked term: ",
+        printHoas trm,
+        "\n",
+        "  Against type: ",
+        printHoas $ LTyH typ,
+        "\n",
+        "With context:\n",
+        prettyCtx ctx
       ]
   CustomErr ctx txt ->
     T.concat

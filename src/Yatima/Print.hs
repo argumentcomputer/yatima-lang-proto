@@ -105,11 +105,11 @@ prettyLiteral t = case t of
   VI32 x -> (T.pack $ show x) <> "u32"
   VBitVector l x ->
     if l `mod` 4 == 0
-      then "#x" <> (B16.encodeBase16 x)
-      else "#b" <> (bits l . roll . B.unpack) x
+      then "#x" <> (T.pack $ showIntAtBase 2 intToDigit x "")
+      else "#b" <> (T.pack $ showHex x "")
   VString x -> (T.pack $ show x)
   VChar x -> T.pack $ show x
-  VException -> "#exception"
+  VException s -> "#exception " <> s
 
 roll :: [Word8] -> Integer
 roll bs = foldr (\b a -> a `shiftL` 8 .|. fromIntegral b) 0 bs

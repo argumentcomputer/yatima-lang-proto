@@ -97,7 +97,7 @@ checkCid cid = do
 checkRef :: Defs -> (Name, (Cid, Cid)) -> IO ()
 checkRef defs (name, (cid, _)) = do
   let (trm, typ) = defToHoas name (defs M.! cid)
-  case runExcept $ Core.check defs Ctx.empty Once trm typ of
+  case runExcept $ Core.check defs Ctx.empty Once typ TypH of
     Left e ->
       putStrLn $
         T.unpack $
@@ -110,10 +110,23 @@ checkRef defs (name, (cid, _)) = do
               T.pack $ show e
             ]
     Right (_, t, _) ->
-      putStrLn $
-        T.unpack $
-          T.concat
-            ["\ESC[32m\STX✓\ESC[m\STX ", name, ": ", printHoas t]
+      case runExcept $ Core.check defs Ctx.empty Once trm typ of
+        Left e ->
+          putStrLn $
+            T.unpack $
+              T.concat
+                [ "\ESC[31m\STX✗\ESC[m\STX ",
+                  name,
+                  "\n",
+                  cidToText cid,
+                  "\n",
+                  T.pack $ show e
+                ]
+        Right (_, t, _) ->
+          putStrLn $
+            T.unpack $
+              T.concat
+                ["\ESC[32m\STX✓\ESC[m\STX ", name, ": ", printHoas t]
 
 localPutCid :: Cid -> IO ()
 localPutCid cid = do

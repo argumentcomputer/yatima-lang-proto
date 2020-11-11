@@ -8,6 +8,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
+import Numeric.Natural
 import Text.Megaparsec hiding (ParseError, State)
 import Text.Megaparsec.Char hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -88,6 +89,7 @@ data ParseError e
   | TopLevelRedefinition Name
   | ReservedKeyword Name
   | ReservedLeadingChar Char Name
+  | BitVectorOverflow Natural Natural
   | I64Overflow Integer
   | I32Overflow Integer
   | I64Underflow Integer
@@ -99,6 +101,7 @@ data ParseError e
   | InvalidCid Text Text
   | LeadingDigit Name
   | ParseEnvironmentError e
+  | BaseNeedsLength
   deriving (Eq, Ord, Show)
 
 instance ShowErrorComponent e => ShowErrorComponent (ParseError e) where
