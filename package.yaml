@@ -112,7 +112,6 @@ executables:
       - path
       - path-io
       - optparse-applicative
-      - ansi-terminal
     default-extensions:
       - OverloadedStrings
       - GADTSyntax

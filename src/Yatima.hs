@@ -16,6 +16,7 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.HashMap.Lazy as HM
 import Data.IORef
 import Data.IPLD.Cid
+import Data.IPLD.DagAST
 import Data.IPLD.DagJSON
 import Data.IPLD.DagPackage
 import qualified Data.Map as M
@@ -45,7 +46,13 @@ parseFilePath :: FilePath -> IO (Path Abs File)
 parseFilePath file =
   catch @IO @PathException (parseAbsFile file) $ \_ ->
     catch @IO @PathException (parseRelFile file >>= makeAbsolute) $ \_ ->
-      fail ("Invalid File name: " ++ file)
+      fail ("InvalidfFile name: " ++ file)
+
+parseDirPath :: FilePath -> IO (Path Abs Dir)
+parseDirPath dir =
+  catch @IO @PathException (parseAbsDir dir) $ \_ ->
+    catch @IO @PathException (parseRelDir dir >>= makeAbsolute) $ \_ ->
+      fail ("Invalid directory name: " ++ dir)
 
 loadFile :: FilePath -> IO (Path Abs Dir, Cid, DagPackage)
 loadFile file = do
@@ -149,7 +156,7 @@ localPutPackage cid = do
   localPutCid (_sourceFile pack)
   traverse localPutCid (Set.toList $ packageIndexCids pack)
   traverse localPutPackage (Set.toList $ packageImportCids pack)
-  putStrLn $ concat ["Pinned package ", T.unpack (_packageTitle pack), " ", show cid, "to localhost"]
+  putStrLn $ concat ["package ", T.unpack (_packageTitle pack), " pinned to localhost with Cid:  ", show cid]
   return ()
 
 localGetCid :: Cid -> IO ()
@@ -173,15 +180,23 @@ localGetCid cid = do
           let msg = T.unpack $ dagYatimaDescription value
           putStrLn $ concat ["\ESC[32m\STX📥 ", show cid, "\ESC[m\STX ", msg, " downloaded from local daemon"]
 
-localGetPackage :: Cid -> IO ()
-localGetPackage cid = do
-  localGetCid cid
-  pack <- cacheGet @DagPackage cid
+localGetPackage :: DagPackage -> IO ()
+localGetPackage pack = do
   localGetCid (_sourceFile pack)
   traverse localGetCid (Set.toList $ packageIndexCids pack)
-  traverse localGetPackage (Set.toList $ packageImportCids pack)
+  traverse localGet (Set.toList $ packageImportCids pack)
   putStrLn $ concat ["Downloaded package ", T.unpack (_packageTitle pack), " from local daemon"]
   return ()
+
+localGet :: Cid -> IO ()
+localGet cid = do
+  localGetCid cid
+  yati <- cacheGet @DagYatima cid
+  case yati of
+    YatimaPackage p -> localGetPackage p
+    YatimaDef d -> localGetCid (_termAST d)
+    YatimaSource _ -> return ()
+    YatimaAST _ -> return ()
 
 showCidJSON :: Cid -> IO ()
 showCidJSON cid = do
@@ -245,6 +260,21 @@ eternumPutPackage cid = do
   traverse eternumPutPackage (Set.toList $ packageImportCids pack)
   putStrLn $ concat ["Pinned package ", T.unpack (_packageTitle pack), " ", show cid, "to eternum.io"]
   return ()
+
+clonePackage :: Path Abs Dir -> Cid -> IO ()
+clonePackage dir cid = do
+  localGetCid cid
+  yati <- cacheGet @DagYatima cid
+  case yati of
+    YatimaPackage p -> do
+      localGetCid (_sourceFile p)
+      (DagSource title txt) <- cacheGet @DagSource (_sourceFile p)
+      file <- parseRelFile (T.unpack title)
+      path <- addExtension ".ya" (dir </> file)
+      T.writeFile (toFilePath $ path) txt
+      traverse (clonePackage dir) (Set.toList $ packageImportCids p)
+      return ()
+    _ -> putStrLn $ concat ["Cid ", show cid, " does not point to a package"]
 
 --compileFile :: FilePath -> IO ()
 --compileFile file = do
@@ -325,13 +355,3 @@ check defs term typ_ =
        in case runExcept (Core.check defs Ctx.empty Once hTerm hType) of
             Left err -> Left err
             Right (_, ty, _) -> Right (hoasToTerm 0 ty)
-
---prettyInfer :: Defs -> Term -> Text
---prettyInfer defs term = case infer defs term of
---  Left err -> prettyError err
---  Right ty -> prettyTerm ty
---
---prettyCheck :: Defs -> Term -> Term -> Text
---prettyCheck defs term typ_ = case check defs term typ_ of
---  Left err -> prettyError err
---  Right ty -> prettyTerm ty

@@ -26,6 +26,7 @@ data Command
   | Repl
   | Put Text IPFSNode
   | Get Text
+  | Clone Text Text
   deriving (Show)
 
 data IPFSNode = LocalDaemon | Infura | Eternum deriving (Show)
@@ -58,9 +59,8 @@ pCommand =
             command "repl" (info pRepl (progDesc "Start the REPL")),
             command "put" (info pPut (progDesc "Put a package into the IPLD graph")),
             command "get" (info pGet (progDesc "Get a package from the IPLD graph")),
-            command "show" (info pShow (progDesc "Show a Yatima IPLD object"))
-            -- , command "remote" (info pRemote (progDesc "Pull a package from IPFS"))
-            -- , command "clone" (info pClone (progDesc "Clone a package's source files"))
+            command "show" (info pShow (progDesc "Show a Yatima IPLD object")),
+            command "clone" (info pClone (progDesc "Clone a package's source files"))
           ]
 
 cacheCompleter :: Completer
@@ -74,6 +74,9 @@ getCacheCids = do
 
 pCheck :: Parser Command
 pCheck = Check <$> argument str argPackage
+
+pClone :: Parser Command
+pClone = Clone <$> argument str (metavar "EMPTY_DIR") <*> argument str argCid
 
 argPackage :: Mod ArgumentFields Text
 argPackage = (metavar "PACKAGE" <> completer cacheCompleter <> action "file")
@@ -142,6 +145,17 @@ run c = case c of
     case argPackageID of
       Left cid -> normCid nam cid >>= print
       Right path -> normFile nam (toFilePath path) >>= print
+  Clone dir cid -> do
+    case cidFromText cid of
+      Left e -> putStrLn $ concat ["Invalid cid ", show cid, " with error: ", show e]
+      Right cid -> do
+        dir <- parseDirPath (T.unpack dir)
+        exists <- doesDirExist dir
+        when exists (putStrLn $ concat ["Can't clone, directory ", toFilePath dir, " already exists"])
+        ensureDir dir
+        initYatimaProject dir
+        putStrLn $ concat ["Cloning Yatima project to ", toFilePath dir]
+        clonePackage dir cid
   Init -> do
     dir <- getCurrentDir
     exists <- doesDirExist (dir </> [reldir|.yatima|])
@@ -157,7 +171,7 @@ run c = case c of
       LocalDaemon -> localPutPackage cid
       Infura -> infuraPutPackage cid
       Eternum -> eternumPutPackage cid
-  Get txt -> void $ localGetPackage (cidFromText' txt)
+  Get txt -> void $ localGet (cidFromText' txt)
   Show txt -> void $ showCidJSON (cidFromText' txt)
   Repl -> do
     dir <- getCurrentDir

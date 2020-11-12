@@ -107,7 +107,7 @@ parseDefault p s = parseIO p defaultParseEnv "" s
 pPackageName :: (Ord e, Monad m) => Parser e m Text
 pPackageName = label "a package name" $ do
   n <- letterChar
-  ns <- many (alphaNumChar <|> oneOf ("-" :: [Char]))
+  ns <- many (alphaNumChar <|> oneOf ("." :: [Char]))
   let nam = T.pack (n : ns)
   return nam
 
