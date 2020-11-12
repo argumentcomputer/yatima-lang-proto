@@ -236,7 +236,7 @@ infer defs pre use term = case term of
       SlfH _ body -> do
         return (exprCtx, body expr, UseI exprIR Nothing)
       LTyH typ -> do
-        when (typ /= TNatural || typ /= TString) $
+        when (typ /= TNatural && typ /= TString) $
           throwError $ UseOnNonInductiveType exprCtx expr typ
         return (exprCtx, litInduction typ expr, UseI exprIR (Just typ))
       AppH (LTyH TBitVector) (LitH (VNatural n)) -> do
