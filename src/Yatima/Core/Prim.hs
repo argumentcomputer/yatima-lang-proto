@@ -15,16 +15,9 @@
 module Yatima.Core.Prim where
 
 import Data.Bits
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
 import Data.Char
-import Data.FileEmbed
-import Data.Int
-import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Word
 import Numeric.IEEE
-import qualified Yatima.Core.Ctx as Ctx
 import Yatima.Core.Hoas
 import Yatima.Core.Wasm
 import Yatima.QuasiQuoter
@@ -131,11 +124,11 @@ reduceOpr op args = apply rest $
         Natural_pred -> if a == 0 then LitH (VNatural 0) else LitH (VNatural $ a -1)
         Natural_to_I64 ->
           if a >= 2 ^ 64
-            then LitH $ VException "Natural number out of range of I64"
+            then termToHoas [] [yatima| #exception "Natural number out of range of I64"|]
             else LitH $ VI64 $ fromIntegral a
         Natural_to_I32 ->
           if a >= 2 ^ 32
-            then LitH $ VException "Natural number out of range of I32"
+            then termToHoas [] [yatima| #exception "Natural number out of range of I32"|]
             else LitH $ VI32 $ fromIntegral a
         Natural_from_I64 -> LitH $ VNatural $ fromIntegral a
         Natural_from_I32 -> LitH $ VNatural $ fromIntegral a
@@ -183,19 +176,19 @@ reduceOpr op args = apply rest $
         I64_reinterpret_F64 -> LitH (VI64 (doubleToWord a))
         I32_trunc_F64_s ->
           if (isNaN a || isInfinite a || a >= 2 ^ 63 || a < -2 ^ 63)
-            then LitH $ VException "F64 number out of range of I32"
+            then termToHoas [] [yatima| #exception "F64 number out of range of I32"|]
             else LitH (VI32 (u32 $ truncate a))
         I32_trunc_F64_u ->
           if (isNaN a || isInfinite a || a >= 2 ^ 64 || a <= -1)
-            then LitH $ VException "F64 number out of range of I32"
+            then termToHoas [] [yatima| #exception "F64 number out of range of I32"|]
             else LitH (VI32 (truncate a))
         I64_trunc_F64_s ->
           if (isNaN a || isInfinite a || a >= 2 ^ 63 || a < -2 ^ 63)
-            then LitH $ VException "F64 number out of range of I64"
+            then termToHoas [] [yatima| #exception "F64 number out of range of I64" |]
             else LitH (VI64 (u64 $ truncate a))
         I64_trunc_F64_u ->
           if (isNaN a || isInfinite a || a >= 2 ^ 64 || a <= -1)
-            then LitH $ VException "F64 number out of range of I64"
+            then termToHoas [] [yatima| #exception "F64 number out of range of I64"|]
             else LitH (VI64 (truncate a))
         F64_to_U64 -> LitH (VBitVector 64 (convert $ doubleToWord a))
         _ -> noredex
@@ -212,19 +205,19 @@ reduceOpr op args = apply rest $
         I32_reinterpret_F32 -> LitH (VI32 (floatToWord a))
         I32_trunc_F32_s ->
           if (isNaN a || isInfinite a || a >= 2 ^ 31 || a < -2 ^ 31)
-            then LitH $ VException "F32 number out of range of I32"
+            then termToHoas [] [yatima| #exception "F32 number out of range of I32"|]
             else LitH (VI32 (u32 $ truncate a))
         I32_trunc_F32_u ->
           if (isNaN a || isInfinite a || a >= 2 ^ 32 || a <= -1)
-            then LitH $ VException "F32 number out of range of I32"
+            then termToHoas [] [yatima| #exception "F32 number out of range of I32"|]
             else LitH (VI32 (truncate a))
         I64_trunc_F32_s ->
           if (isNaN a || isInfinite a || a >= 2 ^ 31 || a < -2 ^ 31)
-            then LitH $ VException "F32 number out of range of I64"
+            then termToHoas [] [yatima| #exception "F32 number out of range of I64"|]
             else LitH (VI64 (u64 $ truncate a))
         I64_trunc_F32_u ->
           if (isNaN a || isInfinite a || a >= 2 ^ 32 || a <= -1)
-            then LitH $ VException "F32 number out of range of I64"
+            then termToHoas [] [yatima| #exception "F32 number out of range of I64"|]
             else LitH (VI64 (truncate a))
         F32_to_U32 -> LitH (VBitVector 32 (convert $ floatToWord a))
         _ -> noredex
@@ -290,19 +283,19 @@ reduceOpr op args = apply rest $
         I64_mul -> LitH (VI64 (a * b))
         I64_div_s ->
           if (b == 0 || (a == 0x8000000000000000 && b == 0xFFFFFFFFFFFFFFFF))
-            then LitH (VException "Cannot divide by zero")
+            then termToHoas [] [yatima| #exception "Cannot divide by zero"|]
             else LitH (VI64 (u64 $ i64 a `quot` i64 b))
         I64_div_u ->
           if b == 0
-            then LitH (VException "Cannot divide by zero")
+            then termToHoas [] [yatima| #exception "Cannot divide by zero" |]
             else LitH (VI64 (a `quot` b))
         I64_rem_s ->
           if b == 0
-            then LitH (VException "Cannot take the remainder of zero")
+            then termToHoas [] [yatima| #exception "Cannot take the remainder of zero" |]
             else LitH (VI64 (u64 $ i64 a `rem` i64 b))
         I64_rem_u ->
           if b == 0
-            then LitH (VException "Cannot take the remainder of zero")
+            then termToHoas [] [yatima| #exception "Cannot take the remainder of zero" |]
             else LitH (VI64 (a `rem` b))
         I64_and -> LitH (VI64 (a .&. b))
         I64_or -> LitH (VI64 (a .|. b))
@@ -330,19 +323,19 @@ reduceOpr op args = apply rest $
         I32_mul -> LitH (VI32 (a * b))
         I32_div_s ->
           if (b == 0 || (a == 0x80000000 && b == 0xFFFFFFFF))
-            then LitH (VException "Cannot divide by zero")
+            then termToHoas [] [yatima| #exception "Cannot divide by zero" |]
             else LitH (VI32 (u32 $ i32 a `quot` i32 b))
         I32_div_u ->
           if b == 0
-            then LitH (VException "Cannot divide by zero")
+            then termToHoas [] [yatima| #exception "Cannot divide by zero" |]
             else LitH (VI32 (a `quot` b))
         I32_rem_s ->
           if b == 0
-            then LitH (VException "Cannot take the remainder of zero")
+            then termToHoas [] [yatima| #exception "Cannot take the remainder of zero" |]
             else LitH (VI32 (u32 $ i32 a `rem` i32 b))
         I32_rem_u ->
           if b == 0
-            then LitH (VException "Cannot take the remainder of zero")
+            then termToHoas [] [yatima| #exception "Cannot take the remainder of zero" |]
             else LitH (VI32 (a `rem` b))
         I32_and -> LitH (VI32 (a .&. b))
         I32_or -> LitH (VI32 (a .|. b))
@@ -422,7 +415,7 @@ expandLit t =
       Just (x, xs) ->
         let f = ([yatima| λ x xs P n c => c x xs|])
          in App (App f (Lit $ VChar x)) (Lit $ VString xs)
-    VBitVector 0 bs -> Just ([yatima| λ P be b0 b1 => be |])
+    VBitVector 0 _ -> Just ([yatima| λ P be b0 b1 => be |])
     VBitVector l bs ->
       let f =
             if bs .&. 1 == 1
@@ -472,10 +465,11 @@ typeOfLit t = case t of
   VBitVector l _ -> (AppH (LTyH TBitVector) (LitH (VNatural l)))
   VString _ -> LTyH TString
   VChar _ -> LTyH TChar
+  VException -> termToHoas [] [yatima| ∀ #String -> #Exception |]
 
 typeOfLTy :: LitType -> Hoas
 typeOfLTy t = case t of
-  TBitVector -> AllH "" Many (LTyH TNatural) (\x -> TypH)
+  TBitVector -> termToHoas [] [yatima| ∀ #Natural -> Type|]
   _ -> TypH
 
 typeOfOpr :: PrimOp -> Hoas

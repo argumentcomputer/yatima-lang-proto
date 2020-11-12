@@ -26,7 +26,7 @@ data Literal
   | VBitVector Natural Natural
   | VString Text
   | VChar Char
-  | VException Text
+  | VException
   deriving (Eq, Show, Data)
 
 data LitType
@@ -58,7 +58,7 @@ encodeLiteral t = case t of
     encodeListLen 4 <> ctor <> tag 6 <> encode n <> encode x
   VString x -> encodeListLen 3 <> ctor <> tag 7 <> encode x
   VChar x -> encodeListLen 3 <> ctor <> tag 8 <> encode x
-  VException s -> encodeListLen 3 <> ctor <> tag 9 <> encode s
+  VException -> encodeListLen 2 <> ctor <> tag 9
   where
     serialiseBase64 :: forall a. Serialise a => a -> Text
     serialiseBase64 = encodeBase64 . BSL.toStrict . serialise @a
@@ -81,7 +81,7 @@ decodeLiteral = do
     (4, 6) -> VBitVector <$> decode <*> decode
     (3, 7) -> VString <$> decode
     (3, 8) -> VChar <$> decode
-    (3, 9) -> VException <$> decode
+    (2, 9) -> pure VException
     _ ->
       fail $
         concat

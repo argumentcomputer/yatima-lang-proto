@@ -15,22 +15,15 @@ module Yatima.QuasiQuoter where
 
 import Control.Monad.Identity
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import Data.Generics.Aliases
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Typeable
 import Language.Haskell.TH hiding (Name)
-import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote
-import Language.Haskell.TH.Syntax hiding (Name)
-import qualified Language.Haskell.TH.Syntax as TH
 import Text.Megaparsec
-import Yatima.Parse
 import Yatima.Parse.Parser
 import Yatima.Parse.Term
-import Yatima.Term
 
 yatima :: QuasiQuoter
 yatima =
@@ -39,7 +32,8 @@ yatima =
       quotePat = undefined,
       quoteType = undefined,
       quoteDec = undefined
-    }
+    } ::
+    QuasiQuoter
 
 liftText :: T.Text -> Maybe ExpQ
 liftText txt = Just $ appE (varE 'T.pack) $ litE $ StringL (T.unpack txt)
@@ -50,11 +44,6 @@ liftByteString txt = Just $ appE (varE 'B8.pack) $ litE $ StringL (B8.unpack txt
 yatima' :: String -> Q Exp
 yatima' s = do
   file <- loc_filename <$> location
-  thExts <- extsEnabled
-  let wrapFromString e =
-        if OverloadedStrings `elem` thExts
-          then [|fromString $(e)|]
-          else e
   let env = defaultParseEnv
   let p = (space >> pExpr True)
   case runIdentity (parseM @() @Identity p env file (T.pack s)) of

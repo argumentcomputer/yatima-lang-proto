@@ -3,7 +3,9 @@
 
 module Spec.Print where
 
+import Data.Foldable (traverse_)
 import Data.IPLD.Cid
+import Spec.Instances
 import qualified Spec.Parse as ParseSpec
 import Test.Hspec
 import Test.QuickCheck
@@ -28,11 +30,19 @@ prop_print_term t = case ParseSpec.parse (pExpr False) (prettyTerm t) of
   ParseSpec.Good a -> a == t
   _ -> False
 
+sampleN :: Gen a -> Int -> IO [a]
+sampleN g max = generate (sequence [resize n g | n <- [0, 2 .. max]])
+
+runPrint max = do
+  ns <- sampleN bitVector_gen max
+  let f x = print x >> print (prop_print_literal x)
+  traverse_ f ns
+
 fromRight (Right x) = x
 fromRight (Left _) = error "fromRight"
 
 term :: Term
-term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit $ VException "")
+term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit VException)
 
 refId =
   let d = cidFromText "bafy2bzaceb7tzcelrtfuo4zl375mtm7dqwmvv7a4amlpziwbm7k3hr4bp3lfc"

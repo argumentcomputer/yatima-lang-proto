@@ -142,7 +142,7 @@ litToCode lit = case lit of
   VBitVector n bs -> error "TODO"
   VString t -> show' t
   VChar c -> "#\\" <> TB.singleton c
-  VException s -> "(throw-error " <> TB.fromText s <> ")"
+  VException -> "throw-error"
   VWorld -> error "Cannot compile a world value."
   where
     show' :: Show a => a -> TB.Builder

@@ -12,6 +12,7 @@ import qualified Data.Map as M
 import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as T
+import Debug.Trace
 import Test.QuickCheck
 import Test.QuickCheck.Gen ()
 import Test.QuickCheck.Instances.ByteString ()
@@ -90,18 +91,20 @@ literal_gen =
   oneof
     [ return VWorld,
       VNatural <$> arbitrarySizedNatural,
-      do
-        len <- choose (1, 64) :: Gen Int
-        val <- choose (0, 2 ^ len) :: Gen Int
-        return $ VBitVector (fromIntegral len) (fromIntegral val),
+      bitVector_gen,
       VString <$> arbitrary,
       VChar <$> arbitrary,
       VI64 <$> arbitrary,
       VI32 <$> arbitrary,
       VF64 <$> arbitrary,
       VF32 <$> arbitrary,
-      VException <$> arbitrary
+      return VException
     ]
+
+bitVector_gen = do
+  len <- choose (1, 64) :: Gen Int
+  val <- choose (1, 2 ^ len - 1) :: Gen Integer
+  return $ VBitVector (fromIntegral len) (fromIntegral val)
 
 literalType_gen :: Gen LitType
 literalType_gen =
