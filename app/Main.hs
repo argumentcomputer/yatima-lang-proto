@@ -153,6 +153,8 @@ run c = case c of
         exists <- doesDirExist dir
         when exists (putStrLn $ concat ["Can't clone, directory ", toFilePath dir, " already exists"])
         ensureDir dir
+        initYatimaProject dir
+        putStrLn $ concat ["Cloning Yatima project to ", toFilePath dir]
         clonePackage dir cid
   Init -> do
     dir <- getCurrentDir
