@@ -107,8 +107,7 @@ executable yatima
       app
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
   build-depends:
-      ansi-terminal
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , containers
     , haskeline
     , megaparsec
