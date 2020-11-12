@@ -1,21 +1,18 @@
 module Yatima.Parse.Parser where
 
-import           Control.Monad.RWS.Lazy     hiding (All, Typ)
-
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T
-import           Data.Set                   (Set)
-import qualified Data.Set                   as Set
-import           Data.Map                   (Map)
-import qualified Data.Map                   as M
-import           Data.IPLD.CID
-
-
-import           Text.Megaparsec            hiding (State, ParseError)
-import           Text.Megaparsec.Char       hiding (space)
+import Control.Monad.RWS.Lazy hiding (All, Typ)
+import Data.IPLD.Cid
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.Text (Text)
+import qualified Data.Text as T
+import Numeric.Natural
+import Text.Megaparsec hiding (ParseError, State)
+import Text.Megaparsec.Char hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
-
-import           Yatima.Term
+import Yatima.Term
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
@@ -31,15 +28,23 @@ import           Yatima.Term
 type Parser e m a =
   RWST ParseEnv ParseLog ParseState (ParsecT (ParseError e) Text m) a
 
-parseDefault :: (Ord e, Monad m) => Parser e m a -> Text
-             -> m (Either (ParseErrorBundle Text (ParseError e)) a)
+parseDefault ::
+  (Ord e, Monad m) =>
+  Parser e m a ->
+  Text ->
+  m (Either (ParseErrorBundle Text (ParseError e)) a)
 parseDefault p s = parseM p defaultParseEnv "" s
 
 -- | A utility for running a `Parser`, since the `RWST` monad wraps `ParsecT`
-parseM :: (Ord e, Monad m) => Parser e m a -> ParseEnv -> String -> Text
-       -> m (Either (ParseErrorBundle Text (ParseError e)) a)
+parseM ::
+  (Ord e, Monad m) =>
+  Parser e m a ->
+  ParseEnv ->
+  String ->
+  Text ->
+  m (Either (ParseErrorBundle Text (ParseError e)) a)
 parseM p env file txt =
-  (fmap (\(x,y,z) -> x)) <$> runParserT (runRWST p env ()) file txt
+  (fmap (\(x, y, z) -> x)) <$> runParserT (runRWST p env ()) file txt
 
 -- | Consume whitespace, while skipping comments. Yatima line comments begin
 -- with @--@, and block comments are bracketed by @{-@ and @-}@ symbols.
@@ -59,14 +64,14 @@ symbol' txt = L.symbol space' txt
 
 -- | Add a list of names to the binding context
 bind :: (Ord e, Monad m) => [Name] -> Parser e m a -> Parser e m a
-bind bs p = local (\e -> e { _context = (reverse bs) ++ (_context e) }) p
+bind bs p = local (\e -> e {_context = (reverse bs) ++ (_context e)}) p
 
 -- | The environment of a Parser
 data ParseEnv = ParseEnv
   { -- | The binding context for local variables
-    _context    :: [Name]
+    _context :: [Name],
     -- | The global context for references
-  , _refs       :: Map Name (CID,CID)
+    _refs :: Map Name (Cid, Cid)
   }
 
 -- | A stub for a future parser state
@@ -84,6 +89,7 @@ data ParseError e
   | TopLevelRedefinition Name
   | ReservedKeyword Name
   | ReservedLeadingChar Char Name
+  | BitVectorOverflow Natural Natural
   | I64Overflow Integer
   | I32Overflow Integer
   | I64Underflow Integer
@@ -92,30 +98,31 @@ data ParseError e
   | U32Overflow Integer
   | U64Underflow Integer
   | U32Underflow Integer
-  | InvalidCID Text Text
+  | InvalidCid Text Text
   | LeadingDigit Name
   | ParseEnvironmentError e
-  deriving (Eq, Ord,Show)
+  | BaseNeedsLength
+  deriving (Eq, Ord, Show)
 
 instance ShowErrorComponent e => ShowErrorComponent (ParseError e) where
   showErrorComponent e = case e of
-    UndefinedReference nam    -> "Undefined reference: " <> T.unpack nam
-    TopLevelRedefinition nam  -> "Illegal redefinition of " <> T.unpack nam
-    ReservedKeyword nam       -> "Reserved keyword: " <> T.unpack nam
-    LeadingDigit nam          ->
+    UndefinedReference nam -> "Undefined reference: " <> T.unpack nam
+    TopLevelRedefinition nam -> "Illegal redefinition of " <> T.unpack nam
+    ReservedKeyword nam -> "Reserved keyword: " <> T.unpack nam
+    LeadingDigit nam ->
       "Illegal leading digit in name: " <> T.unpack nam
     ReservedLeadingChar c nam ->
       "Illegal leading character " <> show c <> " in name: " <> T.unpack nam
-    I64Overflow  i            -> "Overflow: "  <> show i <> "i64"
-    I64Underflow i            -> "Underflow: " <> show i <> "i64"
-    I32Overflow  i            -> "Overflow: "  <> show i <> "i32"
-    I32Underflow i            -> "Underflow: " <> show i <> "i32"
-    U64Overflow  i            -> "Overflow: "  <> show i <> "u64"
-    U64Underflow i            -> "Underflow: " <> show i <> "u64"
-    U32Overflow  i            -> "Overflow: "  <> show i <> "u32"
-    U32Underflow i            -> "Underflow: " <> show i <> "u32"
-    InvalidCID err txt        -> "Invalid CID: " <> show txt <> ", " <> show err
-    ParseEnvironmentError e   -> showErrorComponent e
+    I64Overflow i -> "Overflow: " <> show i <> "i64"
+    I64Underflow i -> "Underflow: " <> show i <> "i64"
+    I32Overflow i -> "Overflow: " <> show i <> "i32"
+    I32Underflow i -> "Underflow: " <> show i <> "i32"
+    U64Overflow i -> "Overflow: " <> show i <> "u64"
+    U64Underflow i -> "Underflow: " <> show i <> "u64"
+    U32Overflow i -> "Overflow: " <> show i <> "u32"
+    U32Underflow i -> "Underflow: " <> show i <> "u32"
+    InvalidCid err txt -> "Invalid Cid: " <> show txt <> ", " <> show err
+    ParseEnvironmentError e -> showErrorComponent e
 
 instance ShowErrorComponent () where
   showErrorComponent () = "()"

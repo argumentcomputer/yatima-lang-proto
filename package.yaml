@@ -15,9 +15,10 @@ description:
 library:
   source-dirs: src
   exposed-modules:
-    - Data.IPLD.CID
+    - Data.IPLD.Cid
     - Data.IPLD.DagAST
     - Data.IPLD.DagJSON
+    - Data.IPLD.DagPackage
     - Yatima.Core
     - Yatima.Core.Wasm
     - Yatima.Core.Ctx
@@ -27,7 +28,6 @@ library:
     - Yatima.Compiler.Scheme
     - Yatima.IPFS.Client
     - Yatima.IPLD
-    - Yatima.Package
     - Yatima.Parse.Integer
     - Yatima.Parse.Package
     - Yatima.Parse.Term
@@ -55,10 +55,10 @@ library:
     - serialise
     - bytestring
     - base16
+    - base64
     - multibase
     - cryptonite
     - multihash-cryptonite
-    - ipld-cid
     - cborg
     - vector
     - scientific
@@ -152,6 +152,7 @@ tests:
       - cryptonite
       - multihash-cryptonite
       - base16-bytestring
+      - aeson
     default-extensions:
       - OverloadedStrings
       - GADTSyntax

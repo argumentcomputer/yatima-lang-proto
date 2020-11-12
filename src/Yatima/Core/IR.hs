@@ -1,18 +1,16 @@
-{-|
-Module      : Yatima.Core.Ctx
-Description : Defines an Intermediate Representation for Yatima terms which is used during compilation
-Copyright   : 2020 Yatima Inc.
-License     : GPL-3
-Maintainer  : john@yatima.io
-Stability   : experimental
--}
+-- |
+-- Module      : Yatima.Core.Ctx
+-- Description : Defines an Intermediate Representation for Yatima terms which is used during compilation
+-- Copyright   : 2020 Yatima Inc.
+-- License     : GPL-3
+-- Maintainer  : john@yatima.io
+-- Stability   : experimental
 module Yatima.Core.IR where
 
-import           Data.Text                      (Text)
-import qualified Data.Text                      as T
-
-import           Yatima.Print
-import           Yatima.Term
+import Data.Text (Text)
+import qualified Data.Text as T
+import Yatima.Print
+import Yatima.Term
 
 data IR where
   RefI :: Name -> IR
@@ -29,5 +27,5 @@ data IR where
   -- Native datatypes
   LitI :: Literal -> IR
   LTyI :: LitType -> IR
-  OprI :: PrimOp  -> IR
+  OprI :: PrimOp -> IR
   deriving (Show, Eq)

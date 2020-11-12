@@ -20,9 +20,10 @@ extra-source-files:
 
 library
   exposed-modules:
-      Data.IPLD.CID
+      Data.IPLD.Cid
       Data.IPLD.DagAST
       Data.IPLD.DagJSON
+      Data.IPLD.DagPackage
       Yatima.Core
       Yatima.Core.Wasm
       Yatima.Core.Ctx
@@ -32,7 +33,6 @@ library
       Yatima.Compiler.Scheme
       Yatima.IPFS.Client
       Yatima.IPLD
-      Yatima.Package
       Yatima.Parse.Integer
       Yatima.Parse.Package
       Yatima.Parse.Term
@@ -60,6 +60,7 @@ library
     , array
     , base >=4.7 && <5
     , base16
+    , base64
     , binary
     , binary-varint
     , bytestring
@@ -76,7 +77,6 @@ library
     , http-types
     , ieee754
     , ipfs-api
-    , ipld-cid
     , megaparsec
     , memory
     , mtl
@@ -136,6 +136,7 @@ test-suite spec
   default-extensions: OverloadedStrings GADTSyntax StandaloneDeriving MultiWayIf TypeApplications ScopedTypeVariables
   build-depends:
       QuickCheck
+    , aeson
     , base
     , base16-bytestring
     , bytestring

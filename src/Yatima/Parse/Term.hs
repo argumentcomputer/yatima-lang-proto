@@ -1,43 +1,35 @@
-{-|
-Module      : Yatima.Parse.Term
-Description : Parsing expressions in the Yatima Language
-Copyright   : 2020 Yatima Inc.
-License     : GPL-3
-Maintainer  : john@yatima.io
-Stability   : experimental
-
-This library implements a `Megaparsec` parser for the Yatima language using the
-conventions specified in `Text.MegaParsec.Char.Lexer`. A helpful tutorial
-explaining Megaparsec can be found on [Mark Karpov's
-blog](https://markkarpov.com/tutorial/megaparsec.html)
-|-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+
+-- |
+-- Module      : Yatima.Parse.Term
+-- Description : Parsing expressions in the Yatima Language
+-- Copyright   : 2020 Yatima Inc.
+-- License     : GPL-3
+-- Maintainer  : john@yatima.io
+-- Stability   : experimental
+--
+-- This library implements a `Megaparsec` parser for the Yatima language using the
+-- conventions specified in `Text.MegaParsec.Char.Lexer`. A helpful tutorial
+-- explaining Megaparsec can be found on [Mark Karpov's
+-- blog](https://markkarpov.com/tutorial/megaparsec.html)
+-- |
 module Yatima.Parse.Term where
 
-import           Control.Monad.RWS.Lazy     hiding (All, Typ)
-
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T hiding (find)
-import           Data.Set                   (Set)
-import qualified Data.Set                   as Set
-import           Data.Map                   (Map)
-import qualified Data.Map                   as M
-import           Data.Char                  (isDigit)
-
-import           Text.Megaparsec
-import           Text.Megaparsec.Char       hiding (space)
-import qualified Text.Megaparsec.Char.Lexer as L
-
-import           Debug.Trace
-
-import           Data.IPLD.CID
-import           Yatima.Term
-import           Yatima.Print
-import           Yatima.Parse.Parser
-import           Yatima.Parse.Literal
+import Control.Monad.RWS.Lazy hiding (All, Typ)
+import Data.Char (isDigit)
+import qualified Data.Map as M
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.Text (Text)
+import qualified Data.Text as T hiding (find)
+import Text.Megaparsec
+import Text.Megaparsec.Char hiding (space)
+import Yatima.Parse.Literal
+import Yatima.Parse.Parser
+import Yatima.Term
 
 pTerm :: (Ord e, Monad m) => Parser e m Term
 pTerm = space >> (pExpr True)
@@ -46,69 +38,70 @@ pTerm = space >> (pExpr True)
 -- not the sequence may be annotated with a type
 pExpr :: (Ord e, Monad m) => Bool -> Parser e m Term
 pExpr annotatable = label "an expression" $ do
-  fun  <- pTerm' <* space
+  fun <- pTerm' <* space
   args <- args
   let tele = foldl (\t a -> App t a) fun args
   choice
-    [ if annotatable then (Ann tele <$> (symbol "::" >> pExpr False)) else empty
-    , return tele
+    [ if annotatable then (Ann tele <$> (symbol "::" >> pExpr False)) else empty,
+      return tele
     ]
   where
     args = next <|> (return [])
     next = do
       notFollowedBy terminator
-      t  <- pTerm' <* space
+      t <- pTerm' <* space
       ts <- args
-      return (t:ts)
-    terminator = choice
-      [ void (string "def")
-      , void (string "::")
-      , void (string "{|")
-      , void eof
-      ]
+      return (t : ts)
+    terminator =
+      choice
+        [ void (string "def"),
+          void (string "::"),
+          void (string "{|"),
+          void eof
+        ]
 
 -- | Parse an inner term
 pTerm' :: (Ord e, Monad m) => Parser e m Term
 pTerm' = do
-  from <- getOffset
   choice
-    [ pLam
-    , pAll
-    , pSlf
-    , pUse
-    , pNew
-    , pTyp
-    , symbol "(" >> pExpr True <* space <* string ")"
-    , pLet
-    , Opr <$> pOpr
-    , LTy <$> pLitType
-    , Lit <$> pLiteral
-    , pVar
+    [ pLam,
+      pAll,
+      pSlf,
+      pUse,
+      pNew,
+      pTyp,
+      symbol "(" >> pExpr True <* space <* string ")",
+      pLet,
+      Opr <$> pOpr,
+      LTy <$> pLitType,
+      Lit <$> pLiteral,
+      pVar
     ]
-
 
 pName :: (Ord e, Monad m) => Bool -> Parser e m Text
 pName bind = label "a name: \"someFunc\",\"somFunc'\",\"x_15\", \"_1\"" $ do
-  n  <- alphaNumChar <|> oneOf nameSymbol
+  n <- alphaNumChar <|> oneOf nameSymbol
   ns <- many (alphaNumChar <|> oneOf nameSymbol)
   let nam = T.pack (n : ns)
-  if | isDigit n                 -> customFailure $ LeadingDigit nam
-     | isReservedLead n          -> customFailure $ ReservedLeadingChar n nam
-     | nam `Set.member` keywords -> customFailure $ ReservedKeyword nam
-     | otherwise -> return nam
+  if
+      | isDigit n -> customFailure $ LeadingDigit nam
+      | isReservedLead n -> customFailure $ ReservedLeadingChar n nam
+      | nam `Set.member` keywords -> customFailure $ ReservedKeyword nam
+      | otherwise -> return nam
   where
     isReservedLead n = n `elem` ("'-" :: [Char])
-    syms             = "_'-" :: [Char]
-    nameSymbol       = if bind then syms else syms ++ "."
+    syms = "_'-" :: [Char]
+    nameSymbol = if bind then syms else syms ++ "."
 
 keywords :: Set Text
-keywords = Set.fromList $
-  [ "let"
-  , "if"
-  , "where"
-  , "def"
-  , "Type"
-  ]
+keywords =
+  Set.fromList $
+    [ "let",
+      "if",
+      "where",
+      "def",
+      "Type"
+    ]
 
 -- | Parse a quantitative usage semirig annotation. The absence of annotation is
 -- considered to be the `Many` multiplicity.
@@ -116,11 +109,12 @@ pUses :: (Ord e, Monad m) => Parser e m Uses
 pUses = pUsesAnnotation <|> return Many
 
 pUsesAnnotation :: (Ord e, Monad m) => Parser e m Uses
-pUsesAnnotation = choice
-  [ symbol "0" >> return None
-  , symbol "&" >> return Affi
-  , symbol "1" >> return Once
-  ]
+pUsesAnnotation =
+  choice
+    [ symbol "0" >> return None,
+      symbol "&" >> return Affi,
+      symbol "1" >> return Once
+    ]
 
 -- | Parse the type of types: @Type@
 pTyp :: (Ord e, Monad m) => Parser e m Term
@@ -128,22 +122,23 @@ pTyp = label "a type: \"Type\"" $ do
   string "Type"
   return $ Typ
 
-pBinder :: (Ord e, Monad m) => Bool -> Parser e m [(Name,Uses, Term)]
-pBinder namOptional = choice
-  [ try $ ann
-  , if namOptional then unNam else empty
-  ]
+pBinder :: (Ord e, Monad m) => Bool -> Parser e m [(Name, Uses, Term)]
+pBinder namOptional =
+  choice
+    [ try $ ann,
+      if namOptional then unNam else empty
+    ]
   where
     unNam = (\x -> [("", Many, x)]) <$> pTerm'
     ann = do
       symbol "("
-      uses  <- pUses
+      uses <- pUses
       names <- sepEndBy1 (pName True) space
-      typ_  <- symbol ":" >> pExpr False
+      typ_ <- symbol ":" >> pExpr False
       string ")"
-      return $ zipWith (\n i -> (n, uses, shift i 0 typ_)) names [0..]
+      return $ zipWith (\n i -> (n, uses, shift i 0 typ_)) names [0 ..]
 
-foldLam:: Term -> [Name] -> Term
+foldLam :: Term -> [Name] -> Term
 foldLam body bs = foldr (\n x -> Lam n x) body bs
 
 -- | Parse a lambda: @λ x y z => body@
@@ -156,26 +151,26 @@ pLam = label "a lambda: \"λ x y => y\"" $ do
   return (foldLam body vars)
 
 foldAll :: Term -> [(Name, Uses, Term)] -> Term
-foldAll body bs = foldr (\(n,u,t) x -> All n u t x) body bs
+foldAll body bs = foldr (\(n, u, t) x -> All n u t x) body bs
 
-bindAll :: (Ord e, Monad m) => [(Name,Uses,Term)] -> Parser e m a -> Parser e m a
-bindAll bs = bind (foldr (\(n,_,_) ns -> n:ns) [] bs)
+bindAll :: (Ord e, Monad m) => [(Name, Uses, Term)] -> Parser e m a -> Parser e m a
+bindAll bs = bind (foldr (\(n, _, _) ns -> n : ns) [] bs)
 
-fst3 (x,y,z) = x
+fst3 (x, _, _) = x
 
 -- | Parse a forall: ∀ (a: A) (b: B) (c: C) -> body@
 pAll :: (Ord e, Monad m) => Parser e m Term
 pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
   symbol "∀" <|> symbol "forall"
   binds <- binders <* space
-  body  <- bindAll binds (pExpr False)
+  body <- bindAll binds (pExpr False)
   return $ foldAll body binds
   where
-    binder  = pBinder True
+    binder = pBinder True
     binders = do
-     b  <- binder <* space
-     bs <- bindAll b $ ((symbol "->" >> return []) <|> binders)
-     return $ b ++ bs
+      b <- binder <* space
+      bs <- bindAll b $ ((symbol "->" >> return []) <|> binders)
+      return $ b ++ bs
 
 pSlf :: (Ord e, Monad m) => Parser e m Term
 pSlf = label "a self type: \"@x A\"" $ do
@@ -195,32 +190,33 @@ pUse = label "a case expression: \"case x\"" $ do
   expr <- pExpr True
   return $ Use expr
 
-pDecl :: (Ord e, Monad m) => Bool -> Parser e m (Name, Term, Term)
-pDecl shadow = do
-  nam    <- (pName True) <* space
-  refs   <- asks _refs
-  when (not shadow && M.member nam refs)
+pDecl :: (Ord e, Monad m) => Bool -> Bool -> Parser e m (Name, Term, Term)
+pDecl rec shadow = do
+  nam <- (pName True) <* space
+  refs <- asks _refs
+  when
+    (not shadow && M.member nam refs)
     (customFailure $ TopLevelRedefinition nam)
-  bs      <- ((symbol ":" >> return []) <|> binders)
-  let ns  = (fst3 <$> bs)
+  bs <- ((symbol ":" >> return []) <|> binders)
+  let ns = (fst3 <$> bs)
   typBody <- bind ns (pExpr False)
   let typ = foldAll typBody bs
-  expBody <- symbol "=" >> bind (nam:ns) (pExpr False)
+  expBody <- symbol "=" >> bind (if rec then (nam : ns) else ns) (pExpr False)
   let exp = foldLam expBody (fst3 <$> bs)
   return (nam, exp, typ)
   where
-    binder  = pBinder False
+    binder = pBinder False
     binders = do
-     b  <- binder <* space
-     bs <- bind (fst3 <$> b) $ ((symbol ":" >> return []) <|> binders)
-     return $ b ++ bs
+      b <- binder <* space
+      bs <- bind (fst3 <$> b) $ ((symbol ":" >> return []) <|> binders)
+      return $ b ++ bs
 
 -- | Parse a local, possibly recursive, definition
 pLet :: (Ord e, Monad m) => Parser e m Term
 pLet = do
   rec <- (symbol "letrec" >> return True) <|> (symbol "let" >> return False)
-  use   <- pUses
-  (nam,exp,typ) <- pDecl True <* symbol ";"
+  use <- pUses
+  (nam, exp, typ) <- pDecl rec True <* symbol ";"
   bdy <- bind [nam] $ pExpr False
   return $ Let rec nam use typ exp bdy
 
@@ -230,10 +226,10 @@ pVar = label "a local or global reference: \"x\", \"add\"" $ do
   env <- ask
   nam <- pName False
   case findByName nam (_context env) of
-    Just i  -> return $ Var nam i
+    Just i -> return $ Var nam i
     Nothing -> case M.lookup nam (_refs env) of
-      Just (def,trm) -> return (Ref nam def trm)
-      Nothing        -> customFailure $ UndefinedReference nam
+      Just (def, trm) -> return (Ref nam def trm)
+      Nothing -> customFailure $ UndefinedReference nam
 
 pAnn :: (Ord e, Monad m) => Parser e m Term
 pAnn = do
