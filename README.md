@@ -64,15 +64,23 @@ Yatima is a pure functional programming language with the following features:
    while if you've never used stack before).
 2. run `yatima clone introit /ipns/introit.yatima.io` to get the standard library (or
    you can `git clone https://gitlab.com/yatima/introit`):
+
 [![asciicast](https://asciinema.org/a/372665.svg)](https://asciinema.org/a/372665)
+
 3. Typecheck the standard library with `yatima check /ipns/introit.yatima.io`
    (or `yatima check introit/Introit.ya`)
+
 [![asciicast](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN.svg)](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN)
+
 4. Enter a repl with `yatima repl`:
+
 [![asciicast](https://asciinema.org/a/HfSnwRj3VTa5OGrZpEdLO6Obe.svg)](https://asciinema.org/a/HfSnwRj3VTa5OGrZpEdLO6Obe)
+
 5. Write a new package, and run it:
+
 [![asciicast](https://asciinema.org/a/372666.svg)](https://asciinema.org/a/372666)
-5. Pin your package to IPFS to share it over the network:
+
+6. Pin your package to IPFS to share it over the network:
 [![asciicast](https://asciinema.org/a/372667.svg)](https://asciinema.org/a/372667)
 
 ## Motivation
