@@ -71,16 +71,31 @@ Yatima is a pure functional programming language with the following features:
 1. Clone this repository, `cd` into it and `stack install`. (This may take a
    while if you've never used stack before).
 
-2. [Clone the Introit standard libary](https://asciinema.org/a/372665) over IPFS with `yatima clone introit /ipns/introit.yatima.io` to [get the standard library]) (you can also use Git with `git clone https://gitlab.com/yatima/introit`).
+2. [Clone the Introit standard libary](https://asciinema.org/a/372665) over IPFS
+   with `yatima clone introit /ipns/introit.yatima.io` to [get the standard
+   library]) (you can also use Git with `git clone
+   https://gitlab.com/yatima/introit`).
 
-3. [Typecheck the standard library](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN) with `yatima check /ipns/introit.yatima.io`
-   (or `yatima check introit/Introit.ya`)
+3. [Typecheck the standard
+   library](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN) with `yatima
+   check /ipns/introit.yatima.io` (or `yatima check introit/Introit.ya`)
 
 4. [Enter a repl](https://asciinema.org/a/372661) with `yatima repl`.
 
-5. [Write a HelloWorld package](https://asciinema.org/a/372666) and run it wit `yatima run HelloWorld.ya`
+5. [Write a HelloWorld package](https://asciinema.org/a/372666) and run it wit
+   `yatima run HelloWorld.ya`
 
 6. [Pin your package to IPFS](https://asciinema.org/a/372667)
+
+---
+
+<div align="center">
+  <a href="https://asciinema.org/a/372665" target="_blank">
+    <img width="400" height = "400" src="https://asciinema.org/a/372665.svg" />
+  </a>
+</div>
+
+---
 
 ## Motivation
 
