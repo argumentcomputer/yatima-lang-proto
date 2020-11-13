@@ -62,26 +62,17 @@ Yatima is a pure functional programming language with the following features:
 
 1. Clone this repository, `cd` into it and `stack install`. (This may take a
    while if you've never used stack before).
-2. run `yatima clone introit /ipns/introit.yatima.io` to get the standard library (or
-   you can `git clone https://gitlab.com/yatima/introit`):
 
-[![asciicast](https://asciinema.org/a/372665.svg)](https://asciinema.org/a/372665)
+2. [Clone the Introit standard libary](https://asciinema.org/a/372665) over IPFS with `yatima clone introit /ipns/introit.yatima.io` to [get the standard library]) (you can also use Git with `git clone https://gitlab.com/yatima/introit`).
 
-3. Typecheck the standard library with `yatima check /ipns/introit.yatima.io`
+3. [Typecheck the standard library](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN) with `yatima check /ipns/introit.yatima.io`
    (or `yatima check introit/Introit.ya`)
 
-[![asciicast](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN.svg)](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN)
+4. [Enter a repl](https://asciinema.org/a/372661) with `yatima repl`.
 
-4. Enter a repl with `yatima repl`:
+5. [Write a HelloWorld package](https://asciinema.org/a/372666) and run it wit `yatima run HelloWorld.ya`
 
-[![asciicast](https://asciinema.org/a/HfSnwRj3VTa5OGrZpEdLO6Obe.svg)](https://asciinema.org/a/HfSnwRj3VTa5OGrZpEdLO6Obe)
-
-5. Write a new package, and run it:
-
-[![asciicast](https://asciinema.org/a/372666.svg)](https://asciinema.org/a/372666)
-
-6. Pin your package to IPFS to share it over the network:
-[![asciicast](https://asciinema.org/a/372667.svg)](https://asciinema.org/a/372667)
+6. [Pin your package to IPFS](https://asciinema.org/a/372667)
 
 ## Motivation
 
