@@ -91,6 +91,13 @@ checkFile file = do
   let index@(Index ns) = _index p
   defs <- indexToDefs index
   traverse (checkRef defs) (M.toList ns)
+  putStrLn $
+    concat
+      [ "checked: ",
+        (T.unpack $ _packageTitle p),
+        " ",
+        show c
+      ]
   return (c, p)
 
 checkCid :: Cid -> IO (Cid, DagPackage)
@@ -99,6 +106,13 @@ checkCid cid = do
   let index@(Index ns) = _index p
   defs <- indexToDefs index
   traverse (checkRef defs) (M.toList ns)
+  putStrLn $
+    concat
+      [ "checked: ",
+        (T.unpack $ _packageTitle p),
+        " ",
+        show cid
+      ]
   return (cid, p)
 
 checkRef :: Defs -> (Name, (Cid, Cid)) -> IO ()
