@@ -18,6 +18,11 @@
 >
 > *Diaspora*, Greg Egan
 
+<div align="center">
+<img src="/source/images/yatima_logo.svg"  width="400" height="400">
+</div>
+
+
 Yatima is a pure functional programming language with the following features:
 
 - **Content-Addressing** powers reproducible builds, and peer-to-peer
