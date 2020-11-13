@@ -7,7 +7,7 @@
 module Yatima where
 
 import Codec.Serialise
-import Control.Monad.Catch
+import Control.Exception
 import Control.Monad.Except
 import Data.Aeson
 import qualified Data.Aeson as Aeson
@@ -44,15 +44,15 @@ import Yatima.Term (Defs, Name, Term (..), Uses (..))
 
 parseFilePath :: FilePath -> IO (Path Abs File)
 parseFilePath file =
-  catch @IO @PathException (parseAbsFile file) $ \_ ->
-    catch @IO @PathException (parseRelFile file >>= makeAbsolute) $ \_ ->
-      fail ("InvalidfFile name: " ++ file)
+  catch @PathException (parseAbsFile file) $ \_ ->
+    catch @PathException (parseRelFile file >>= makeAbsolute) $ \e ->
+      throw e
 
 parseDirPath :: FilePath -> IO (Path Abs Dir)
 parseDirPath dir =
-  catch @IO @PathException (parseAbsDir dir) $ \_ ->
-    catch @IO @PathException (parseRelDir dir >>= makeAbsolute) $ \_ ->
-      fail ("Invalid directory name: " ++ dir)
+  catch @PathException (parseAbsDir dir) $ \_ ->
+    catch @PathException (parseRelDir dir >>= makeAbsolute) $ \e ->
+      throw e
 
 loadFile :: FilePath -> IO (Path Abs Dir, Cid, DagPackage)
 loadFile file = do
@@ -152,7 +152,7 @@ checkRef defs (name, (cid, _)) = do
 localPutCid :: Cid -> IO ()
 localPutCid cid = do
   msg <- T.unpack . dagYatimaDescription <$> cacheGet @DagYatima cid
-  resp <- runLocalDagPutCid cid
+  resp <- runLocalDagPut cid
   case resp of
     Left e ->
       putStrLn $
@@ -183,7 +183,7 @@ localGetCid cid = do
       putStrLn $ concat ["\ESC[34m\STX📁 ", show cid, "\ESC[m\STX already cached ", msg]
       return ()
     else do
-      bytes <- runLocalDagGetCid cid
+      bytes <- runLocalDagGet cid
       case eitherDecode' @DagJSON (BSL.fromStrict bytes) of
         Left e -> err ["JSON Parse Error: ", show e]
         Right v -> do

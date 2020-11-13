@@ -107,6 +107,7 @@ executables:
       - mtl
       - megaparsec
       - haskeline
+      - exceptions
       - serialise
       - process
       - path

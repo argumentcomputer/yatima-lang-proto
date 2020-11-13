@@ -5,6 +5,7 @@
 
 module Main where
 
+import Control.Exception
 import Control.Monad.State.Strict
 import Data.IPLD.Cid
 import Data.Text (Text)
@@ -14,6 +15,7 @@ import Path
 import Path.IO
 import Repl hiding (Command (..))
 import Yatima
+import Yatima.IPFS.Client (runResolve)
 import Yatima.IPLD
 import Yatima.Parse.Package
 import Prelude hiding (FilePath)
@@ -111,51 +113,53 @@ pGet = Get <$> argument str argCid
 pShow :: Parser Command
 pShow = Show <$> argument str argCid
 
-readArgPackageID :: Text -> IO (Either Cid (Path Abs File))
-readArgPackageID txt = do
-  dir <- getCurrentDir
-  nam <- parseRelFile (T.unpack txt)
-  let path = dir </> nam
-  exists <- doesFileExist path
-  if exists
-    then return $ Right path
-    else case cidFromText txt of
-      Right c -> return $ Left c
-      Left e ->
-        fail $
-          concat
-            [ "Can't find package ",
-              T.unpack txt,
-              "\n Failed to read as filepath: ",
-              (toFilePath path),
-              "does not exist",
-              "\n Failed to read as Cid: ",
-              e
-            ]
+data ArgID
+  = ArgPath (Path Abs File)
+  | ArgCid Cid
+
+readArgID :: Text -> IO ArgID
+readArgID txt = do
+  path <- try @PathException (parseFilePath (T.unpack txt))
+  let cid = cidFromText txt
+  res <- runResolve txt
+  case (cid, res, path) of
+    (Right c, _, _) -> return $ ArgCid c
+    (_, Right c, _) -> return $ ArgCid c
+    (_, _, Right path) -> return $ ArgPath path
+    (Left e1, Left e2, Left e3) ->
+      fail $
+        concat
+          [ "Can't find package ",
+            T.unpack txt,
+            "\n Failed to read as Cid: ",
+            e1,
+            "\n Failed to resolve as IPNS: ",
+            T.unpack e2,
+            "\n Failed to read as filepath. ",
+            show e3
+          ]
+
+readArgIDToCid :: Text -> IO Cid
+readArgIDToCid txt = do
+  let loadFile' x = (\(_, c, _) -> c) <$> loadFile (toFilePath x)
+  argID <- readArgID txt
+  case argID of
+    ArgPath p -> loadFile' p
+    ArgCid c -> return c
 
 run :: Command -> IO ()
 run c = case c of
-  Check pack -> void $ do
-    argPackageID <- readArgPackageID pack
-    case argPackageID of
-      Left cid -> checkCid cid
-      Right path -> checkFile (toFilePath path)
-  Run pack nam -> do
-    argPackageID <- readArgPackageID pack
-    case argPackageID of
-      Left cid -> normCid nam cid >>= print
-      Right path -> normFile nam (toFilePath path) >>= print
-  Clone dir cid -> do
-    case cidFromText cid of
-      Left e -> putStrLn $ concat ["Invalid cid ", show cid, " with error: ", show e]
-      Right cid -> do
-        dir <- parseDirPath (T.unpack dir)
-        exists <- doesDirExist dir
-        when exists (putStrLn $ concat ["Can't clone, directory ", toFilePath dir, " already exists"])
-        ensureDir dir
-        initYatimaProject dir
-        putStrLn $ concat ["Cloning Yatima project to ", toFilePath dir]
-        clonePackage dir cid
+  Check pack -> void $ readArgIDToCid pack >>= checkCid
+  Run pack nam -> readArgIDToCid pack >>= normCid nam >>= print
+  Clone dir txt -> do
+    cid <- readArgIDToCid txt
+    dir <- parseDirPath (T.unpack dir)
+    exists <- doesDirExist dir
+    when exists (putStrLn $ concat ["Can't clone, directory ", toFilePath dir, " already exists"])
+    ensureDir dir
+    initYatimaProject dir
+    putStrLn $ concat ["Cloning Yatima project to ", toFilePath dir]
+    clonePackage dir cid
   Init -> do
     dir <- getCurrentDir
     exists <- doesDirExist (dir </> [reldir|.yatima|])
@@ -165,8 +169,7 @@ run c = case c of
         initYatimaProject dir
         putStrLn $ concat ["Initialized Yatima project at ", toFilePath dir]
   Put txt node -> do
-    let loadFile' x = (\(_, c, _) -> c) <$> loadFile (toFilePath x)
-    cid <- either pure loadFile' =<< readArgPackageID txt
+    cid <- readArgIDToCid txt
     case node of
       LocalDaemon -> localPutPackage cid
       Infura -> infuraPutPackage cid

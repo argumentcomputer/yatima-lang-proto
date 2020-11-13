@@ -109,6 +109,7 @@ executable yatima
   build-depends:
       base >=4.7 && <5
     , containers
+    , exceptions
     , haskeline
     , megaparsec
     , mtl

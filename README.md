@@ -18,6 +18,14 @@
 >
 > *Diaspora*, Greg Egan
 
+---
+
+<div align="center">
+<img src="/source/images/yatima_logo.svg"  width="400" height="400">
+</div>
+
+---
+
 Yatima is a pure functional programming language with the following features:
 
 - **Content-Addressing** powers reproducible builds, and peer-to-peer
@@ -40,20 +48,39 @@ Yatima is a pure functional programming language with the following features:
   extensibility of a dynamically-typed language, without sacrificing the safety
   of static-typing.
 
-
 ## Instructions
 
-0. Install The Haskell Tool Stack. Instructions here:
-   https://docs.haskellstack.org/en/stable/README/
-1. Clone this repository, `cd` into it and `stack build`
-2. Enter a repl with `stack ghci`, and try:
-3. Examine Haddock documentation with `stack haddock --open yatima`
-4. Try the repl:
+0. Install The Haskell Tool Stack. Instructions here: https://docs.haskellstack.org/en/stable/README/
 
-```
-stack exec yide
-```
+   You'll also need IPFS. You can install IPFS through many different package
+   managers, or by downloading a binary directly:
+   https://docs.ipfs.io/install/command-line/.
 
+   For example, with [the Nix package manager](https://nixos.org/download.html):
+
+   ```
+   $ nix-env -iA nixpkgs.ipfs
+   ```
+
+   Then, run start the ipfs daemon in the background with
+
+   ```
+   $ ipfs daemon &
+   ```
+
+1. Clone this repository, `cd` into it and `stack install`. (This may take a
+   while if you've never used stack before).
+
+2. [Clone the Introit standard libary](https://asciinema.org/a/372665) over IPFS with `yatima clone introit /ipns/introit.yatima.io` to [get the standard library]) (you can also use Git with `git clone https://gitlab.com/yatima/introit`).
+
+3. [Typecheck the standard library](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN) with `yatima check /ipns/introit.yatima.io`
+   (or `yatima check introit/Introit.ya`)
+
+4. [Enter a repl](https://asciinema.org/a/372661) with `yatima repl`.
+
+5. [Write a HelloWorld package](https://asciinema.org/a/372666) and run it wit `yatima run HelloWorld.ya`
+
+6. [Pin your package to IPFS](https://asciinema.org/a/372667)
 
 ## Motivation
 
@@ -136,31 +163,6 @@ systems and their own data. A future where reliable, type-checked,
 formally-verified software is the norm, so you can rely on software engineering
 with the same quotidian confidence you have for civil engineering whenever you 
 drive your car over a bridge.
-
-
-
-## Instructions
-
-0. Install The Haskell Tool Stack. Instructions here:
-   https://docs.haskellstack.org/en/stable/README/
-1. Clone this repository, `cd` into it and `stack build`
-2. Enter a repl with `stack ghci`, and try:
-3. Examine Haddock documentation with `stack haddock --open yatima`
-4. Try the repl:
-
-```
-$ stack exec yide
-```
-
-## Influences:
-
-- Formality
-- Idris
-- Unison
-- Haskell
-- Lean
-- Clojure
-
 
 ## License
 

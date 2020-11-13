@@ -183,8 +183,9 @@ complete (ante, post)
   | prefixes ks p = noCompletion (ante, post)
   | otherwise = do
     ns <- gets (M.keys . indexEntries . _replIndex)
+    let ps = T.cons '#' . primOpName <$> [minBound .. maxBound]
     let ks' = T.pack <$> ks
-    let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks' ++ ns)
+    let f word = T.unpack <$> filter (T.isPrefixOf (T.pack word)) (ks' ++ ns ++ ps)
     completeWord Nothing " " (pure . (map simpleCompletion) . f) (ante, post)
   where
     p = reverse ante
