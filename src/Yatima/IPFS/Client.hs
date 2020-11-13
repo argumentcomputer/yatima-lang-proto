@@ -18,8 +18,10 @@ import Data.Aeson (object, (.=))
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
+import qualified Data.HashMap.Lazy as HM
 import Data.IPLD.Cid
 import Data.IPLD.DagAST
+import Data.IPLD.DagJSON
 import Data.Proxy
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -50,6 +52,9 @@ dagPut ::
   ClientM Aeson.Value
 dagPut = client (Proxy :: Proxy ApiV0DagPut)
 
+resolve :: Text -> ClientM Aeson.Value
+resolve = client (Proxy :: Proxy ApiV0DagResolve)
+
 dagPutAST :: Maybe Bool -> DagAST -> ClientM Aeson.Value
 dagPutAST pin ast =
   dagPut (serialise ast) (Just "cbor") (Just "cbor") pin (Just "blake2b-256")
@@ -72,8 +77,20 @@ runDagPutAST ast = do
     Left err -> putStrLn $ "Error: " ++ show err
     Right val -> print val
 
-runLocalDagGetCid :: Cid -> IO BS.ByteString
-runLocalDagGetCid cid = do
+runResolve :: Text -> IO (Either Text Cid)
+runResolve txt = do
+  manager' <- newManager defaultManagerSettings
+  let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
+  res <- runClientM (resolve txt) env
+  case res of
+    Left err -> return $ Left (T.concat ["Can't resolve ", txt, ": ", T.pack $ show err])
+    Right val -> case (fromAeson val) of
+      DagObject hm -> case HM.lookup "Cid" hm of
+        Just (DagLink cid) -> return $ Right cid
+        _ -> return $ Left $ T.concat ["Expected to resolve a Cid, got ", T.pack $ show val]
+
+runLocalDagGet :: Cid -> IO BS.ByteString
+runLocalDagGet cid = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' (BaseUrl Http "localhost" 5001 "")
   S.withClientM (dagGet (cidToText cid)) env go
@@ -110,8 +127,8 @@ runDagPutFile file = do
   let client = (dagPutBytes (Just True) . BSL.fromStrict) bs
   runClientM client env
 
-runLocalDagPutCid :: Cid -> IO (Either ClientError Aeson.Value)
-runLocalDagPutCid cid = do
+runLocalDagPut :: Cid -> IO (Either ClientError Aeson.Value)
+runLocalDagPut cid = do
   manager' <- newManager defaultManagerSettings
   cache <- getYatimaCacheDir
   file <- (\x -> cache </> x) <$> (parseRelFile $ T.unpack $ cidToText cid)

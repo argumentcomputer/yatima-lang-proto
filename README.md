@@ -40,20 +40,40 @@ Yatima is a pure functional programming language with the following features:
   extensibility of a dynamically-typed language, without sacrificing the safety
   of static-typing.
 
-
 ## Instructions
 
-0. Install The Haskell Tool Stack. Instructions here:
-   https://docs.haskellstack.org/en/stable/README/
-1. Clone this repository, `cd` into it and `stack build`
-2. Enter a repl with `stack ghci`, and try:
-3. Examine Haddock documentation with `stack haddock --open yatima`
-4. Try the repl:
+0. Install The Haskell Tool Stack. Instructions here: https://docs.haskellstack.org/en/stable/README/
 
-```
-stack exec yide
-```
+   You'll also need IPFS. You can install IPFS through many different package
+   managers, or by downloading a binary directly:
+   https://docs.ipfs.io/install/command-line/.
 
+   For example, with [the Nix package manager](https://nixos.org/download.html):
+
+   ```
+   $ nix-env -iA nixpkgs.ipfs
+   ```
+
+   Then, run start the ipfs daemon in the background with
+
+   ```
+   $ ipfs daemon &
+   ```
+
+1. Clone this repository, `cd` into it and `stack install`. (This may take a
+   while if you've never used stack before).
+2. run `yatima clone introit /ipns/introit.yatima.io` to get the standard library (or
+   you can `git clone https://gitlab.com/yatima/introit`):
+[![asciicast](https://asciinema.org/a/372665.svg)](https://asciinema.org/a/372665)
+3. Typecheck the standard library with `yatima check /ipns/introit.yatima.io`
+   (or `yatima check introit/Introit.ya`)
+[![asciicast](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN.svg)](https://asciinema.org/a/N8HP32Bk7OMaOHw9zxTOaAkwN)
+4. Enter a repl with `yatima repl`:
+[![asciicast](https://asciinema.org/a/HfSnwRj3VTa5OGrZpEdLO6Obe.svg)](https://asciinema.org/a/HfSnwRj3VTa5OGrZpEdLO6Obe)
+5. Write a new package, and run it:
+[![asciicast](https://asciinema.org/a/372666.svg)](https://asciinema.org/a/372666)
+5. Pin your package to IPFS to share it over the network:
+[![asciicast](https://asciinema.org/a/372667.svg)](https://asciinema.org/a/372667)
 
 ## Motivation
 
@@ -136,31 +156,6 @@ systems and their own data. A future where reliable, type-checked,
 formally-verified software is the norm, so you can rely on software engineering
 with the same quotidian confidence you have for civil engineering whenever you 
 drive your car over a bridge.
-
-
-
-## Instructions
-
-0. Install The Haskell Tool Stack. Instructions here:
-   https://docs.haskellstack.org/en/stable/README/
-1. Clone this repository, `cd` into it and `stack build`
-2. Enter a repl with `stack ghci`, and try:
-3. Examine Haddock documentation with `stack haddock --open yatima`
-4. Try the repl:
-
-```
-$ stack exec yide
-```
-
-## Influences:
-
-- Formality
-- Idris
-- Unison
-- Haskell
-- Lean
-- Clojure
-
 
 ## License
 
