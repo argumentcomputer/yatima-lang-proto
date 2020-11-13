@@ -79,15 +79,15 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="1.32"
-     inkscape:cx="385.20901"
-     inkscape:cy="281.72311"
+     inkscape:cx="221.19386"
+     inkscape:cy="281.34432"
      inkscape:document-units="px"
      inkscape:current-layer="g901"
      inkscape:document-rotation="0"
      showgrid="false"
-     inkscape:window-width="2656"
+     inkscape:window-width="1838"
      inkscape:window-height="1372"
-     inkscape:window-x="746"
+     inkscape:window-x="1564"
      inkscape:window-y="1470"
      inkscape:window-maximized="0"
      showguides="true"
@@ -126,7 +126,7 @@
        transform="matrix(12.351029,0,0,12.351029,-714.06573,-1237.4966)">
       <text
          xml:space="preserve"
-         style="font-style:normal;font-weight:normal;font-size:50.9832px;line-height:1.25;font-family:sans-serif;letter-spacing:-12.1801px;word-spacing:-0.0185876px;fill:#859900;fill-opacity:1;stroke:none;stroke-width:0.265537"
+         style="font-style:normal;font-weight:normal;font-size:50.9832px;line-height:1.25;font-family:sans-serif;letter-spacing:-12.1801px;word-spacing:-0.0185876px;fill:#859900;fill-opacity:1;stroke:#002b36;stroke-width:0.265537;stroke-opacity:1;"
          x="60.208096"
          y="142.92374"
          id="text20"
@@ -135,10 +135,10 @@
            id="tspan18"
            x="60.208096"
            y="142.92374"
-           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:50.9832px;font-family:'InconsolataLGC Nerd Font';-inkscape-font-specification:'InconsolataLGC Nerd Font';fill:#859900;fill-opacity:1;stroke-width:0.265537" /></text>
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:50.9832px;font-family:'InconsolataLGC Nerd Font';-inkscape-font-specification:'InconsolataLGC Nerd Font';fill:#859900;fill-opacity:1;stroke-width:0.265537;stroke:#002b36;stroke-opacity:1;" /></text>
       <text
          xml:space="preserve"
-         style="font-size:50.757px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';fill:#268bdf;fill-opacity:1;stroke-width:0.264358"
+         style="font-size:50.757px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';fill:#268bdf;fill-opacity:1;stroke-width:0.264358;stroke:#002b36;stroke-opacity:1;"
          x="74.972809"
          y="142.9026"
          id="text34"
@@ -147,67 +147,67 @@
            id="tspan32"
            x="74.972809"
            y="142.9026"
-           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:50.757px;font-family:'InconsolataLGC Nerd Font Mono';-inkscape-font-specification:'InconsolataLGC Nerd Font Mono';fill:#268bdf;fill-opacity:1;stroke-width:0.264358" /></text>
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:50.757px;font-family:'InconsolataLGC Nerd Font Mono';-inkscape-font-specification:'InconsolataLGC Nerd Font Mono';fill:#268bdf;fill-opacity:1;stroke-width:0.264358;stroke:#002b36;stroke-opacity:1;" /></text>
       <text
          xml:space="preserve"
          id="text971"
-         style="line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';font-size:3.23859656px;-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:0px;white-space:pre;shape-inside:url(#rect973);" />
+         style="line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';font-size:3.23859656px;-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:0px;white-space:pre;shape-inside:url(#rect973);stroke:#002b36;stroke-opacity:1;" />
       <g
          id="g1963"
-         style="stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1">
+         style="stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1">
         <g
            aria-label="λ∀"
            transform="scale(1.0982954,-0.91050186)"
            id="text108"
-           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1">
+           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1">
           <path
              d="m 62.803973,-125.02353 -4.040641,12.21589 h -3.445508 l 5.794718,-15.97463 -3.006989,-6.89101 h 3.320217 l 9.240226,22.86564 h -3.320217 l -4.47916,-12.21589 z"
-             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1"
+             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1"
              id="path1965" />
           <path
              d="m 64.683318,-135.67328 h 3.570799 l 1.973337,6.07662 h 8.833029 l 1.973337,-6.07662 h 3.69609 l -8.143928,22.86564 h -3.758736 z m 13.53145,8.77038 h -7.141599 l 3.539477,10.96298 h 0.06265 z"
-             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#002b36;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1"
+             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#002b36;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1"
              id="path1967" />
         </g>
         <g
            aria-label="λ∀"
            transform="scale(1.0982954,0.91050186)"
            id="text108-3"
-           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1">
+           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1">
           <path
              d="m 62.88502,148.40163 -4.040641,12.21589 H 55.398871 L 61.193589,144.6429 58.1866,137.75188 h 3.320217 l 9.240226,22.86564 h -3.320217 l -4.47916,-12.21589 z"
-             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1"
+             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1"
              id="path1970" />
           <path
              d="m 64.764365,137.75188 h 3.570799 l 1.973337,6.07662 h 8.833029 l 1.973337,-6.07662 h 3.69609 l -8.143928,22.86564 h -3.758736 z m 13.53145,8.77038 h -7.141599 l 3.539477,10.96298 h 0.06265 z"
-             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#002b36;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1"
+             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#002b36;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1"
              id="path1972" />
         </g>
         <g
            aria-label="λ"
            transform="scale(-1.0982954,-0.91050186)"
            id="text108-5"
-           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1">
+           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1">
           <path
              d="m -86.768975,-125.05144 -4.040641,12.21589 h -3.445508 l 5.794718,-15.97463 -3.006989,-6.89101 h 3.320217 l 9.240226,22.86564 h -3.320217 l -4.479161,-12.21589 z"
-             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1"
+             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1"
              id="path1975" />
         </g>
         <g
            aria-label="λ"
            transform="scale(-1.0982954,0.91050186)"
            id="text108-3-3"
-           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1">
+           style="font-size:31.3228px;line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:-7.83069px;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1">
           <path
              d="m -86.687921,148.42955 -4.040641,12.2159 h -3.445508 l 5.794718,-15.97463 -3.006988,-6.89102 h 3.320216 l 9.240226,22.86565 h -3.320217 l -4.47916,-12.2159 z"
-             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#000000;stroke-opacity:1"
+             style="font-style:normal;font-variant:normal;font-weight:500;font-stretch:normal;font-size:31.3228px;font-family:'mplus Nerd Font';-inkscape-font-specification:'mplus Nerd Font Medium';fill:#dc322f;fill-opacity:1;stroke-width:0.16192983;stroke-miterlimit:4;stroke-dasharray:none;stroke:#002b36;stroke-opacity:1"
              id="path1978" />
         </g>
       </g>
       <text
          xml:space="preserve"
          id="text1945"
-         style="line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';font-size:3.23859656px;-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:0px;white-space:pre;shape-inside:url(#rect1947);" />
+         style="line-height:1.25;font-family:'InconsolataGo Nerd Font Mono';font-size:3.23859656px;-inkscape-font-specification:'InconsolataGo Nerd Font Mono';letter-spacing:0px;white-space:pre;shape-inside:url(#rect1947);stroke:#002b36;stroke-opacity:1;" />
     </g>
   </g>
 </svg>
