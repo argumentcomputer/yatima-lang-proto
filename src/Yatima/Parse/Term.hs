@@ -97,8 +97,6 @@ keywords :: Set Text
 keywords =
   Set.fromList $
     [ "let",
-      "if",
-      "where",
       "def",
       "Type"
     ]
