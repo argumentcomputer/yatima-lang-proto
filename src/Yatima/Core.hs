@@ -158,7 +158,7 @@ check defs pre use term typ = case term of
             (bindUse' ≤# bindUse)
             ( do
                 let original = (name, bindUse, bind)
-                let checked = (name', use, bind')
+                let checked = (name', bindUse', bind')
                 throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked)
             )
           let ir = LamI bindUse name bodyIR
@@ -215,7 +215,6 @@ infer defs pre use term = case term of
       Nothing -> throwError $ UnboundVariable nam lvl
       Just ((_, typ), ctx) -> return (ctx, typ, ir)
   RefH nam cid _ -> do
-    --traceM ("RefH " ++ show nam)
     let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
     def <- mapMaybe (defs M.!? cid)
     let (_, typ) = (defToHoas nam def)
