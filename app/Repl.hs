@@ -127,10 +127,10 @@ process line = dontCrash' $ do
   index <- gets _replIndex
   let env = ParseEnv [] (indexEntries index)
   a <- liftIO $ parseIO parseLine env "" line
-  procCommand a
+  procCommand a line
   where
-    procCommand :: Command -> Repl ()
-    procCommand c = case c of
+    procCommand :: Command -> Text -> Repl ()
+    procCommand c line = case c of
       Browse -> do
         index <- gets _replIndex
         defs <- liftIO $ indexToDefs index
@@ -142,7 +142,7 @@ process line = dontCrash' $ do
         index <- gets _replIndex
         defs <- liftIO $ indexToDefs index
         let trm = termToHoas [] t
-        (_, typ, _) <- catchReplErr (Core.infer defs Ctx.empty Once trm)
+        (_, typ, _) <- catchReplErr (Core.infer (Just line) defs Ctx.empty Once trm)
         liftIO $ print $ typ
         return ()
       Eval t -> do
@@ -157,7 +157,7 @@ process line = dontCrash' $ do
         index <- gets _replIndex
         defs <- liftIO $ indexToDefs index
         let (trm, typ) = defToHoas nam def
-        catchReplErr (Core.check defs Ctx.empty Once trm typ)
+        catchReplErr (Core.check (Just line) defs Ctx.empty Once trm typ)
         cids <- liftIO $ cachePutDef def
         let i' = Index $ M.insert nam cids (indexEntries index)
         modify (\e -> e {_replIndex = i'})

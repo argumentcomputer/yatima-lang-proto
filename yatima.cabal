@@ -47,6 +47,7 @@ library
       Yatima.Term
       Yatima
   other-modules:
+      Data.GHAST
       Data.Multihash
       Yatima.Core.Prim
       Yatima.Core.UnionFind

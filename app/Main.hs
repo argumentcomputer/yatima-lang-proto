@@ -129,19 +129,19 @@ readArgID txt = do
     (Left e1, Left e2, Left e3) ->
       fail $
         concat
-          [ "Can't find package ",
+          [ "Can't understand ",
             T.unpack txt,
-            "\n Failed to read as Cid: ",
+            "\n - Failed to read as Cid: ",
             e1,
-            "\n Failed to resolve as IPNS: ",
+            "\n - Failed to resolve as IPNS: ",
             T.unpack e2,
-            "\n Failed to read as filepath. ",
+            "\n - Failed to read as filepath. ",
             show e3
           ]
 
 readArgIDToCid :: Text -> IO Cid
 readArgIDToCid txt = do
-  let loadFile' x = (\(_, c, _) -> c) <$> loadFile (toFilePath x)
+  let loadFile' x = (\(_, _,_, c, _) -> c) <$> loadFile (toFilePath x)
   argID <- readArgID txt
   case argID of
     ArgPath p -> loadFile' p

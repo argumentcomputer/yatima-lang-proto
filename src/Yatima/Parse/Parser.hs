@@ -12,7 +12,8 @@ import Numeric.Natural
 import Text.Megaparsec hiding (ParseError, State)
 import Text.Megaparsec.Char hiding (space)
 import qualified Text.Megaparsec.Char.Lexer as L
-import Yatima.Term
+import Yatima.Term hiding (Pos (..))
+import qualified Yatima.Term as Term
 
 -- | The type of the Yatima Parser. You can think of this as black box that can
 -- turn into what is essentially `Text -> Either (ParseError ...) a` function
@@ -65,6 +66,10 @@ symbol' txt = L.symbol space' txt
 -- | Add a list of names to the binding context
 bind :: (Ord e, Monad m) => [Name] -> Parser e m a -> Parser e m a
 bind bs p = local (\e -> e {_context = (reverse bs) ++ (_context e)}) p
+
+mkLoc :: SourcePos -> SourcePos -> Loc
+mkLoc (SourcePos _ lx cx) (SourcePos _ ly cy) =
+  Loc (Term.Pos (unPos lx) (unPos cx)) (Term.Pos (unPos ly) (unPos cy))
 
 -- | The environment of a Parser
 data ParseEnv = ParseEnv

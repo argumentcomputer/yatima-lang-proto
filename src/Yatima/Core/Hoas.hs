@@ -18,22 +18,22 @@ import Yatima.Term
 
 -- | Higher-Order Abstract Syntax
 data Hoas where
-  VarH :: Name -> Int -> Hoas
-  RefH :: Name -> Cid -> Cid -> Hoas
-  LamH :: Name -> (Hoas -> Hoas) -> Hoas
-  AppH :: Hoas -> Hoas -> Hoas
-  NewH :: Hoas -> Hoas
-  UseH :: Hoas -> Hoas
-  LetH :: Name -> Uses -> Hoas -> Hoas -> (Hoas -> Hoas) -> Hoas
-  AllH :: Name -> Uses -> Hoas -> (Hoas -> Hoas) -> Hoas
-  SlfH :: Name -> (Hoas -> Hoas) -> Hoas
-  FixH :: Name -> (Hoas -> Hoas) -> Hoas
-  AnnH :: Hoas -> Hoas -> Hoas
-  UnrH :: Name -> Int -> Hoas -> Hoas -> Hoas
-  TypH :: Hoas
-  LitH :: Literal -> Hoas
-  LTyH :: LitType -> Hoas
-  OprH :: PrimOp -> Hoas
+  VarH :: Loc -> Name -> Int -> Hoas
+  RefH :: Loc -> Name -> Cid -> Cid -> Hoas
+  LamH :: Loc -> Name -> (Hoas -> Hoas) -> Hoas
+  AppH :: Loc -> Hoas -> Hoas -> Hoas
+  NewH :: Loc -> Hoas -> Hoas
+  UseH :: Loc -> Hoas -> Hoas
+  LetH :: Loc -> Name -> Uses -> Hoas -> Hoas -> (Hoas -> Hoas) -> Hoas
+  AllH :: Loc -> Name -> Uses -> Hoas -> (Hoas -> Hoas) -> Hoas
+  SlfH :: Loc -> Name -> (Hoas -> Hoas) -> Hoas
+  FixH :: Loc -> Name -> (Hoas -> Hoas) -> Hoas
+  AnnH :: Loc -> Hoas -> Hoas -> Hoas
+  UnrH :: Loc -> Name -> Int -> Hoas -> Hoas -> Hoas
+  TypH :: Loc -> Hoas
+  LitH :: Loc -> Literal -> Hoas
+  LTyH :: Loc -> LitType -> Hoas
+  OprH :: Loc -> PrimOp -> Hoas
 
 type PreContext = Ctx Hoas
 
@@ -53,54 +53,54 @@ toContext = fmap (\(term) -> (None, term))
 -- | Convert a lower-order `Term` to a GHC higher-order one
 termToHoas :: [Hoas] -> Term -> Hoas
 termToHoas clos t = case t of
-  Typ -> TypH
-  Var nam idx ->
+  Typ loc -> TypH loc
+  Var loc nam idx ->
     if idx < length clos
       then clos !! idx
-      else VarH nam (length clos - idx)
-  Ref nam def trm -> RefH nam def trm
-  Lam nam bod -> LamH nam (bind nam bod)
-  App fun arg -> AppH (go fun) (go arg)
-  New exp -> NewH (go exp)
-  Use exp -> UseH (go exp)
-  Ann val typ -> AnnH (go val) (go typ)
-  Let rec nam use typ exp bod ->
-    LetH nam use (go typ) (fix rec nam exp) (bind nam bod)
-  All nam use typ bod -> AllH nam use (go typ) (bind nam bod)
-  Slf nam bod -> SlfH nam (bind nam bod)
-  Lit lit -> LitH lit
-  LTy lty -> LTyH lty
-  Opr opr -> OprH opr
+      else VarH loc nam (length clos - idx)
+  Ref loc nam def trm -> RefH loc nam def trm
+  Lam loc nam bod -> LamH loc nam (bind bod)
+  App loc fun arg -> AppH loc (go fun) (go arg)
+  New loc exp -> NewH loc (go exp)
+  Use loc exp -> UseH loc (go exp)
+  Ann loc val typ -> AnnH loc (go val) (go typ)
+  Let loc rec nam use typ exp bod ->
+    LetH loc nam use (go typ) (fix loc rec nam exp) (bind bod)
+  All loc nam use typ bod -> AllH loc nam use (go typ) (bind bod)
+  Slf loc nam bod -> SlfH loc nam (bind bod)
+  Lit loc lit -> LitH loc lit
+  LTy loc lty -> LTyH loc lty
+  Opr loc opr -> OprH loc opr
   where
     go t = termToHoas clos t
-    bind n t = (\x -> termToHoas (x : clos) t)
-    fix r n t = if r then FixH n (bind n t) else go t
+    bind t = (\x -> termToHoas (x : clos) t)
+    fix l r n t = if r then FixH l n (bind t) else go t
 
 -- | Convert a GHC higher-order representation to a lower-order one
 hoasToTerm :: Int -> Hoas -> Term
 hoasToTerm dep t = case t of
-  TypH -> Typ
-  RefH nam def trm -> Ref nam def trm
-  VarH nam idx -> Var nam $ if idx < 0 then idx + dep else idx
-  LamH nam bod -> Lam nam (bind nam bod)
-  AppH fun arg -> App (go fun) (go arg)
-  UseH exp -> Use (go exp)
-  NewH exp -> New (go exp)
-  LetH nam use typ exp bod ->
-    Let (isFix exp) nam use (go typ) (go exp) (bind nam bod)
-  AllH nam use typ bod -> All nam use (go typ) (bind nam bod)
-  SlfH nam bod -> Slf nam (bind nam bod)
-  FixH nam bod -> bind nam bod
-  AnnH trm typ -> Ann (go trm) (go typ)
-  UnrH _ _ trm _ -> go trm
-  LitH lit -> Lit lit
-  LTyH lty -> LTy lty
-  OprH opr -> Opr opr
+  TypH loc -> Typ loc
+  RefH loc nam def trm -> Ref loc nam def trm
+  VarH loc nam idx -> Var loc nam $ if idx < 0 then idx + dep else idx
+  LamH loc nam bod -> Lam loc nam (bind nam bod)
+  AppH loc fun arg -> App loc (go fun) (go arg)
+  UseH loc exp -> Use loc (go exp)
+  NewH loc exp -> New loc (go exp)
+  LetH loc nam use typ exp bod ->
+    Let loc (isFix exp) nam use (go typ) (go exp) (bind nam bod)
+  AllH loc nam use typ bod -> All loc nam use (go typ) (bind nam bod)
+  SlfH loc nam bod -> Slf loc nam (bind nam bod)
+  FixH _ nam bod -> bind nam bod
+  AnnH loc trm typ -> Ann loc (go trm) (go typ)
+  UnrH _ _ _ trm _ -> go trm
+  LitH loc lit -> Lit loc lit
+  LTyH loc lty -> LTy loc lty
+  OprH loc opr -> Opr loc opr
   where
     go t = hoasToTerm dep t
-    bind n b = hoasToTerm (dep + 1) (b (VarH n (- dep -1)))
-    isFix exp@(FixH _ _) = True
-    isFix exp = False
+    bind n b = hoasToTerm (dep + 1) (b (VarH NoLoc n (- dep -1)))
+    isFix (FixH _ _ _) = True
+    isFix _ = False
 
 printHoas :: Hoas -> Text
 printHoas = prettyTerm . (hoasToTerm 0)
@@ -109,5 +109,24 @@ instance Show Hoas where
   show t = T.unpack $ printHoas t
 
 defToHoas :: Name -> Def -> (Hoas, Hoas)
-defToHoas name (Def _ _ term typ_) =
-  (FixH name (\s -> termToHoas [s] term), termToHoas [] typ_)
+defToHoas name (Def loc _ _ term typ_) =
+  (FixH loc name (\s -> termToHoas [s] term), termToHoas [] typ_)
+
+hoasLoc :: Hoas -> Loc
+hoasLoc t = case t of
+  TypH loc -> loc
+  RefH loc _ _ _ -> loc
+  VarH loc _ _ -> loc
+  LamH loc _ _ -> loc
+  AppH loc _ _ -> loc
+  UseH loc _ -> loc
+  NewH loc _ -> loc
+  LetH loc _ _ _ _ _ -> loc
+  AllH loc _ _ _ _ -> loc
+  SlfH loc _ _ -> loc
+  FixH loc _ _ -> loc
+  AnnH loc _ _ -> loc
+  UnrH loc _ _ _ _ -> loc
+  LitH loc _ -> loc
+  LTyH loc _ -> loc
+  OprH loc _ -> loc

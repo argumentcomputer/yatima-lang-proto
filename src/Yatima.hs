@@ -40,7 +40,7 @@ import Yatima.IPFS.Client
 import Yatima.IPLD
 import Yatima.Parse.Package
 import Yatima.Print (prettyDef)
-import Yatima.Term (Defs, Name, Term (..), Uses (..))
+import Yatima.Term (Defs, Loc (..), Name, Term (..), Uses (..))
 
 parseFilePath :: FilePath -> IO (Path Abs File)
 parseFilePath file =
@@ -54,25 +54,25 @@ parseDirPath dir =
     catch @PathException (parseRelDir dir >>= makeAbsolute) $ \e ->
       throw e
 
-loadFile :: FilePath -> IO (Path Abs Dir, Cid, DagPackage)
+loadFile :: FilePath -> IO (Path Abs Dir, Defs, Text, Cid, DagPackage)
 loadFile file = do
   path <- parseFilePath file
   projectDir <- maybe (parent path) id <$> (findYatimaProjectDir (parent path))
-  putStrLn $ concat ["Loading ", file, " from project ", toFilePath projectDir]
+  --putStrLn $ concat ["Loading ", file, " from project ", toFilePath projectDir]
   env <- newIORef (PackageEnv projectDir Set.empty M.empty)
   relPath <- makeRelative projectDir path
-  (c, p) <- withCurrentDir projectDir (pFile env relPath)
-  return (projectDir, c, p)
+  (txt, defs, c, p) <- withCurrentDir projectDir (pFile env relPath)
+  return (projectDir, defs, txt, c, p)
 
 loadCid :: Cid -> IO DagPackage
 loadCid cid = do
-  putStrLn $ concat ["Loading ", show cid, " from cache"]
+  --putStrLn $ concat ["Loading ", show cid, " from cache"]
   cacheGet @DagPackage cid
 
 -- | Parse and pretty-print a file
 prettyFile :: FilePath -> IO ()
 prettyFile file = do
-  (_, _, p) <- loadFile file
+  (_, _, _, _, p) <- loadFile file
   let index@(Index ns) = _index p
   defs <- indexToDefs index
   traverse (prettyIndexF defs) (M.toList ns)
@@ -87,10 +87,9 @@ prettyIndexF defs (nam, (cid, _)) = do
 
 checkFile :: FilePath -> IO (Cid, DagPackage)
 checkFile file = do
-  (_, c, p) <- loadFile file
-  let index@(Index ns) = _index p
-  defs <- indexToDefs index
-  traverse (checkRef defs) (M.toList ns)
+  (_, defs, txt, c, p) <- loadFile file
+  let Index ns = _index p
+  traverse (checkRef (Just txt) defs) (M.toList ns)
   putStrLn $
     concat
       [ "checked: ",
@@ -105,7 +104,7 @@ checkCid cid = do
   p <- loadCid cid
   let index@(Index ns) = _index p
   defs <- indexToDefs index
-  traverse (checkRef defs) (M.toList ns)
+  traverse (checkRef Nothing defs) (M.toList ns)
   putStrLn $
     concat
       [ "checked: ",
@@ -115,10 +114,10 @@ checkCid cid = do
       ]
   return (cid, p)
 
-checkRef :: Defs -> (Name, (Cid, Cid)) -> IO ()
-checkRef defs (name, (cid, _)) = do
+checkRef :: Maybe Text -> Defs -> (Name, (Cid, Cid)) -> IO ()
+checkRef txt defs (name, (cid, _)) = do
   let (trm, typ) = defToHoas name (defs M.! cid)
-  case runExcept $ Core.check defs Ctx.empty Once typ TypH of
+  case runExcept $ Core.check txt defs Ctx.empty Once typ (TypH NoLoc) of
     Left e ->
       putStrLn $
         T.unpack $
@@ -130,8 +129,8 @@ checkRef defs (name, (cid, _)) = do
               "\n",
               T.pack $ show e
             ]
-    Right (_, t, _) ->
-      case runExcept $ Core.check defs Ctx.empty Once trm typ of
+    Right (_, _, _) ->
+      case runExcept $ Core.check txt defs Ctx.empty Once trm typ of
         Left e ->
           putStrLn $
             T.unpack $
@@ -314,7 +313,7 @@ clonePackage dir cid = do
 -- | Evaluate a `HOAS` from a file
 normFile :: Name -> FilePath -> IO Hoas
 normFile name file = do
-  (_, _, p) <- loadFile file
+  (_, _, _, _, p) <- loadFile file
   let index@(Index ns) = _index p
   defs <- indexToDefs index
   case ns M.!? name of
@@ -339,7 +338,7 @@ normCid name cid = do
 -- | Evaluate a `HOAS` from a file
 whnfDef :: Name -> FilePath -> IO Hoas
 whnfDef name file = do
-  (_, _, p) <- loadFile file
+  (_, _, _, _, p) <- loadFile file
   let index@(Index ns) = _index p
   defs <- indexToDefs index
   case ns M.!? name of
@@ -349,23 +348,23 @@ whnfDef name file = do
           ["undefined reference ", show name, " in package ", T.unpack (_packageTitle p)]
     Just (c, _) -> return $ Core.whnf defs (fst $ defToHoas name (defs M.! c))
 
-whnf :: Defs -> Term -> Term
-whnf defs = hoasToTerm 0 . Core.whnf defs . termToHoas []
-
-norm :: Defs -> Term -> Term
-norm defs = hoasToTerm 0 . Core.norm defs . termToHoas []
-
-infer :: Defs -> Term -> Either CheckError Term
-infer defs term =
-  let hTerm = termToHoas [] term
-   in case runExcept (Core.infer defs Ctx.empty Once hTerm) of
-        Left err -> Left err
-        Right (_, ty, _) -> Right (hoasToTerm 0 ty)
-
-check :: Defs -> Term -> Term -> Either CheckError Term
-check defs term typ_ =
-  let hTerm = termToHoas [] term
-   in let hType = termToHoas [] typ_
-       in case runExcept (Core.check defs Ctx.empty Once hTerm hType) of
-            Left err -> Left err
-            Right (_, ty, _) -> Right (hoasToTerm 0 ty)
+--whnf :: Defs -> Term -> Term
+--whnf defs = hoasToTerm 0 . Core.whnf defs . termToHoas []
+--
+--norm :: Defs -> Term -> Term
+--norm defs = hoasToTerm 0 . Core.norm defs . termToHoas []
+--
+--infer :: Defs -> Term -> Either CheckError Term
+--infer defs term =
+--  let hTerm = termToHoas [] term
+--   in case runExcept (Core.infer defs Ctx.empty Once hTerm) of
+--        Left err -> Left err
+--        Right (_, ty, _) -> Right (hoasToTerm 0 ty)
+--
+--check :: Maybe Text -> Defs -> Term -> Term -> Either CheckError Term
+--check defs term typ_ =
+--  let hTerm = termToHoas [] term
+--   in let hType = termToHoas [] typ_
+--       in case runExcept (Core.check defs Ctx.empty Once hTerm hType) of
+--            Left err -> Left err
+--            Right (_, ty, _) -> Right (hoasToTerm 0 ty)

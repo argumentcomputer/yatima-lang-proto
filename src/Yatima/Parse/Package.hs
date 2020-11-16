@@ -192,7 +192,8 @@ pImport env = label "an import" $ do
         Nothing -> do
           exists <- doesFileExist path
           unless exists (customIOFailure $ InvalidLocalImport name)
-          liftIO $ pFile env path
+          (_, _, c, p) <- liftIO $ pFile env path
+          return (c, p)
         Just cid -> do
           p <- pCacheGet @DagPackage cid
           return (cid, p)
@@ -222,7 +223,7 @@ pImports env imp@(Imports is) ind = next <|> (return (imp, ind))
         Right index -> do
           pImports env (Imports $ is ++ [(cid, ali)]) index
 
-pPackage :: IORef PackageEnv -> Text -> ParserIO (Cid, DagSource, DagPackage)
+pPackage :: IORef PackageEnv -> Text -> ParserIO (Cid, Defs, DagSource, DagPackage)
 pPackage env src = do
   space
   doc <- maybe "" id <$> (optional $ pDoc)
@@ -231,21 +232,21 @@ pPackage env src = do
   space
   (imports, Index ns) <- pImports env emptyImports emptyIndex
   when (title /= "") (void $ symbol "where")
-  defs <- local (\e -> e {_refs = ns}) pDefs
-  let (Right index) = mergeIndex (Index ns) (Index $ M.fromList defs)
+  (defs, nams) <- local (\e -> e {_refs = ns}) pDefs
+  let (Right index) = mergeIndex (Index ns) (Index $ M.fromList nams)
   let pack = DagPackage title doc (makeCid source) imports index
   packCid <- liftIO $ cachePut pack
-  return $ (packCid, source, pack)
+  return $ (packCid, M.fromList defs, source, pack)
 
 -- | Parse a file
-pFile :: IORef PackageEnv -> Path Rel File -> IO (Cid, DagPackage)
+pFile :: IORef PackageEnv -> Path Rel File -> IO (Text, Defs, Cid, DagPackage)
 pFile env relPath = do
   root <- _root <$> (liftIO $ readIORef env)
   let absPath = root </> relPath
   let file = toFilePath absPath
   modifyIORef' env (\e -> e {_openFiles = Set.insert relPath (_openFiles e)})
   txt <- TIO.readFile file
-  (cid, src, pack) <- parseIO (pPackage env txt) defaultParseEnv file txt
+  (cid, defs, src, pack) <- parseIO (pPackage env txt) defaultParseEnv file txt
   cachePut src
   modifyIORef' env (\e -> e {_openFiles = Set.delete relPath (_openFiles e)})
   modifyIORef' env (\e -> e {_doneFiles = M.insert relPath cid (_doneFiles e)})
@@ -256,7 +257,7 @@ pFile env relPath = do
         " ",
         show cid
       ]
-  return (cid, pack)
+  return (txt, defs, cid, pack)
 
 pDoc :: (Ord e, Monad m) => Parser e m Text
 pDoc = do
@@ -266,17 +267,19 @@ pDoc = do
 -- | Parse a definition
 pDef :: (Ord e, Monad m) => Parser e m (Name, Def)
 pDef = label "a definition" $ do
+  from <- getSourcePos
   doc <- pDoc
   symbol "def"
   (nam, exp, typ) <- pDecl True False
-  return $ (nam, Def nam doc exp typ)
+  upto <- getSourcePos
+  return $ (nam, Def (mkLoc from upto) nam doc exp typ)
 
 -- | Parse a sequence of definitions, e.g. in a file
-pDefs :: ParserIO [(Name, (Cid, Cid))]
-pDefs = (space >> next) <|> (space >> eof >> (return []))
+pDefs :: ParserIO ([(Cid, Def)], [(Name, (Cid, Cid))])
+pDefs = (space >> next) <|> (space >> eof >> (return ([], [])))
   where
     next = do
       (n, d) <- pDef
-      cids <- liftIO $ cachePutDef d
-      ds <- local (\e -> e {_refs = M.insert n cids (_refs e)}) pDefs
-      return $ (n, cids) : ds
+      cids@(defCid, _) <- liftIO $ cachePutDef d
+      (ds, ns) <- local (\e -> e {_refs = M.insert n cids (_refs e)}) pDefs
+      return $ ((defCid, d) : ds, (n, cids) : ns)

@@ -22,25 +22,25 @@ bool :: Bool -> Literal
 bool c = if c then (VI32 1) else (VI32 0)
 
 whnf :: Term -> Term
-whnf t = hoasToTerm 0 $ Core.whnf M.empty (FixH "test" (\s -> (termToHoas [s] t)))
+whnf t = hoasToTerm 0 $ Core.whnf M.empty (FixH NoLoc "test" (\s -> (termToHoas [s] t)))
 
 check :: Term -> Term -> Either CheckError ()
 check trm typ =
-  let x = Core.check M.empty Ctx.empty Once (termToHoas [] trm) (termToHoas [] typ)
+  let x = Core.check Nothing M.empty Ctx.empty Once (termToHoas [] trm) (termToHoas [] typ)
    in case runExcept x of
         Left e -> Left e
         Right _ -> Right ()
 
 rel_I32_prop :: PrimOp -> (Word32 -> Word32 -> Bool) -> (Word32, Word32) -> Bool
 rel_I32_prop op f (x, y) =
-  whnf (App (App (Opr op) (Lit $ VI32 x)) (Lit $ VI32 y)) == (Lit (bool $ f x y))
+  whnf (_App (_App (_Opr op) (_Lit $ VI32 x)) (_Lit $ VI32 y)) == (_Lit (bool $ f x y))
 
 signed32_op :: (Int32 -> Int32 -> Bool) -> Word32 -> Word32 -> Bool
 signed32_op f x y = f (asInt32 x) (asInt32 y)
 
 rel_I64_prop :: PrimOp -> (Word64 -> Word64 -> Bool) -> (Word64, Word64) -> Bool
 rel_I64_prop op f (x, y) =
-  whnf (App (App (Opr op) (Lit $ VI64 x)) (Lit $ VI64 y)) == (Lit (bool $ f x y))
+  whnf (_App (_App (_Opr op) (_Lit $ VI64 x)) (_Lit $ VI64 y)) == (_Lit (bool $ f x y))
 
 signed64_op :: (Int64 -> Int64 -> Bool) -> Word64 -> Word64 -> Bool
 signed64_op f x y = f (asInt64 x) (asInt64 y)
@@ -49,6 +49,7 @@ eval_spec :: Spec
 eval_spec = do
   describe "`whnf` evaluation " $ do
     it "" $ whnf [yatima| (λ x => x) 1 |] `shouldBe` [yatima| 1 |]
+
     it "" $ whnf [yatima| (λ x y => x) 1 2 |] `shouldBe` [yatima| 1 |]
     it "" $ whnf [yatima| (λ x y => y) 1 2 |] `shouldBe` [yatima| 2 |]
     it "" $ whnf [yatima| (λ x y => y) 1 |] `shouldBe` [yatima| λ y => y |]

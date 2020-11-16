@@ -1,0 +1,323 @@
+module Data.GHAST where
+
+--
+--import Codec.Serialise
+--import Codec.Serialise.Decoding
+--import Codec.Serialise.Encoding
+--import Control.Monad
+--import qualified Data.ByteString as BS
+--import Data.ByteString.Base64
+--import qualified Data.ByteString.Lazy as BSL
+--import Data.IPLD.Cid
+--import Data.Map (Map)
+--import qualified Data.Map as M
+--import qualified Data.Map.Merge.Strict as M
+--import Data.Set (Set)
+--import qualified Data.Set as Set
+--import Data.Text (Text)
+--import qualified Data.Text as T hiding (find)
+--import qualified Data.Text.Encoding as T
+--
+--data Package = Package
+--  { _packageTitle :: Text,
+--    _description :: Text,
+--    _imports :: Imports,
+--    _index :: Index
+--  }
+--  deriving (Show, Eq)
+--
+---- | A typed definition embedded in the IPLD DAG
+--data Definition = Definition
+--  { _title :: Text,
+--    _termAST :: Cid,
+--    _typeAST :: AST,
+--    _document :: Text,
+--    _termMeta :: Meta,
+--    _typeMeta :: Meta
+--  }
+--  deriving (Eq, Show)
+--
+--emptyPackage :: Text -> Package
+--emptyPackage n = Package n "" (makeCid BSL.empty) emptyImports emptyIndex
+--
+--newtype Imports = Imports [(Cid, Text)] deriving (Show, Eq)
+--
+--newtype Index = Index (Map Text (Cid, Cid)) deriving (Show, Eq)
+--
+---- | An anonymous spine of a λ-like language
+--data AST
+--  = Ctor Text [AST]
+--  | Bind AST
+--  | Vari Int
+--  | Link Cid
+--  | Data BS.ByteString
+--  deriving (Eq, Show, Ord)
+--
+---- | The computationally irrelevant metadata of an AST:
+---- Specifically, the names of its binders, the names of its global references
+---- and the cids of the Defs that correspond to those global references
+--data Meta
+--  = MCtor Pos [Meta]
+--  | MBind Pos Text Meta
+--  | MLink Pos Text Cid
+--  | MLeaf Pos
+--  deriving (Eq, Show, Ord)
+--
+--encodeData :: BS.ByteString -> Encoding
+--encodeData bs = encodeString (encodeBase64 bs)
+--
+--decodeData :: Decoder s BS.ByteString
+--decodeData = do
+--  dat <- T.encodeUtf8 <$> decodeString
+--  case (decodeBase64 dat, isValidBase64 dat) of
+--    (Right bs, True) -> return bs
+--    (Left e, _) ->
+--      fail ("invalid Data, expected a valid base64 string: " ++ T.unpack e)
+--
+--encodeAST :: AST -> Encoding
+--encodeAST term = case term of
+--  Ctor n ts ->
+--    encodeListLen 3
+--      <> encodeString "Ctor"
+--      <> encodeString n
+--      <> encodeListLen (fromIntegral $ length ts)
+--      <> foldr (\v r -> encodeAST v <> r) mempty ts
+--  Bind t -> encodeListLen 2 <> encodeString "Bind" <> encodeAST t
+--  Vari idx -> encodeListLen 2 <> encodeString "Vari" <> encodeInt idx
+--  Link cid -> encodeListLen 2 <> encodeString "Link" <> encodeCid cid
+--  Data bs -> encodeListLen 2 <> encodeString "Data" <> encodeData bs
+--
+--decodeAST :: Decoder s AST
+--decodeAST = do
+--  size <- decodeListLen
+--  tag <- decodeString
+--  case (size, tag) of
+--    (3, "Ctor") -> do
+--      ctor <- decodeString
+--      arity <- decodeListLen
+--      args <- replicateM arity decodeAST
+--      return $ Ctor ctor args
+--    (2, "Bind") -> Bind <$> decodeAST
+--    (2, "Vari") -> Vari <$> decodeInt
+--    (2, "Link") -> Link <$> decodeCid
+--    (2, "Data") -> Data <$> decodeData
+--    _ ->
+--      fail $
+--        concat
+--          ["invalid AST with size: ", show size, " and tag: ", show tag]
+--
+--instance Serialise AST where
+--  encode = encodeAST
+--  decode = decodeAST
+--
+--encodeMeta :: Meta -> Encoding
+--encodeMeta term = case term of
+--  MCtor ts ->
+--    encodeListLen 2 <> encodeString "MCtor"
+--      <> encodeListLen (fromIntegral $ length ts)
+--      <> foldr (\v r -> encodeMeta v <> r) mempty ts
+--  MBind n t ->
+--    encodeListLen 3 <> encodeString "MBind"
+--      <> encodeString n
+--      <> encodeMeta t
+--  MLink n c ->
+--    encodeListLen 3 <> encodeString "MLink"
+--      <> encodeString n
+--      <> encodeCid c
+--  MData d -> encodeListLen 2 <> encodeString "MData" <> encodeData d
+--  MLeaf -> encodeListLen 1 <> encodeString "MLeaf"
+--
+--decodeMeta :: Decoder s Meta
+--decodeMeta = do
+--  size <- decodeListLen
+--  tag <- decodeString
+--  case (size, tag) of
+--    (2, "MCtor") -> do
+--      arity <- decodeListLen
+--      args <- replicateM arity decodeMeta
+--      return $ MCtor args
+--    (3, "MBind") -> MBind <$> decodeString <*> decodeMeta
+--    (3, "MLink") -> MLink <$> decodeString <*> decodeCid
+--    (2, "MData") -> MData <$> decodeData
+--    (1, "MLeaf") -> return MLeaf
+--    _ ->
+--      fail $
+--        concat
+--          ["invalid Meta with size: ", show size, " and tag: ", show tag]
+--
+--instance Serialise Meta where
+--  encode = encodeMeta
+--  decode = decodeMeta
+--
+--encodeDef :: Def -> Encoding
+--encodeDef (Def loc title anonTerm anonType doc termMeta typeMeta) =
+--  encodeListLen 8
+--    <> (encode loc)
+--    <> (encodeString "Def")
+--    <> (encodeString title)
+--    <> (encodeCid anonTerm)
+--    <> (encodeAST anonType)
+--    <> (encodeString doc)
+--    <> (encodeMeta termMeta)
+--    <> (encodeMeta typeMeta)
+--
+--decodeDef :: Decoder s Def
+--decodeDef = do
+--  size <- decodeListLen
+--  tag <- decodeString
+--  when (tag /= "Def") (fail $ "invalid Def tag: " ++ show tag)
+--  when (size /= 8) (fail $ "invalid Def list size: " ++ show size)
+--  Def
+--    <$> decodeInt
+--    <*> decodeString
+--    <*> decodeCid
+--    <*> decodeAST
+--    <*> decodeString
+--    <*> decodeMeta
+--    <*> decodeMeta
+--
+--instance Serialise Def where
+--  encode = encodeDef
+--  decode = decodeDef
+--
+--dagMetaCids :: Meta -> Set Cid
+--dagMetaCids t = go Set.empty t
+--  where
+--    go :: Set Cid -> Meta -> Set Cid
+--    go cids t = case t of
+--      MCtor ds -> Set.unions $ go cids <$> ds
+--      MBind _ d -> go cids d
+--      MLink _ c -> Set.insert c cids
+--      MLeaf -> cids
+--
+--dagASTCids :: AST -> Set Cid
+--dagASTCids t = go Set.empty t
+--  where
+--    go :: Set Cid -> AST -> Set Cid
+--    go cids t = case t of
+--      Ctor _ ds -> Set.unions $ go cids <$> ds
+--      Bind d -> go cids d
+--      Link c -> Set.insert c cids
+--      Data _ -> cids
+--      Vari _ -> cids
+--
+--emptyImports :: Imports
+--emptyImports = Imports []
+--
+--emptyIndex :: Index
+--emptyIndex = Index M.empty
+--
+--indexEntries :: Index -> Map Text (Cid, Cid)
+--indexEntries (Index ns) = ns
+--
+--mergeIndex :: Index -> Index -> Either (Text, Cid, Cid) Index
+--mergeIndex (Index a) (Index b) = do
+--  Index <$> merge a b
+--  where
+--    merge = M.mergeA M.preserveMissing M.preserveMissing (M.zipWithAMatched f)
+--    f k x y = if x == y then Right x else Left (k, fst x, fst y)
+--
+--data ImportDefs = Full | Some (Set Text) deriving (Eq, Show)
+--
+--filterIndex :: Index -> ImportDefs -> Index
+--filterIndex (Index ns) ds = case ds of
+--  Full -> Index ns
+--  Some ks -> Index (M.restrictKeys ns ks)
+--
+--encodeIndex :: Index -> Encoding
+--encodeIndex (Index ds) =
+--  encodeListLen 2
+--    <> (encodeString ("Index" :: Text))
+--    <> (encodeMapLen (fromIntegral $ M.size ds) <> encodeEntries ds)
+--  where
+--    encodeEntries ds = foldr f mempty (sortBy cmp (M.toList ds))
+--    f (k, (d, t)) r = encodeString k <> encodeListLen 2 <> encodeCid d <> encodeCid t <> r
+--    cmp (k1, _) (k2, _) = cborCanonicalOrder (serialise k1) (serialise k2)
+--
+--cborCanonicalOrder :: BSL.ByteString -> BSL.ByteString -> Ordering
+--cborCanonicalOrder x y
+--  | BSL.length x < BSL.length y = LT
+--  | BSL.length y > BSL.length x = GT
+--  | otherwise = compare x y
+--
+--decodeIndex :: Decoder s Index
+--decodeIndex = do
+--  size <- decodeListLen
+--  when (size /= 2) (fail $ "invalid Index list size: " ++ show size)
+--  tag <- decodeString
+--  when (tag /= "Index") (fail $ "invalid Index tag: " ++ show tag)
+--  n <- decodeMapLen
+--  let decodeCids = decodeListLen >> (,) <$> decodeCid <*> decodeCid
+--  ds <- M.fromList <$> replicateM n ((,) <$> decodeString <*> decodeCids)
+--  return $ Index ds
+--
+--instance Serialise Index where
+--  encode = encodeIndex
+--  decode = decodeIndex
+--
+--encodeImports :: Imports -> Encoding
+--encodeImports (Imports is) = encodeListLen (fromIntegral $ length is) <> go is
+--  where
+--    f (k, v) r = encodeListLen 2 <> encodeCid k <> encodeString v <> r
+--    go is = foldr f mempty is
+--
+--decodeImports :: Decoder s Imports
+--decodeImports = do
+--  n <- decodeListLen
+--  let decodeEntry = decodeListLen >> ((,) <$> decodeCid <*> decodeString)
+--  Imports <$> replicateM n decodeEntry
+--
+--instance Serialise Imports where
+--  encode = encodeImports
+--  decode = decodeImports
+--
+----encodeSource :: Source -> Encoding
+----encodeSource (Source title txt) =
+----  encodeListLen 3
+----    <> encodeString "Source"
+----    <> encodeString title
+----    <> encodeString txt
+----
+----decodeSource :: Decoder s Source
+----decodeSource = do
+----  size <- decodeListLen
+----  tag <- decodeString
+----  when (tag /= "Source") (fail $ "invalid Source tag: " ++ show tag)
+----  when (size /= 3) (fail $ "invalid Source list size: " ++ show size)
+----  Source <$> decodeString <*> decodeString
+----
+----instance Serialise Source where
+----  encode = encodeSource
+----  decode = decodeSource
+--
+--encodePackage :: Package -> Encoding
+--encodePackage package =
+--  encodeListLen 6
+--    <> (encodeString "Package")
+--    <> (encodeString (_packageTitle package))
+--    <> (encodeString (_description package))
+--    <> (encodeCid (_sourceFile package))
+--    <> (encodeImports (_imports package))
+--    <> (encodeIndex (_index package))
+--
+--decodePackage :: Decoder s Package
+--decodePackage = do
+--  size <- decodeListLen
+--  tag <- decodeString
+--  when (tag /= "Package") (fail $ "invalid Package tag: " ++ show tag)
+--  when (size /= 6) (fail $ "invalid Package list size: " ++ show size)
+--  Package <$> decodeString <*> decodeString <*> decodeCid
+--    <*> decodeImports
+--    <*> decodeIndex
+--
+--instance Serialise Package where
+--  encode = encodePackage
+--  decode = decodePackage
+--
+--packageImportCids :: Package -> Set Cid
+--packageImportCids (Package _ _ _ (Imports ms) _) = Set.fromList $ fst <$> ms
+--
+--packageIndexCids :: Package -> Set Cid
+--packageIndexCids (Package _ _ _ _ (Index ns)) =
+--  let elems = M.elems ns
+--   in Set.union (Set.fromList $ fst <$> elems) (Set.fromList $ snd <$> elems)

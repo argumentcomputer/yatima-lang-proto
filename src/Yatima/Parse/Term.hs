@@ -38,20 +38,23 @@ pTerm = space >> (pExpr True)
 -- not the sequence may be annotated with a type
 pExpr :: (Ord e, Monad m) => Bool -> Parser e m Term
 pExpr annotatable = label "an expression" $ do
+  from <- getSourcePos
   fun <- pTerm' <* space
   args <- args
-  let tele = foldl (\t a -> App t a) fun args
-  choice
-    [ if annotatable then (Ann tele <$> (symbol "::" >> pExpr False)) else empty,
-      return tele
-    ]
+  let tele = foldl (\t (upto, a) -> App (mkLoc from upto) t a) fun args
+  let ann = do
+        ty <- symbol "::" >> pExpr False
+        upto <- getSourcePos
+        return $ Ann (mkLoc from upto) tele ty
+  choice [if annotatable then ann else empty, return tele]
   where
     args = next <|> (return [])
     next = do
       notFollowedBy terminator
+      l <- getSourcePos
       t <- pTerm' <* space
       ts <- args
-      return (t : ts)
+      return ((l, t) : ts)
     terminator =
       choice
         [ void (string "def"),
@@ -72,9 +75,21 @@ pTerm' = do
       pTyp,
       symbol "(" >> pExpr True <* space <* string ")",
       pLet,
-      Opr <$> pOpr,
-      LTy <$> pLitType,
-      Lit <$> pLiteral,
+      do
+        from <- getSourcePos
+        o <- pOpr
+        upto <- getSourcePos
+        return $ Opr (mkLoc from upto) o,
+      do
+        from <- getSourcePos
+        o <- pLitType
+        upto <- getSourcePos
+        return $ LTy (mkLoc from upto) o,
+      do
+        from <- getSourcePos
+        o <- pLiteral
+        upto <- getSourcePos
+        return $ Lit (mkLoc from upto) o,
       pVar
     ]
 
@@ -117,44 +132,50 @@ pUsesAnnotation =
 -- | Parse the type of types: @Type@
 pTyp :: (Ord e, Monad m) => Parser e m Term
 pTyp = label "a type: \"Type\"" $ do
+  from <- getSourcePos
   string "Type"
-  return $ Typ
+  upto <- getSourcePos
+  return $ Typ (mkLoc from upto)
 
-pBinder :: (Ord e, Monad m) => Bool -> Parser e m [(Name, Uses, Term)]
+pBinder :: (Ord e, Monad m) => Bool -> Parser e m [(SourcePos, Name, Uses, Term)]
 pBinder namOptional =
   choice
     [ try $ ann,
       if namOptional then unNam else empty
     ]
   where
-    unNam = (\x -> [("", Many, x)]) <$> pTerm'
+    unNam = (\l x -> [(l, "", Many, x)]) <$> getSourcePos <*> pTerm'
     ann = do
       symbol "("
       uses <- pUses
-      names <- sepEndBy1 (pName True) space
+      names <- sepEndBy1 ((,) <$> getSourcePos <*> pName True) space
       typ_ <- symbol ":" >> pExpr False
       string ")"
-      return $ zipWith (\n i -> (n, uses, shift i 0 typ_)) names [0 ..]
+      return $ zipWith (\(l, n) i -> (l, n, uses, shift i 0 typ_)) names [0 ..]
 
-foldLam :: Term -> [Name] -> Term
-foldLam body bs = foldr (\n x -> Lam n x) body bs
+foldLam :: SourcePos -> Term -> [(SourcePos, Name)] -> Term
+foldLam upto body bs = foldr (\(f, n) x -> Lam (mkLoc f upto) n x) body bs
 
 -- | Parse a lambda: @λ x y z => body@
 pLam :: (Ord e, Monad m) => Parser e m Term
 pLam = label "a lambda: \"λ x y => y\"" $ do
   symbol "λ" <|> symbol "\\" <|> symbol "lambda"
-  vars <- sepEndBy1 (pName True) space
+  vars <- sepEndBy1 ((,) <$> getSourcePos <*> pName True) space
   symbol "=>"
-  body <- bind vars (pExpr False)
-  return (foldLam body vars)
+  body <- bind (snd <$> vars) (pExpr False)
+  upto <- getSourcePos
+  return (foldLam upto body vars)
 
-foldAll :: Term -> [(Name, Uses, Term)] -> Term
-foldAll body bs = foldr (\(n, u, t) x -> All n u t x) body bs
+foldAll :: SourcePos -> Term -> [(SourcePos, Name, Uses, Term)] -> Term
+foldAll upto body bs =
+  foldr (\(from, n, u, t) x -> All (mkLoc from upto) n u t x) body bs
 
-bindAll :: (Ord e, Monad m) => [(Name, Uses, Term)] -> Parser e m a -> Parser e m a
-bindAll bs = bind (foldr (\(n, _, _) ns -> n : ns) [] bs)
-
-fst3 (x, _, _) = x
+bindAll ::
+  (Ord e, Monad m) =>
+  [(SourcePos, Name, Uses, Term)] ->
+  Parser e m a ->
+  Parser e m a
+bindAll bs = bind (foldr (\(_, n, _, _) ns -> n : ns) [] bs)
 
 -- | Parse a forall: ∀ (a: A) (b: B) (c: C) -> body@
 pAll :: (Ord e, Monad m) => Parser e m Term
@@ -162,7 +183,8 @@ pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
   symbol "∀" <|> symbol "forall"
   binds <- binders <* space
   body <- bindAll binds (pExpr False)
-  return $ foldAll body binds
+  upto <- getSourcePos
+  return $ foldAll upto body binds
   where
     binder = pBinder True
     binders = do
@@ -172,21 +194,27 @@ pAll = label "a forall: \"∀ (a: A) (b: B) -> A\"" $ do
 
 pSlf :: (Ord e, Monad m) => Parser e m Term
 pSlf = label "a self type: \"@x A\"" $ do
+  from <- getSourcePos
   name <- symbol "@" >> (pName True) <* space
   body <- bind [name] $ pExpr False
-  return $ Slf name body
+  upto <- getSourcePos
+  return $ Slf (mkLoc from upto) name body
 
 pNew :: (Ord e, Monad m) => Parser e m Term
 pNew = label "datatype introduction: \"data x\"" $ do
+  from <- getSourcePos
   symbol "data "
   expr <- pExpr True
-  return $ New expr
+  upto <- getSourcePos
+  return $ New (mkLoc from upto) expr
 
 pUse :: (Ord e, Monad m) => Parser e m Term
 pUse = label "a case expression: \"case x\"" $ do
+  from <- getSourcePos
   symbol "case "
   expr <- pExpr True
-  return $ Use expr
+  upto <- getSourcePos
+  return $ Use (mkLoc from upto) expr
 
 pDecl :: (Ord e, Monad m) => Bool -> Bool -> Parser e m (Name, Term, Term)
 pDecl rec shadow = do
@@ -196,44 +224,52 @@ pDecl rec shadow = do
     (not shadow && M.member nam refs)
     (customFailure $ TopLevelRedefinition nam)
   bs <- ((symbol ":" >> return []) <|> binders)
-  let ns = (fst3 <$> bs)
+  let ns = (snd4 <$> bs)
   typBody <- bind ns (pExpr False)
-  let typ = foldAll typBody bs
   expBody <- symbol "=" >> bind (if rec then (nam : ns) else ns) (pExpr False)
-  let exp = foldLam expBody (fst3 <$> bs)
+  upto <- getSourcePos
+  let exp = foldLam upto expBody ((\(n, l, _, _) -> (n, l)) <$> bs)
+  let typ = foldAll upto typBody bs
   return (nam, exp, typ)
   where
+    snd4 (_, x, _, _) = x
     binder = pBinder False
     binders = do
       b <- binder <* space
-      bs <- bind (fst3 <$> b) $ ((symbol ":" >> return []) <|> binders)
+      bs <- bind (snd4 <$> b) $ ((symbol ":" >> return []) <|> binders)
       return $ b ++ bs
 
 -- | Parse a local, possibly recursive, definition
 pLet :: (Ord e, Monad m) => Parser e m Term
 pLet = do
+  from <- getSourcePos
   rec <- (symbol "letrec" >> return True) <|> (symbol "let" >> return False)
   use <- pUses
   (nam, exp, typ) <- pDecl rec True <* symbol ";"
   bdy <- bind [nam] $ pExpr False
-  return $ Let rec nam use typ exp bdy
+  upto <- getSourcePos
+  return $ Let (mkLoc from upto) rec nam use typ exp bdy
 
 -- | Parse a local variable or a locally indexed alias of a global reference
 pVar :: (Ord e, Monad m) => Parser e m Term
 pVar = label "a local or global reference: \"x\", \"add\"" $ do
+  from <- getSourcePos
   env <- ask
   nam <- pName False
+  upto <- getSourcePos
   case findByName nam (_context env) of
-    Just i -> return $ Var nam i
+    Just i -> return $ Var (mkLoc from upto) nam i
     Nothing -> case M.lookup nam (_refs env) of
-      Just (def, trm) -> return (Ref nam def trm)
+      Just (def, trm) -> return (Ref (mkLoc from upto) nam def trm)
       Nothing -> customFailure $ UndefinedReference nam
 
 pAnn :: (Ord e, Monad m) => Parser e m Term
 pAnn = do
+  from <- getSourcePos
   symbol "("
   val <- pExpr False <* space
   symbol "::"
   typ <- pExpr False <* space
   string ")"
-  return $ Ann val typ
+  upto <- getSourcePos
+  return $ Ann (mkLoc from upto) val typ

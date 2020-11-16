@@ -38,16 +38,16 @@ runPrint max = do
   let f x = print x >> print (prop_print_literal x)
   traverse_ f ns
 
-fromRight (Right x) = x
-fromRight (Left _) = error "fromRight"
-
-term :: Term
-term = Let True "M51" None (LTy TI64) (Var "test" 0) (Lit VException)
-
-refId =
-  let d = cidFromText "bafy2bzaceb7tzcelrtfuo4zl375mtm7dqwmvv7a4amlpziwbm7k3hr4bp3lfc"
-      t = cidFromText "bafy2bzaceagf5dbfewoq632a5x5mjhhv3ojftx2sdh3lc73cneocoe7chzsks"
-   in Ref "id" (fromRight d) (fromRight t)
+--fromRight (Right x) = x
+--fromRight (Left _) = error "fromRight"
+--
+--term :: Term
+--term = Let 0 True "M51" None (LTy TI64) (Var "test" 0) (Lit VException)
+--
+--refId =
+--  let d = cidFromText "bafy2bzaceb7tzcelrtfuo4zl375mtm7dqwmvv7a4amlpziwbm7k3hr4bp3lfc"
+--      t = cidFromText "bafy2bzaceagf5dbfewoq632a5x5mjhhv3ojftx2sdh3lc73cneocoe7chzsks"
+--   in Ref 0 "id" (fromRight d) (fromRight t)
 
 spec :: SpecWith ()
 spec = do

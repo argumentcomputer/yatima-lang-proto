@@ -75,85 +75,102 @@ spec = do
   parseDescribe
     pLam
     "Lambda"
-    [ ("λ x => x", Good $ Lam "x" $ Var "x" 0),
-      ("λ x => λ y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1),
-      ("λ x y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1),
-      ("\\ x => x", Good $ Lam "x" $ Var "x" 0),
-      ("\\ x => \\ y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1),
-      ("\\ x y => x", Good $ Lam "x" $ Lam "y" $ Var "x" 1)
+    [ ("λ x => x", Good $ _Lam "x" $ _Var "x" 0),
+      ("λ x => λ y => x", Good $ _Lam "x" $ _Lam "y" $ _Var "x" 1),
+      ("λ x y => x", Good $ _Lam "x" $ _Lam "y" $ _Var "x" 1),
+      ("\\ x => x", Good $ _Lam "x" $ _Var "x" 0),
+      ("\\ x => \\ y => x", Good $ _Lam "x" $ _Lam "y" $ _Var "x" 1),
+      ("\\ x y => x", Good $ _Lam "x" $ _Lam "y" $ _Var "x" 1)
     ]
 
-  parseDescribe
-    (pBinder False)
-    "Binder, name mandatory"
-    [ ("(A:Type)", Good [("A", Many, Typ)]),
-      ("(A B C :Type)", Good [("A", Many, Typ), ("B", Many, Typ), ("C", Many, Typ)])
-    ]
+  --parseDescribe
+  --  (pBinder False)
+  --  "Binder, name mandatory"
+  --  [ ("(A:Type)", Good [(NoLoc, "A", Many, _Typ)]),
+  --    ("(A B C :Type)", Good [(NoLoc, "A", Many, _Typ), (3, "B", Many, _Typ), (5, "C", Many, _Typ)])
+  --  ]
 
-  parseDescribe
-    (pBinder True)
-    "Binder, name optional"
-    [ ("Type", Good [("", Many, Typ)]),
-      ("Type", Good [("", Many, Typ)])
-    ]
-
+  --
+  --  parseDescribe
+  --    (pBinder True)
+  --    "Binder, name optional"
+  --    [ ("Type", Good [(0, "", Many, Typ 0)]),
+  --      ("Type", Good [(0, "", Many, Typ 0)])
+  --    ]
+  --
   parseDescribe
     pAll
     "Binder, in forall, with repetition "
     [ ( "∀ (A: Type) (a: A) (b: A) -> A",
         Good $
-          All "A" Many Typ (All "a" Many (Var "A" 0) (All "b" Many (Var "A" 1) (Var "A" 2)))
+          _All "A" Many (_Typ) (_All "a" Many (_Var "A" 0) (_All "b" Many (_Var "A" 1) (_Var "A" 2)))
       ),
       ( "∀ (A: Type) (a b: A) -> A",
         Good $
-          All "A" Many Typ (All "a" Many (Var "A" 0) (All "b" Many (Var "A" 1) (Var "A" 2)))
+          _All "A" Many (_Typ) (_All "a" Many (_Var "A" 0) (_All "b" Many (_Var "A" 1) (_Var "A" 2)))
       ),
       ( "∀ (A B: Type) (a b: A) (c d: B) -> A",
         Good $
-          All "A" Many Typ (All "B" Many Typ (All "a" Many (Var "A" 1) (All "b" Many (Var "A" 2) (All "c" Many (Var "B" 2) (All "d" Many (Var "B" 3) (Var "A" 5))))))
+          _All "A" Many (_Typ) (_All "B" Many (_Typ) (_All "a" Many (_Var "A" 1) (_All "b" Many (_Var "A" 2) (_All "c" Many (_Var "B" 2) (_All "d" Many (_Var "B" 3) (_Var "A" 5))))))
       )
     ]
 
   parseDescribe
     pAll
     "Forall"
-    [ ("∀ (x: Type) -> Type", Good $ All "x" Many Typ Typ),
-      ("∀ (x: Type) -> x", Good $ All "x" Many Typ $ Var "x" 0),
-      ("∀ (x: Type) (y: Type) -> x", Good $ All "x" Many Typ $ All "y" Many Typ $ Var "x" 1),
-      ("∀ (A: Type) (x: A) -> x", Good $ All "A" Many Typ $ All "x" Many (Var "A" 0) $ Var "x" 0),
-      ("∀ (x: Type) -> x", Good $ All "x" Many Typ $ Var "x" 0),
-      ("∀ (0 x: Type) -> x", Good $ All "x" None Typ $ Var "x" 0),
-      ("∀ (& x: Type) -> x", Good $ All "x" Affi Typ $ Var "x" 0),
-      ("∀ (1 x: Type) -> x", Good $ All "x" Once Typ $ Var "x" 0)
+    [ ( "∀ (x: Type) -> Type",
+        Good $ _All "x" Many (_Typ) (_Typ)
+      ),
+      ( "∀ (x: Type) -> x",
+        Good $ _All "x" Many (_Typ) $ _Var "x" 0
+      ),
+      ( "∀ (x: Type) (y: Type) -> x",
+        Good $ _All "x" Many (_Typ) $ _All "y" Many (_Typ) $ _Var "x" 1
+      ),
+      ( "∀ (A: Type) (x: A) -> x",
+        Good $ _All "A" Many (_Typ) $ _All "x" Many (_Var "A" 0) $ _Var "x" 0
+      ),
+      ( "∀ (x: Type) -> x",
+        Good $ _All "x" Many (_Typ) $ _Var "x" 0
+      ),
+      ( "∀ (0 x: Type) -> x",
+        Good $ _All "x" None (_Typ) $ _Var "x" 0
+      ),
+      ( "∀ (& x: Type) -> x",
+        Good $ _All "x" Affi (_Typ) $ _Var "x" 0
+      ),
+      ( "∀ (1 x: Type) -> x",
+        Good $ _All "x" Once (_Typ) $ _Var "x" 0
+      )
     ]
 
   parseDescribe
     pTyp
     "Typ"
-    [ ("Type", Good Typ)
+    [ ("Type", Good $ _Typ)
     ]
 
   parseDescribe
     (pDecl True False)
     "Declarations"
-    [ ("foo: Type = Type", Good ("foo", Typ, Typ)),
+    [ ("foo: Type = Type", Good ("foo", _Typ, _Typ)),
       ( "foo (A:Type) (B:Type) (x:A) (y:B) : A = x",
         Good $
           ( "foo",
-            Lam "A" (Lam "B" (Lam "x" (Lam "y" (Var "x" 1)))),
-            All
+            _Lam "A" (_Lam "B" (_Lam "x" (_Lam "y" (_Var "x" 1)))),
+            _All
               "A"
               Many
-              Typ
-              ( All
+              (_Typ)
+              ( _All
                   "B"
                   Many
-                  Typ
-                  ( All
+                  (_Typ)
+                  ( _All
                       "x"
                       Many
-                      (Var "A" 1)
-                      (All "y" Many (Var "B" 1) (Var "A" 3))
+                      (_Var "A" 1)
+                      (_All "y" Many (_Var "B" 1) (_Var "A" 3))
                   )
               )
           )
@@ -163,15 +180,17 @@ spec = do
   parseDescribe
     pLet
     "Let"
-    [ ("let any: Type = Type; any", Good $ Let False "any" Many Typ Typ $ Var "any" 0),
+    [ ( "let any: Type = Type; any",
+        Good $ _Let False "any" Many (_Typ) (_Typ) $ _Var "any" 0
+      ),
       ( "let any (x:Type) (y:Type): Type = Type; any",
         Good $
-          Let
+          _Let
             False
             "any"
             Many
-            (All "x" Many Typ (All "y" Many Typ Typ))
-            (Lam "x" (Lam "y" Typ))
-            (Var "any" 0)
+            (_All "x" Many (_Typ) (_All "y" Many (_Typ) (_Typ)))
+            (_Lam "x" (_Lam "y" (_Typ)))
+            (_Var "any" 0)
       )
     ]

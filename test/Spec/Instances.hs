@@ -1,4 +1,7 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Spec.Instances where
@@ -18,6 +21,7 @@ import Test.QuickCheck.Gen ()
 import Test.QuickCheck.Instances.ByteString ()
 import Test.QuickCheck.Instances.Text ()
 import Yatima.IPLD
+import Yatima.QuasiQuoter
 import Yatima.Term
 
 instance Arbitrary Cid where
@@ -59,7 +63,11 @@ instance Arbitrary DagMeta where
 instance Arbitrary DagDef where
   arbitrary =
     DagDef "test"
-      <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
 
 instance Arbitrary Imports where
   arbitrary = Imports <$> arbitrary
@@ -73,9 +81,9 @@ instance Arbitrary DagPackage where
 
 test_index :: Index
 test_index =
-  let trm = Lam "A" (Lam "x" (Var "x" 0))
-      typ = All "A" Many Typ (All "x" Many (Var "A" 0) (Var "A" 1))
-      def = Def "id" "" trm typ
+  let trm = [yatima| λ A x => x|]
+      typ = [yatima| forall (A: Type) (x: A) -> A|]
+      def = Def NoLoc "id" "" trm typ
       cid = makeCid $ defToDagDef def
       cid' = makeCid $ termToAST trm
    in Index (M.singleton "id" (cid, cid'))
@@ -133,37 +141,42 @@ instance Arbitrary PrimOp where
 var_gen :: [Name] -> Gen Term
 var_gen ctx = do
   n <- elements ctx
-  return $ Var n (fromJust $ findByName n ctx)
+  return $ Var NoLoc n (fromJust $ findByName n ctx)
 
 ref_gen :: Gen Term
 ref_gen = do
   n <- elements (M.keys $ indexEntries $ test_index)
   let (x, y) = (indexEntries test_index) M.! n
-  return $ Ref n x y
+  return $ Ref NoLoc n x y
 
 term_gen :: [Name] -> Gen Term
 term_gen ctx =
   frequency
-    [ if ctx == [] then (0, return Typ) else (100, var_gen ctx),
+    [ if ctx == [] then (0, return $ Typ NoLoc) else (100, var_gen ctx),
       (100, ref_gen),
-      (100, return Typ),
-      (100, Lit <$> arbitrary),
-      (100, LTy <$> arbitrary),
-      (100, Opr <$> arbitrary),
-      (50, (name_gen >>= \n -> Lam n <$> term_gen (n : ctx))),
-      (50, (name_gen >>= \n -> Slf n <$> term_gen (n : ctx))),
-      (33, App <$> term_gen ctx <*> term_gen ctx),
-      (33, Ann <$> term_gen ctx <*> term_gen ctx),
+      (100, return $ Typ NoLoc),
+      (100, Lit NoLoc <$> arbitrary),
+      (100, LTy NoLoc <$> arbitrary),
+      (100, Opr NoLoc <$> arbitrary),
+      (50, (name_gen >>= \n -> Lam NoLoc n <$> term_gen (n : ctx))),
+      (50, (name_gen >>= \n -> Slf NoLoc n <$> term_gen (n : ctx))),
+      (33, App NoLoc <$> term_gen ctx <*> term_gen ctx),
+      (33, Ann NoLoc <$> term_gen ctx <*> term_gen ctx),
       ( 25,
         ( name_gen >>= \n ->
-            All n <$> arbitrary <*> term_gen ctx <*> term_gen (n : ctx)
+            All NoLoc n
+              <$> arbitrary
+              <*> term_gen ctx
+              <*> term_gen (n : ctx)
         )
       ),
       ( 25,
         ( do
             nam <- name_gen
             rec <- arbitrary
-            Let rec nam <$> arbitrary <*> term_gen ctx
+            Let NoLoc rec nam
+              <$> arbitrary
+              <*> term_gen ctx
               <*> term_gen (if rec then (nam : ctx) else ctx)
               <*> term_gen (nam : ctx)
         )
@@ -177,7 +190,11 @@ instance Arbitrary DagSource where
   arbitrary = DagSource "Test" <$> arbitrary
 
 instance Arbitrary Def where
-  arbitrary = Def "test" <$> arbitrary <*> term_gen ["test"] <*> term_gen []
+  arbitrary =
+    Def NoLoc "test"
+      <$> arbitrary
+      <*> term_gen ["test"]
+      <*> term_gen []
 
 instance Arbitrary DagYatima where
   arbitrary =

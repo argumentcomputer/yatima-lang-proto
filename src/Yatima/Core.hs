@@ -20,6 +20,7 @@ import Data.Sequence (Seq (..), (><))
 import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Text (Text)
 import Yatima.Core.CheckError
 import Yatima.Core.Ctx (Ctx (..), (<|))
 import qualified Yatima.Core.Ctx as Ctx
@@ -33,25 +34,26 @@ import Yatima.Term
 whnf :: Defs -> Hoas -> Hoas
 whnf defs trm = go trm []
   where
-    go :: Hoas -> [Hoas] -> Hoas
+    go :: Hoas -> [(Loc, Hoas)] -> Hoas
     go trm args = case trm of
-      RefH nam cid _ -> case defs M.!? cid of
+      RefH _ nam cid _ -> case defs M.!? cid of
         Just d -> go (fst (defToHoas nam d)) args
-        Nothing -> foldl' AppH trm args
-      FixH nam bod -> go (bod trm) args
-      AppH fun arg -> go fun (arg : args)
-      LamH _ bod -> case args of
+        Nothing -> apply trm args
+      FixH _ _ bod -> go (bod trm) args
+      AppH l fun arg -> go fun ((l, arg) : args)
+      LamH _ _ bod -> case args of
         [] -> trm
-        (a : args') -> go (bod a) args'
-      OprH opr -> reduceOpr opr (map (\arg -> go arg []) args)
-      UseH arg -> case go arg [] of
-        NewH exp -> go exp args
-        LitH val -> maybe (foldl' AppH trm args) (\t -> go t args) (expandLit val)
-        _ -> foldl' AppH trm args
-      AnnH a _ -> go a args
-      UnrH _ _ a _ -> go a args
-      LetH _ _ _ exp bod -> go (bod exp) args
-      _ -> foldl' AppH trm args
+        ((_, a) : args') -> go (bod a) args'
+      OprH l opr -> reduceOpr l opr ((\(_, arg) -> go arg []) <$> args)
+      UseH _ arg -> case go arg [] of
+        NewH _ exp -> go exp args
+        LitH l' val -> maybe (apply trm args) (\t -> go t args) (expandLit l' val)
+        _ -> foldl' (\t (l, a) -> AppH l t a) trm args
+      AnnH _ a _ -> go a args
+      UnrH _ _ _ a _ -> go a args
+      LetH _ _ _ _ exp bod -> go (bod exp) args
+      _ -> apply trm args
+    apply = foldl' (\t (l, a) -> AppH l t a)
 
 norm :: Defs -> Hoas -> Hoas
 norm defs term = go term 0 Set.empty
@@ -68,14 +70,14 @@ norm defs term = go term 0 Set.empty
 
     next :: Hoas -> Int -> Set Cid -> Hoas
     next step lvl seen = case step of
-      AllH nam use typ bod ->
-        AllH nam use (go typ lvl seen) (\x -> go (bod x) (lvl + 1) seen)
-      LamH nam bod -> LamH nam (\x -> go (bod x) (lvl + 1) seen)
-      AppH fun arg -> go (AppH (go fun lvl seen) (go arg lvl seen)) lvl seen
-      FixH nam bod -> go (bod (FixH nam bod)) lvl seen
-      SlfH nam bod -> SlfH nam (\x -> go (bod x) (lvl + 1) seen)
-      NewH exp -> NewH (go exp lvl seen)
-      UseH exp -> UseH (go exp lvl seen)
+      AllH l nam use typ bod ->
+        AllH l nam use (go typ lvl seen) (\x -> go (bod x) (lvl + 1) seen)
+      LamH l nam bod -> LamH l nam (\x -> go (bod x) (lvl + 1) seen)
+      AppH l fun arg -> go (AppH l (go fun lvl seen) (go arg lvl seen)) lvl seen
+      FixH l nam bod -> go (bod (FixH l nam bod)) lvl seen
+      SlfH l nam bod -> SlfH l nam (\x -> go (bod x) (lvl + 1) seen)
+      NewH l exp -> NewH l (go exp lvl seen)
+      UseH l exp -> UseH l (go exp lvl seen)
       step -> step
 
 -- Equality
@@ -89,14 +91,14 @@ congruent eq a b = do
     else do
       let go = congruent eq
       case (a, b) of
-        (All _ u h b, All _ u' h' b') -> pure (u == u') &&* go h h' &&* go b b'
-        (Lam _ b, Lam _ b') -> go b b'
-        (App f a, App f' a') -> go f f' &&* go a a'
-        (Let r _ u _ x b, Let r' _ u' _ x' b') -> pure (r == r' && u == u') &&* go x x' &&* go b b'
-        (Ann x _, Ann x' _) -> go x x'
-        (Slf _ x, Slf _ x') -> go x x'
-        (New x, New x') -> go x x'
-        (Use x, Use x') -> go x x'
+        (All _ _ u h b, All _ _ u' h' b') -> pure (u == u') &&* go h h' &&* go b b'
+        (Lam _ _ b, Lam _ _ b') -> go b b'
+        (App _ f a, App _ f' a') -> go f f' &&* go a a'
+        (Let _ r _ u _ x b, Let _ r' _ u' _ x' b') -> pure (r == r' && u == u') &&* go x x' &&* go b b'
+        (Ann _ x _, Ann _ x' _) -> go x x'
+        (Slf _ _ x, Slf _ _ x') -> go x x'
+        (New _ x, New _ x') -> go x x'
+        (Use _ x, Use _ x') -> go x x'
         _ -> return False
   where
     (&&*) = liftA2 (&&)
@@ -120,17 +122,17 @@ equal defs term1 term2 dep = runST $ do
       if b
         then go eq tris
         else case (term1, term2) of
-          (AppH f a, AppH f' a') ->
+          (AppH _ f a, AppH _ f' a') ->
             go eq $ tris >< Seq.fromList [(f, f', dep + 1), (a, a', dep + 1)]
-          (LamH n b, LamH n' b') ->
-            go eq $ tris >< Seq.singleton (b (VarH n dep), b' (VarH n' dep), dep + 1)
-          (AllH n u h b, AllH n' u' h' b') ->
-            go eq $ tris >< Seq.fromList [(h, h', dep + 1), (b (VarH n dep), b' (VarH n' dep), dep + 1)]
-          (SlfH n b, SlfH n' b') ->
-            go eq $ tris >< Seq.singleton (b (VarH n dep), b' (VarH n' dep), dep + 1)
-          (NewH b, NewH b') ->
+          (LamH l n b, LamH l' n' b') ->
+            go eq $ tris >< Seq.singleton (b (VarH l n dep), b' (VarH l' n' dep), dep + 1)
+          (AllH l n u h b, AllH l' n' u' h' b') ->
+            go eq $ tris >< Seq.fromList [(h, h', dep + 1), (b (VarH l n dep), b' (VarH l' n' dep), dep + 1)]
+          (SlfH l n b, SlfH l' n' b') ->
+            go eq $ tris >< Seq.singleton (b (VarH l n dep), b' (VarH l' n' dep), dep + 1)
+          (NewH _ b, NewH _ b') ->
             go eq $ tris >< Seq.singleton (b, b', dep + 1)
-          (UseH b, UseH b') ->
+          (UseH _ b, UseH _ b') ->
             go eq $ tris >< Seq.singleton (b, b', dep + 1)
           _ ->
             return False
@@ -139,151 +141,152 @@ equal defs term1 term2 dep = runST $ do
 -- * Type System
 
 check ::
+  Maybe Text ->
   Defs ->
   PreContext ->
   Uses ->
   Hoas ->
   Hoas ->
   Except CheckError (Context, Hoas, IR)
-check defs pre use term typ = case term of
-  LamH name body -> case whnf defs typ of
-    AllH bindName bindUse bind typeBody -> do
-      let bodyType = typeBody (VarH name (Ctx.depth pre))
-      let bodyTerm = body (VarH name (Ctx.depth pre))
-      (bodyCtx, _, bodyIR) <- check defs ((name, bind) <| pre) Once bodyTerm bodyType
+check file defs pre use term typ = case term of
+  LamH l name body -> case whnf defs typ of
+    AllH l bindName bindUse bind typeBody -> do
+      let bodyType = typeBody (VarH l name (Ctx.depth pre))
+      let bodyTerm = body (VarH l name (Ctx.depth pre))
+      (bodyCtx, _, bodyIR) <- check file defs ((name, bind) <| pre) Once bodyTerm bodyType
       case _ctx bodyCtx of
-        Empty -> throwError $ EmptyContext
+        Empty -> throwError $ EmptyContext file l
         ((name', (bindUse', bind')) :<| bodyCtx') -> do
           unless
             (bindUse' ≤# bindUse)
             ( do
                 let original = (name, bindUse, bind)
                 let checked = (name', use, bind')
-                throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked)
+                throwError (CheckQuantityMismatch file l (Ctx bodyCtx') original checked)
             )
           let ir = LamI bindUse name bodyIR
           return (mulCtx use (Ctx bodyCtx'), typ, ir)
-    x -> throwError $ LambdaNonFunctionType pre term typ x
-  NewH expr -> case whnf defs typ of
-    SlfH slfName slfBody -> do
-      (exprCtx, exprTyp, exprIR) <- check defs pre use expr (slfBody term)
+    x -> throwError $ LambdaNonFunctionType file l pre term typ x
+  NewH l expr -> case whnf defs typ of
+    SlfH l slfName slfBody -> do
+      (exprCtx, exprTyp, exprIR) <- check file defs pre use expr (slfBody term)
       return (exprCtx, exprTyp, NewI exprIR)
-    x -> throwError $ NewNonSelfType pre term typ x
-  LetH name exprUse exprTyp expr body -> do
-    (exprCtx, _, exprIR) <- check defs pre exprUse expr exprTyp
-    let var = VarH name (Ctx.depth pre)
-    (bodyCtx, _, bodyIR) <- check defs ((name, exprTyp) <| pre) Once (body var) typ
+    x -> throwError $ NewNonSelfType file l pre term typ x
+  LetH l name exprUse exprTyp expr body -> do
+    (exprCtx, _, exprIR) <- check file defs pre exprUse expr exprTyp
+    let var = VarH l name (Ctx.depth pre)
+    (bodyCtx, _, bodyIR) <- check file defs ((name, exprTyp) <| pre) Once (body var) typ
     case _ctx bodyCtx of
-      Empty -> throwError $ EmptyContext
+      Empty -> throwError $ EmptyContext file l
       ((name', (exprUse', exprTyp')) :<| bodyCtx') -> do
         unless
           (exprUse' ≤# exprUse)
           ( do
               let original = (name, exprUse, exprTyp)
               let checked = (name', exprUse', exprTyp')
-              throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked)
+              throwError (CheckQuantityMismatch file l (Ctx bodyCtx') original checked)
           )
         let isFix = case expr of
-              FixH _ _ -> True
+              FixH _ _ _ -> True
               _ -> False
         let ir = LetI isFix exprUse name exprIR bodyIR
         return (mulCtx use (addCtx exprCtx (Ctx bodyCtx')), typ, ir)
-  FixH name body -> do
-    let unroll = body (UnrH name (Ctx.depth pre) (FixH name body) typ)
-    (bodyCtx, _, bodyIR) <- check defs ((name, typ) <| pre) use unroll typ
+  FixH l name body -> do
+    let unroll = body (UnrH l name (Ctx.depth pre) (FixH l name body) typ)
+    (bodyCtx, _, bodyIR) <- check file defs ((name, typ) <| pre) use unroll typ
     case _ctx bodyCtx of
-      Empty -> throwError $ EmptyContext
+      Empty -> throwError $ EmptyContext file l
       (_, (None, _)) :<| bodyCtx' -> return (Ctx bodyCtx', typ, bodyIR)
       (_, (use, _)) :<| bodyCtx' -> return (mulCtx Many (Ctx bodyCtx'), typ, bodyIR)
-  _ -> do
-    (ctx, termTyp, termIR) <- infer defs pre use term
+  x -> do
+    (ctx, termTyp, termIR) <- infer file defs pre use term
     case equal defs typ termTyp (Ctx.depth pre) of
-      False -> throwError (TypeMismatch pre typ termTyp)
+      False -> throwError (TypeMismatch file (hoasLoc x) pre typ termTyp)
       True -> return (ctx, typ, termIR)
 
 -- | Infers the type of a term
 infer ::
+  Maybe Text ->
   Defs ->
   PreContext ->
   Uses ->
   Hoas ->
   Except CheckError (Context, Hoas, IR)
-infer defs pre use term = case term of
-  VarH nam lvl -> do
+infer file defs pre use term = case term of
+  VarH l nam lvl -> do
     let ir = VarI nam
     case Ctx.adjust lvl (toContext pre) (\(_, typ) -> (use, typ)) of
-      Nothing -> throwError $ UnboundVariable nam lvl
+      Nothing -> throwError $ UnboundVariable file l nam lvl
       Just ((_, typ), ctx) -> return (ctx, typ, ir)
-  RefH nam cid _ -> do
+  RefH l nam cid _ -> do
     --traceM ("RefH " ++ show nam)
-    let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
+    let mapMaybe = maybe (throwError $ UndefinedReference file l nam) pure
     def <- mapMaybe (defs M.!? cid)
     let (_, typ) = (defToHoas nam def)
     let ir = RefI nam
     return (toContext pre, typ, ir)
-  LamH name body -> throwError $ UntypedLambda
-  AppH func argm -> do
-    (funcCtx, funcTyp, funcIR) <- infer defs pre use func
+  LamH l name body -> throwError $ UntypedLambda file l
+  AppH l func argm -> do
+    (funcCtx, funcTyp, funcIR) <- infer file defs pre use func
     case whnf defs funcTyp of
-      AllH _ argmUse bind body -> do
-        (argmCtx, _, argmIR) <- check defs pre (argmUse *# use) argm bind
+      AllH l _ argmUse bind body -> do
+        (argmCtx, _, argmIR) <- check file defs pre (argmUse *# use) argm bind
         let ir = AppI argmUse funcIR argmIR
         return (addCtx funcCtx argmCtx, body argm, ir)
-      x -> throwError $ NonFunctionApplication funcCtx func funcTyp x
-  UseH expr -> do
-    (exprCtx, exprTyp, exprIR) <- infer defs pre use expr
+      x -> throwError $ NonFunctionApplication file l funcCtx func funcTyp x
+  UseH l expr -> do
+    (exprCtx, exprTyp, exprIR) <- infer file defs pre use expr
     case whnf defs exprTyp of
-      SlfH _ body -> do
+      SlfH l _ body -> do
         return (exprCtx, body expr, UseI exprIR Nothing)
-      LTyH typ -> do
+      LTyH l typ -> do
         when (typ /= TNatural && typ /= TString) $
-          throwError $ UseOnNonInductiveType exprCtx expr typ
-        return (exprCtx, litInduction typ expr, UseI exprIR (Just typ))
-      AppH (LTyH TBitVector) (LitH (VNatural n)) -> do
-        let expr' = AppH (litInduction TBitVector (LitH (VNatural n))) expr
+          throwError $ UseOnNonInductiveType file l exprCtx expr typ
+        return (exprCtx, litInduction l typ expr, UseI exprIR (Just typ))
+      AppH l (LTyH _ TBitVector) (LitH _ (VNatural n)) -> do
+        let expr' = AppH l (litInduction l TBitVector (LitH l (VNatural n))) expr
         return (exprCtx, expr', UseI exprIR (Just TBitVector))
       -- TODO: Make sure this is right
-      x -> throwError $ NonSelfUse exprCtx expr exprTyp x
-  AllH name bindUse bind body -> do
-    let nameVar = VarH name $ Ctx.depth pre
-    (_, _, bindIR) <- check defs pre None bind TypH
-    (_, _, bodyIR) <- check defs ((name, bind) <| pre) None (body nameVar) TypH
+      x -> throwError $ NonSelfUse file l exprCtx expr exprTyp x
+  AllH l name bindUse bind body -> do
+    let nameVar = VarH l name $ Ctx.depth pre
+    (_, _, bindIR) <- check file defs pre None bind (TypH l)
+    (_, _, bodyIR) <- check file defs ((name, bind) <| pre) None (body nameVar) (TypH l)
     let ir = AllI name bindUse bindIR bodyIR
-    return (toContext pre, TypH, ir)
-  SlfH name body -> do
-    let selfVar = VarH name $ Ctx.depth pre
-    (_, _, bodyIR) <- check defs ((name, term) <| pre) None (body selfVar) TypH
+    return (toContext pre, TypH l, ir)
+  SlfH l name body -> do
+    let selfVar = VarH l name $ Ctx.depth pre
+    (_, _, bodyIR) <- check file defs ((name, term) <| pre) None (body selfVar) (TypH l)
     let ir = SlfI name bodyIR
-    return (toContext pre, TypH, ir)
-  LetH name exprUse exprTyp expr body -> do
-    (exprCtx, _, exprIR) <- check defs pre exprUse expr exprTyp
-    let var = VarH name (Ctx.depth pre)
-    (bodyCtx, typ, bodyIR) <- infer defs ((name, exprTyp) <| pre) Once (body var)
+    return (toContext pre, TypH l, ir)
+  LetH l name exprUse exprTyp expr body -> do
+    (exprCtx, _, exprIR) <- check file defs pre exprUse expr exprTyp
+    let var = VarH l name (Ctx.depth pre)
+    (bodyCtx, typ, bodyIR) <- infer file defs ((name, exprTyp) <| pre) Once (body var)
     case _ctx bodyCtx of
-      Empty -> throwError EmptyContext
+      Empty -> throwError (EmptyContext file l)
       ((name', (exprUse', exprTyp')) :<| bodyCtx') -> do
         unless
           (exprUse' ≤# exprUse)
           ( do
               let original = (name, exprUse, exprTyp)
               let inferred = (name', exprUse', exprTyp')
-              throwError (InferQuantityMismatch (Ctx bodyCtx') original inferred)
+              throwError (InferQuantityMismatch file l (Ctx bodyCtx') original inferred)
           )
         let isFix = case expr of
-              FixH _ _ -> True
+              FixH _ _ _ -> True
               _ -> False
         let ir = LetI isFix exprUse name exprIR bodyIR
         return (mulCtx use (addCtx exprCtx (Ctx bodyCtx')), typ, ir)
-  TypH -> return (toContext pre, TypH, TypI)
-  UnrH nam lvl val typ -> do
+  TypH l -> return (toContext pre, TypH l, TypI)
+  UnrH l nam lvl val typ -> do
     case Ctx.adjust lvl (toContext pre) (\(_, typ) -> (use, typ)) of
-      Nothing -> throwError $ EmptyContext
+      Nothing -> throwError $ EmptyContext file l
       Just ((_, typ), ctx) -> do
         let ir = VarI nam
         return (ctx, typ, ir)
-  AnnH val typ -> do
-    check defs pre use val typ
-  LitH lit -> return (toContext pre, typeOfLit lit, LitI lit)
-  LTyH lty -> return (toContext pre, typeOfLTy lty, LTyI lty)
-  OprH opr -> return (toContext pre, typeOfOpr opr, OprI opr)
-  _ -> throwError $ CustomErr pre "can't infer type"
+  AnnH _ val typ -> check file defs pre use val typ
+  LitH l lit -> return (toContext pre, typeOfLit l lit, LitI lit)
+  LTyH l lty -> return (toContext pre, typeOfLTy l lty, LTyI lty)
+  OprH l opr -> return (toContext pre, typeOfOpr l opr, OprI opr)
+  x -> throwError $ CustomErr file (hoasLoc x) pre "can't infer type"

@@ -34,20 +34,20 @@ termToAST t = go t
   where
     go :: Term -> DagAST
     go t = case t of
-      Var _ i -> Ctor "Var" [Vari i]
-      Ref _ _ cid -> Ctor "Ref" [Link cid]
-      Lit x -> Ctor "Lit" [Data (BSL.toStrict $ serialise x)]
-      LTy x -> Ctor "LTy" [Data (BSL.toStrict $ serialise x)]
-      Opr x -> Ctor "Opr" [Data (BSL.toStrict $ serialise x)]
-      Lam _ b -> Ctor "Lam" [bind b]
-      App f a -> Ctor "App" [go f, go a]
-      New e -> Ctor "New" [go e]
-      Use e -> Ctor "Use" [go e]
-      Ann v t -> Ctor "Ann" [go v, go t]
-      Let r _ u t x b -> Ctor "Let" [rec r, use u, go t, if r then bind x else go x, bind b]
-      Typ -> Ctor "Typ" []
-      All _ u t b -> Ctor "All" [use u, go t, bind b]
-      Slf _ b -> Ctor "Slf" [bind b]
+      Var _ _ i -> Ctor "Var" [Vari i]
+      Ref _ _ _ cid -> Ctor "Ref" [Link cid]
+      Lit _ x -> Ctor "Lit" [Data (BSL.toStrict $ serialise x)]
+      LTy _ x -> Ctor "LTy" [Data (BSL.toStrict $ serialise x)]
+      Opr _ x -> Ctor "Opr" [Data (BSL.toStrict $ serialise x)]
+      Lam _ _ b -> Ctor "Lam" [bind b]
+      App _ f a -> Ctor "App" [go f, go a]
+      New _ e -> Ctor "New" [go e]
+      Use _ e -> Ctor "Use" [go e]
+      Ann _ v t -> Ctor "Ann" [go v, go t]
+      Let _ r _ u t x b -> Ctor "Let" [rec r, use u, go t, if r then bind x else go x, bind b]
+      Typ _ -> Ctor "Typ" []
+      All _ _ u t b -> Ctor "All" [use u, go t, bind b]
+      Slf _ _ b -> Ctor "Slf" [bind b]
 
     rec r = Data (BSL.toStrict $ serialise r)
 
@@ -59,28 +59,28 @@ termToMeta t = go t
   where
     go :: Term -> DagMeta
     go t = case t of
-      Ref n cid _ -> MCtor [MLink n cid]
-      Lam n b -> MCtor [bind n b]
-      App f a -> MCtor [go f, go a]
-      New e -> MCtor [go e]
-      Use e -> MCtor [go e]
-      Ann v t -> MCtor [go v, go t]
-      Let r n _ t x b -> MCtor [leaf, leaf, go t, if r then bind n x else go x, bind n b]
-      All n _ t b -> MCtor [leaf, go t, bind n b]
-      Slf n b -> MCtor [bind n b]
-      Typ -> MCtor []
+      Ref _ n cid _ -> MCtor [MLink n cid]
+      Lam _ n b -> MCtor [bind n b]
+      App _ f a -> MCtor [go f, go a]
+      New _ e -> MCtor [go e]
+      Use _ e -> MCtor [go e]
+      Ann _ v t -> MCtor [go v, go t]
+      Let _ r n _ t x b -> MCtor [leaf, leaf, go t, if r then bind n x else go x, bind n b]
+      All _ n _ t b -> MCtor [leaf, go t, bind n b]
+      Slf _ n b -> MCtor [bind n b]
+      Typ _ -> MCtor []
       _ -> MCtor [leaf]
     bind n t = MBind n (go t)
     leaf = MLeaf
 
 defToDag :: Def -> (DagAST, DagMeta, DagAST, DagMeta)
-defToDag (Def _ _ term typ_) = runIdentity $ do
+defToDag (Def _ _ _ term typ_) = runIdentity $ do
   let (termAST, termMeta) = (termToAST term, termToMeta term)
   let (typeAST, typeMeta) = (termToAST typ_, termToMeta typ_)
   return (termAST, termMeta, typeAST, typeMeta)
 
 defToDagDef :: Def -> DagDef
-defToDagDef def@(Def title doc _ _) = runIdentity $ do
+defToDagDef def@(Def _ title doc _ _) = runIdentity $ do
   let (termAST, termMeta, typeAST, typeMeta) = defToDag def
   let termASTCid = makeCid termAST :: Cid
   return $ DagDef title termASTCid typeAST doc termMeta typeMeta
@@ -147,19 +147,19 @@ instance Show DagError where
 
 dagToTerm :: [Name] -> DagAST -> DagMeta -> Except DagError Term
 dagToTerm ns ast meta = case (ast, meta) of
-  (Ctor "Ref" [Link t], MCtor [MLink n d]) -> return $ Ref n d t
-  (Ctor "Lit" [Data bs], MCtor [MLeaf]) -> Lit <$> deserial @Literal bs
-  (Ctor "LTy" [Data bs], MCtor [MLeaf]) -> LTy <$> deserial @LitType bs
-  (Ctor "Opr" [Data bs], MCtor [MLeaf]) -> Opr <$> deserial @PrimOp bs
-  (Ctor "Typ" [], MCtor []) -> return Typ
-  (Ctor "App" [f, a], MCtor [fm, am]) -> App <$> go ns f fm <*> go ns a am
-  (Ctor "Ann" [v, t], MCtor [vm, tm]) -> Ann <$> go ns v vm <*> go ns t tm
-  (Ctor "New" [e], MCtor [em]) -> New <$> go ns e em
-  (Ctor "Use" [e], MCtor [em]) -> Use <$> go ns e em
-  (Ctor "Lam" [Bind b], MCtor [MBind n m]) -> Lam n <$> go (n : ns) b m
-  (Ctor "Slf" [Bind b], MCtor [MBind n m]) -> Slf n <$> go (n : ns) b m
+  (Ctor "Ref" [Link t], MCtor [MLink n d]) -> return $ Ref l n d t
+  (Ctor "Lit" [Data bs], MCtor [MLeaf]) -> Lit l <$> deserial @Literal bs
+  (Ctor "LTy" [Data bs], MCtor [MLeaf]) -> LTy l <$> deserial @LitType bs
+  (Ctor "Opr" [Data bs], MCtor [MLeaf]) -> Opr l <$> deserial @PrimOp bs
+  (Ctor "Typ" [], MCtor []) -> return $ Typ l
+  (Ctor "App" [f, a], MCtor [fm, am]) -> App l <$> go ns f fm <*> go ns a am
+  (Ctor "Ann" [v, t], MCtor [vm, tm]) -> Ann l <$> go ns v vm <*> go ns t tm
+  (Ctor "New" [e], MCtor [em]) -> New l <$> go ns e em
+  (Ctor "Use" [e], MCtor [em]) -> Use l <$> go ns e em
+  (Ctor "Lam" [Bind b], MCtor [MBind n m]) -> Lam l n <$> go (n : ns) b m
+  (Ctor "Slf" [Bind b], MCtor [MBind n m]) -> Slf l n <$> go (n : ns) b m
   (Ctor "All" [Data u, t, Bind b], MCtor [MLeaf, tm, MBind n bm]) -> do
-    All n <$> deserial @Uses u <*> go ns t tm <*> go (n : ns) b bm
+    All l n <$> deserial @Uses u <*> go ns t tm <*> go (n : ns) b bm
   ( Ctor "Let" [Data r, Data u, t, exp, Bind b],
     MCtor [MLeaf, MLeaf, tm, mexp, MBind n' bm]
     ) -> do
@@ -167,22 +167,23 @@ dagToTerm ns ast meta = case (ast, meta) of
       case (rec, exp, mexp) of
         (True, Bind x, MBind n xm) -> do
           when (n /= n') (throwError $ MalformedLet ns ast meta)
-          Let True n' <$> deserial @Uses u
+          Let l True n' <$> deserial @Uses u
             <*> go ns t tm
             <*> go (n' : ns) x xm
             <*> go (n' : ns) b bm
         (False, x, xm) ->
-          Let False n' <$> deserial @Uses u
+          Let l False n' <$> deserial @Uses u
             <*> go ns t tm
             <*> go ns x xm
             <*> go (n' : ns) b bm
         _ -> throwError $ MalformedLet ns ast meta
   (Ctor "Var" [Vari i], MCtor [MLeaf]) ->
     case findByInt i ns of
-      Just n -> return $ Var n i
+      Just n -> return $ Var l n i
       Nothing -> throwError $ FreeVariable ns ast meta i
   (ast', meta') -> throwError $ UnexpectedASTMeta ns ast meta ast' meta'
   where
+    l = NoLoc
     go = dagToTerm
     deserial :: Serialise a => BS.ByteString -> Except DagError a
     deserial bs = do
@@ -199,7 +200,7 @@ dagToDef ::
 dagToDef title doc n (termAST, termMeta) (typeAST, typeMeta) = do
   trm <- dagToTerm [n] termAST termMeta
   typ <- dagToTerm [] typeAST typeMeta
-  return $ Def title doc trm typ
+  return $ Def NoLoc title doc trm typ
 
 -- * Cache
 
@@ -261,7 +262,7 @@ cacheHas cid = do
   doesFileExist path
 
 cachePutDef :: Def -> IO (Cid, Cid)
-cachePutDef (Def title doc trm typ) = do
+cachePutDef (Def _ title doc trm typ) = do
   termASTCid <- cachePut (termToAST trm)
   let termMeta = termToMeta trm
   let typeMeta = termToMeta typ

@@ -44,29 +44,29 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
 
     go :: Term -> TB.Builder
     go t = case t of
-      Var nam _ -> name nam
-      Ref nam _ _ -> name nam
-      All nam use typ bod -> "∀" <> alls nam use typ bod
-      Slf nam bod -> "@" <> name nam <> " " <> go bod
-      New bod -> "data " <> go bod
-      Use bod -> "case " <> go bod
-      Lam nam bod -> "λ" <> lams nam bod
-      Ann val typ -> pars (go val <> " :: " <> go typ)
-      App func argm -> apps func argm
-      Let rec nam use typ exp bod ->
+      Var _ nam _ -> name nam
+      Ref _ nam _ _ -> name nam
+      All _ nam use typ bod -> "∀" <> alls nam use typ bod
+      Slf _ nam bod -> "@" <> name nam <> " " <> go bod
+      New _ bod -> "data " <> go bod
+      Use _ bod -> "case " <> go bod
+      Lam _ nam bod -> "λ" <> lams nam bod
+      Ann _ val typ -> pars (go val <> " :: " <> go typ)
+      App _ func argm -> apps func argm
+      Let _ rec nam use typ exp bod ->
         mconcat
           [if rec then "letrec " else "let ", uses use, name nam, ": ", go typ, " = ", go exp, "; ", go bod]
-      Typ -> "Type"
-      Lit lit -> TB.fromText (prettyLiteral lit)
-      LTy lit -> TB.fromText (prettyLitType lit)
-      Opr pri -> TB.fromText (prettyPrimOp pri)
+      Typ _ -> "Type"
+      Lit _ lit -> TB.fromText (prettyLiteral lit)
+      LTy _ lit -> TB.fromText (prettyLitType lit)
+      Opr _ pri -> TB.fromText (prettyPrimOp pri)
 
     lams :: Name -> Term -> TB.Builder
-    lams nam (Lam nam' bod') = mconcat [" ", name nam, lams nam' bod']
+    lams nam (Lam _ nam' bod') = mconcat [" ", name nam, lams nam' bod']
     lams nam bod = mconcat [" ", name nam, " => ", go bod]
 
     alls :: Name -> Uses -> Term -> Term -> TB.Builder
-    alls nam use typ (All nam' use' typ' bod') =
+    alls nam use typ (All _ nam' use' typ' bod') =
       mconcat [" (", uses use, name nam, ": ", go typ, ")", alls nam' use' typ' bod']
     alls nam use typ bod =
       mconcat [" (", uses use, name nam, ": ", go typ, ")", " -> ", go bod]
@@ -76,13 +76,13 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
 
     isAtom :: Term -> Bool
     isAtom t = case t of
-      Var _ _ -> True
-      Ref _ _ _ -> True
-      Lit _ -> True
-      LTy _ -> True
-      Opr _ -> True
-      Ann _ _ -> True
-      Typ -> True
+      Var _ _ _ -> True
+      Ref _ _ _ _ -> True
+      Lit _ _ -> True
+      LTy _ _ -> True
+      Opr _ _ -> True
+      Ann _ _ _ -> True
+      Typ _ -> True
       _ -> False
 
     pars' :: Term -> TB.Builder
@@ -90,9 +90,9 @@ prettyTerm t = LT.toStrict $ TB.toLazyText (go t)
 
     apps :: Term -> Term -> TB.Builder
     apps f a
-      | App ff fa <- f, App af aa <- a = apps ff fa <> " " <> pars (apps af aa)
-      | App af aa <- a = pars' f <> " " <> pars (apps af aa)
-      | App ff fa <- f = apps ff fa <> " " <> pars' a
+      | App _ ff fa <- f, App _ af aa <- a = apps ff fa <> " " <> pars (apps af aa)
+      | App _ af aa <- a = pars' f <> " " <> pars (apps af aa)
+      | App _ ff fa <- f = apps ff fa <> " " <> pars' a
       | otherwise = pars' f <> " " <> pars' a
 
 prettyLiteral :: Literal -> Text
@@ -144,7 +144,7 @@ prettyPrimOp :: PrimOp -> Text
 prettyPrimOp p = "#" <> primOpName p
 
 prettyDef :: Name -> Def -> Text
-prettyDef name (Def _ doc term typ_) =
+prettyDef name (Def _ _ doc term typ_) =
   T.concat
     [ if doc == "" then "" else T.concat [doc, "\n"],
       name,

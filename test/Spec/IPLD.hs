@@ -8,7 +8,7 @@ import Control.Monad.Except
 import Data.Aeson hiding (decode, encode)
 import qualified Data.Aeson as Aeson
 import Data.IPLD.Cid
-import Data.IPLD.DagAST
+import Data.IPLD.DagAST hiding (_loc)
 import Data.IPLD.DagJSON
 import Data.IPLD.DagPackage
 import Debug.Trace
