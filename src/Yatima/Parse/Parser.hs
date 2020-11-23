@@ -83,7 +83,7 @@ type ParseLog = ()
 -- | An empty parser environment, useful for testing
 defaultParseEnv = ParseEnv [] M.empty
 
--- | Custom parser errrors with bespoke messaging
+-- | Custom parser errors with bespoke messaging
 data ParseError e
   = UndefinedReference Name
   | TopLevelRedefinition Name
