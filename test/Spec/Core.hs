@@ -54,47 +54,48 @@ eval_spec = do
     it "" $ whnf [yatima| (λ x y => y) 1 |] `shouldBe` [yatima| λ y => y |]
     it "" $ whnf [yatima| (λ x y => x) (λ x => x) |] `shouldBe` [yatima| λ y => (λ x => x) |]
   describe "`whnf` evaluation of Naturals " $ do
-    it "" $ whnf [yatima| #Natural_succ 1 |] `shouldBe` [yatima| 2 |]
+    it "" $ whnf [yatima| #Natural.succ 1 |] `shouldBe` [yatima| 2 |]
     it "" $ whnf [yatima| (case 0)|] `shouldBe` [yatima| λ P z s => z |]
     it "" $ whnf [yatima| (case 1)|] `shouldBe` [yatima| λ P z s => s 0 |]
     it "" $ whnf [yatima| (case 2)|] `shouldBe` [yatima| λ P z s => s 1 |]
   describe "`whnf` evaluation of I32 operations" $ do
-    it "I32_eq" $ property $ rel_I32_prop I32_eq (==)
-    it "I32_ne" $ property $ rel_I32_prop I32_ne (/=)
-    it "I32_lt_u" $ property $ rel_I32_prop I32_lt_u (<)
-    it "I32_le_u" $ property $ rel_I32_prop I32_le_u (<=)
-    it "I32_gt_u" $ property $ rel_I32_prop I32_gt_u (>)
-    it "I32_ge_u" $ property $ rel_I32_prop I32_ge_u (>=)
-    it "I32_lt_s" $ property $ rel_I32_prop I32_lt_s (signed32_op (<))
-    it "I32_le_s" $ property $ rel_I32_prop I32_le_s (signed32_op (<=))
-    it "I32_gt_s" $ property $ rel_I32_prop I32_gt_s (signed32_op (>))
-    it "I32_ge_s" $ property $ rel_I32_prop I32_ge_s (signed32_op (>=))
-    it "" $ whnf [yatima| #I32_add 1u32 1u32|] `shouldBe` [yatima| 2u32 |]
-    it "" $ whnf [yatima| #I32_add 1i32 -1i32|] `shouldBe` [yatima| 0i32 |]
-    it "" $ whnf [yatima| #I32_sub 1u32 1u32|] `shouldBe` [yatima| 0i32 |]
-    it "" $ whnf [yatima| #I32_sub 1i32 -1i32|] `shouldBe` [yatima| 2i32 |]
-    it "" $ whnf [yatima| #I32_div_s 1i32 0i32|] `shouldBe` [yatima| #exception "Cannot divide by zero" |]
-    it "" $ whnf [yatima| #I32_and 0b1111u32 0b1111u32|] `shouldBe` [yatima| 0b1111u32 |]
-    it "" $ whnf [yatima| #I32_xor 0b1111u32 0b1111u32|] `shouldBe` [yatima| 0b0000u32 |]
-    it "" $ whnf [yatima| #I32_shl 0b1u32 3u32 |] `shouldBe` [yatima| 0b1000u32 |]
-    it "" $ whnf [yatima| #I32_shr_u 0b1000u32 3u32 |] `shouldBe` [yatima| 0b1u32 |]
+    it "I32.eq" $ property $ rel_I32_prop I32_eq (==)
+    it "I32.ne" $ property $ rel_I32_prop I32_ne (/=)
+    it "I32.lt_u" $ property $ rel_I32_prop I32_lt_u (<)
+    it "I32.le_u" $ property $ rel_I32_prop I32_le_u (<=)
+    it "I32.gt_u" $ property $ rel_I32_prop I32_gt_u (>)
+    it "I32.ge_u" $ property $ rel_I32_prop I32_ge_u (>=)
+    it "I32.lt_s" $ property $ rel_I32_prop I32_lt_s (signed32_op (<))
+    it "I32.le_s" $ property $ rel_I32_prop I32_le_s (signed32_op (<=))
+    it "I32.gt_s" $ property $ rel_I32_prop I32_gt_s (signed32_op (>))
+    it "I32.ge_s" $ property $ rel_I32_prop I32_ge_s (signed32_op (>=))
+    it "" $ whnf [yatima| #I32.add 1u32 1u32|] `shouldBe` [yatima| 2u32 |]
+    it "" $ whnf [yatima| #I32.add 1i32 -1i32|] `shouldBe` [yatima| 0i32 |]
+    it "" $ whnf [yatima| #I32.sub 1u32 1u32|] `shouldBe` [yatima| 0i32 |]
+    it "" $ whnf [yatima| #I32.sub 1i32 -1i32|] `shouldBe` [yatima| 2i32 |]
+    it "" $ whnf [yatima| #I32.div_s 1i32 0i32|] `shouldBe` [yatima| #exception "Cannot divide by zero" |]
+    it "" $ whnf [yatima| #I32.and 0b1111u32 0b1111u32|] `shouldBe` [yatima| 0b1111u32 |]
+    it "" $ whnf [yatima| #I32.xor 0b1111u32 0b1111u32|] `shouldBe` [yatima| 0b0000u32 |]
+    it "" $ whnf [yatima| #I32.shl 0b1u32 3u32 |] `shouldBe` [yatima| 0b1000u32 |]
+    it "" $ whnf [yatima| #I32.shr_u 0b1000u32 3u32 |] `shouldBe` [yatima| 0b1u32 |]
   -- todo: mul, rem, mod, or, shr_s, rotl, rotr
   describe "`whnf` evaluation of F32 operations" $ do
-    it "" $ whnf [yatima| #F32_eq 1.0f32 2.0f32 |] `shouldBe` [yatima| 0u32 |]
-    it "" $ whnf [yatima| #F32_mul 2.0f32 2.0f32 |] `shouldBe` [yatima| 4.0f32 |]
+    it "" $ whnf [yatima| #F32.eq 1.0f32 2.0f32 |] `shouldBe` [yatima| 0u32 |]
+    it "" $ whnf [yatima| #F32.mul 2.0f32 2.0f32 |] `shouldBe` [yatima| 4.0f32 |]
   describe "`whnf` evaluation of I64 operations" $ do
-    it "I64_eq" $ property $ rel_I64_prop I64_eq (==)
-    it "I64_ne" $ property $ rel_I64_prop I64_ne (/=)
-    it "I64_lt_u" $ property $ rel_I64_prop I64_lt_u (<)
-    it "I64_le_u" $ property $ rel_I64_prop I64_le_u (<=)
-    it "I64_gt_u" $ property $ rel_I64_prop I64_gt_u (>)
-    it "I64_ge_u" $ property $ rel_I64_prop I64_ge_u (>=)
-    it "I64_lt_s" $ property $ rel_I64_prop I64_lt_s (signed64_op (<))
-    it "I64_le_s" $ property $ rel_I64_prop I64_le_s (signed64_op (<=))
-    it "I64_gt_s" $ property $ rel_I64_prop I64_gt_s (signed64_op (>))
-    it "I64_ge_s" $ property $ rel_I64_prop I64_ge_s (signed64_op (>=))
+    it "I64.eq" $ property $ rel_I64_prop I64_eq (==)
+    it "I64.ne" $ property $ rel_I64_prop I64_ne (/=)
+    it "I64.lt_u" $ property $ rel_I64_prop I64_lt_u (<)
+    it "I64.le_u" $ property $ rel_I64_prop I64_le_u (<=)
+    it "I64.gt_u" $ property $ rel_I64_prop I64_gt_u (>)
+    it "I64.ge_u" $ property $ rel_I64_prop I64_ge_u (>=)
+    it "I64.lt_s" $ property $ rel_I64_prop I64_lt_s (signed64_op (<))
+    it "I64.le_s" $ property $ rel_I64_prop I64_le_s (signed64_op (<=))
+    it "I64.gt_s" $ property $ rel_I64_prop I64_gt_s (signed64_op (>))
+    it "I64.ge_s" $ property $ rel_I64_prop I64_ge_s (signed64_op (>=))
   describe "`whnf` evaluation of String operations" $ do
-    it "" $ whnf [yatima| #String_cons 'f' "oo" |] `shouldBe` [yatima| "foo" |]
-    it "" $ whnf [yatima| #String_concat "foo" "bar" |] `shouldBe` [yatima| "foobar" |]
+    it "" $ whnf [yatima| #String.cons 'f' "oo" |] `shouldBe` [yatima| "foo" |]
+    it "" $ whnf [yatima| #String.concat "foo" "bar" |] `shouldBe` [yatima| "foobar" |]
+    it "" $ whnf [yatima| #String.concat "foo" (#String.concat "bar" "foo") |] `shouldBe` [yatima| "foobarfoo" |]
   describe "`whnf` evaluation of BitVector operations" $ do
-    it "" $ whnf [yatima| #BitVector_concat #xff #xff |] `shouldBe` [yatima| #xffff |]
+    it "" $ whnf [yatima| #BitVector.concat #xff #xff |] `shouldBe` [yatima| #xffff |]
