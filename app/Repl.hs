@@ -122,6 +122,14 @@ catchReplErr x = case runExcept x of
   Right x -> return x
   Left e -> liftIO (putStrLn (show e)) >> abort
 
+helpText :: String
+helpText = "help text fills you with determination\n" ++
+           ":help, :h - show this help\n" ++
+           ":browse, :b - print loaded defs\n" ++
+           ":load, :l - load and check a file\n" ++
+           ":type, :t - print the type of a term\n"
+
+
 process :: Text -> Repl ()
 process line = dontCrash' $ do
   index <- gets _replIndex
@@ -136,7 +144,7 @@ process line = dontCrash' $ do
         defs <- liftIO $ indexToDefs index
         liftIO $ traverse (prettyIndexF defs) (M.toList $ indexEntries index)
         return ()
-      Help -> liftIO $ putStrLn "help text fills you with determination "
+      Help -> liftIO $ putStrLn helpText
       -- Quit   -> abort
       Type t -> do
         index <- gets _replIndex

@@ -435,14 +435,14 @@ litInduction l t val = (\y -> AppH l y val) $
     λ self => forall
     (0 P : forall #Natural -> Type)
     (& zero : P 0)
-    (& succ : forall (pred : #Natural) -> P (#Natural_succ pred))
+    (& succ : forall (pred : #Natural) -> P (#Natural.succ pred))
     -> P self|]
     TString ->
       [yatima|
     λ self => forall
     (0 P : forall #String -> Type)
     (& nil  : P "")
-    (& cons : forall (x: #Char) (xs : #String) -> P (#String_cons x xs))
+    (& cons : forall (x: #Char) (xs : #String) -> P (#String.cons x xs))
     -> P self|]
     TBitVector ->
       [yatima|
@@ -450,9 +450,9 @@ litInduction l t val = (\y -> AppH l y val) $
     (0 P    : forall (n: #Natural) (#BitVector n) -> Type)
     (& be : P 0 #b)
     (& b0 : forall (n: #Natural) (xs : #BitVector n)
-     -> P (#Natural_succ n) (#BitVector_b0 n xs))
+     -> P (#Natural.succ n) (#BitVector.b0 n xs))
     (& b1 : forall (n: #Natural) (xs : #BitVector n)
-     -> P (#Natural_succ n) (#BitVector_b1 n xs))
+     -> P (#Natural.succ n) (#BitVector.b1 n xs))
     -> P n self
     |]
     _ -> error "Non-inductive type"
@@ -536,11 +536,11 @@ typeOfOpr l t = mkHoas l $ case t of
   F32_to_U32 -> [yatima|∀ #F32 -> (#BitVector 32)|]
   String_cons -> [yatima|∀ #Char #String -> #String|]
   String_concat -> [yatima|∀ #String #String -> #String|]
-  BitVector_b0 -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
-  BitVector_b1 -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> (#BitVector (#Natural_succ n))|]
+  BitVector_b0 -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> (#BitVector (#Natural.succ n))|]
+  BitVector_b1 -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> (#BitVector (#Natural.succ n))|]
   BitVector_length -> [yatima|∀ (0 n: #Natural) (#BitVector n) -> #Natural|]
   BitVector_concat ->
-    [yatima|∀ (0 n: #Natural) (0 m: #Natural) (#BitVector n) (#BitVector m) -> (#BitVector (#Natural_add n m))|]
+    [yatima|∀ (0 n: #Natural) (0 m: #Natural) (#BitVector n) (#BitVector m) -> (#BitVector (#Natural.add n m))|]
   Char_from_U8 -> [yatima|∀ (#BitVector 8) -> #Natural|]
   I32_from_U32 -> [yatima|∀ (#BitVector 32) -> #Natural|]
   F32_from_U32 -> [yatima|∀ (#BitVector 32) -> #Natural|]

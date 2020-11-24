@@ -161,8 +161,8 @@ check file defs pre use term typ = case term of
             (bindUse' ≤# bindUse)
             ( do
                 let original = (name, bindUse, bind)
-                let checked = (name', use, bind')
-                throwError (CheckQuantityMismatch file l (Ctx bodyCtx') original checked)
+                let checked = (name', bindUse', bind')
+                throwError (CheckQuantityMismatch (Ctx bodyCtx') original checked)
             )
           let ir = LamI bindUse name bodyIR
           return (mulCtx use (Ctx bodyCtx'), typ, ir)
@@ -218,9 +218,14 @@ infer file defs pre use term = case term of
     case Ctx.adjust lvl (toContext pre) (\(_, typ) -> (use, typ)) of
       Nothing -> throwError $ UnboundVariable file l nam lvl
       Just ((_, typ), ctx) -> return (ctx, typ, ir)
+<<<<<<< HEAD
   RefH l nam cid _ -> do
     --traceM ("RefH " ++ show nam)
     let mapMaybe = maybe (throwError $ UndefinedReference file l nam) pure
+=======
+  RefH nam cid _ -> do
+    let mapMaybe = maybe (throwError $ UndefinedReference nam) pure
+>>>>>>> 7cdc8594c569c69ef1e63818c1ed2e4520bdaec3
     def <- mapMaybe (defs M.!? cid)
     let (_, typ) = (defToHoas nam def)
     let ir = RefI nam
