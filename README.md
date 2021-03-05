@@ -1,4 +1,10 @@
+# Yatima Haskell Prototype
+
+This was an early version of Yatima which used a Haskell Higher-Order-Abstract-Syntax representation for reduction and IPFS for content-addressing. The new implementation in Rust at https://github.com/yatima-inc/yatima, uses [Bottom-Up Beta-Reduction paper](https://www.ccs.neu.edu/home/shivers/papers/bubs.pdf), and a new content-addressing schema called Hashspace.
+
 # Yatima: A programming language for the decentralized web
+
+---
 
 > In one sense, the Truth Mines were just another indexscape. Hundreds of
 > thousands of specialized selections of the library's contents were accessible
